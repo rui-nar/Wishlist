@@ -3,7 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import '../screens/user_info_screen.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
 class Authentication {
   static SnackBar customSnackBar({required String content}) {
@@ -35,9 +35,40 @@ class Authentication {
 
     return firebaseApp;
   }
-  static Future<User?> signInWithEmail({required BuildContext context}) async {
-    FirebaseAuth auth = FirebaseAuth.instance;
-    User? user;
+  static Future signInWithEmail({
+    required BuildContext context,
+    required String email,
+    required String password}) async {
+
+    try {
+      FirebaseApp firebaseApp = await Firebase.initializeApp();
+      FirebaseAuth auth = FirebaseAuth.instance;
+
+      await auth.signInWithEmailAndPassword(email: email, password: password);
+
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'account-exists-with-different-credential') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          Authentication.customSnackBar(
+            content:
+            'The account already exists with a different credential',
+          ),
+        );
+      } else if (e.code == 'invalid-credential') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          Authentication.customSnackBar(
+            content:
+            'Error occurred while accessing credentials. Try again.',
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        Authentication.customSnackBar(
+          content: 'Error occurred using Google Sign In. Try again.',
+        ),
+      );
+    }
   }
 
   static Future<User?> signInWithGoogle({required BuildContext context}) async {
@@ -53,7 +84,9 @@ class Authentication {
 
         user = userCredential.user;
       } catch (e) {
-        print(e);
+        if (kDebugMode) {
+          print(e);
+        }
       }
     } else {
       final GoogleSignIn googleSignIn = GoogleSignIn();

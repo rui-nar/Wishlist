@@ -1,19 +1,25 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../screens/sign_in_with_email_screen.dart';
+import '../screens/user_info_screen.dart';
+import '../utils/authentication.dart';
 
-class EmailSignInButton extends StatefulWidget {
-  const EmailSignInButton({Key? key}) : super(key: key);
+class SignInButton extends StatefulWidget {
+
+  final String email ;
+  final String password ;
+
+  const SignInButton({Key? key, required this.email, required this.password}) : super(key: key);
 
   @override
-  _EmailSignInButtonState createState() => _EmailSignInButtonState();
+  _SignInButtonState createState() => _SignInButtonState();
 }
 
-class _EmailSignInButtonState extends State<EmailSignInButton> {
+class _SignInButtonState extends State<SignInButton> {
   bool _isSigningIn = false;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context ){
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: _isSigningIn
@@ -33,12 +39,29 @@ class _EmailSignInButtonState extends State<EmailSignInButton> {
             ),
           ),
           onPressed: () async {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => const SignInWithEmailScreen(
+            setState(() {
+              _isSigningIn = true;
+            });
+
+            User? user =
+            await Authentication.signInWithEmail(
+                context: context,
+                email: widget.email,
+                password: widget.password);
+
+            setState(() {
+              _isSigningIn = false;
+            });
+
+            if (user != null) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => UserInfoScreen(
+                    user: user,
+                  ),
                 ),
-              ),
-            );
+              );
+            }
           },
           child: Padding(
             padding: const EdgeInsets.fromLTRB(0, 10, 0, 10),

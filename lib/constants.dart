@@ -15,4 +15,7 @@ const kTextFieldDecoration = InputDecoration(
     borderSide: BorderSide(color: Colors.black, width: 1.5),
     borderRadius: BorderRadius.all(Radius.circular(7)),
   ),
+  fillColor: Colors.white,
+  focusColor: Colors.grey,
+  filled: true,
 );
