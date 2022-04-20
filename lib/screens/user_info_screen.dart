@@ -5,20 +5,21 @@ import 'package:my_dev_1/screens/sign_in_screen.dart';
 import 'package:my_dev_1/utils/authentication.dart';
 import 'package:my_dev_1/components/app_bar_title.dart';
 
+final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
+
 class UserInfoScreen extends StatefulWidget {
-  const UserInfoScreen({Key? key, required User? user})
-      : _user = user,
-        super(key: key);
+  const UserInfoScreen({Key? key})
+      : super(key: key);
 
-  final User? _user;
-
+  
   @override
   _UserInfoScreenState createState() => _UserInfoScreenState();
 }
 
 class _UserInfoScreenState extends State<UserInfoScreen> {
-  late User? _user;
   bool _isSigningOut = false;
+
+  var _user;
 
   Route _routeToSignInScreen() {
     return PageRouteBuilder(
@@ -41,7 +42,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
 
   @override
   void initState() {
-    _user = widget._user;
+    _user = _firebaseAuth.currentUser;
 
     super.initState();
   }

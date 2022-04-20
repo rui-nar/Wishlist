@@ -73,7 +73,21 @@ class _SignInScreenState extends State<SignInScreen> {
                   );
                 },
               ),
-              const EmailSignInButton()
+              FutureBuilder(
+                future: Authentication.initializeFirebase(context: context),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Text('Error initializing Firebase');
+                  } else if (snapshot.connectionState == ConnectionState.done) {
+                    return const EmailSignInButton();
+                  }
+                  return CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      CustomColors.firebaseOrange,
+                    ),
+                  );
+                },
+              ),
             ],
           ),
         ),

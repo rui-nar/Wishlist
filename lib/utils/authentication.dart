@@ -26,8 +26,7 @@ class Authentication {
     if (user != null) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => UserInfoScreen(
-            user: user,
+          builder: (context) => const UserInfoScreen(
           ),
         ),
       );
@@ -38,10 +37,11 @@ class Authentication {
   static Future signInWithEmail({
     required BuildContext context,
     required String email,
-    required String password}) async {
+    required String password
+  }) async {
 
     try {
-      FirebaseApp firebaseApp = await Firebase.initializeApp();
+
       FirebaseAuth auth = FirebaseAuth.instance;
 
       await auth.signInWithEmailAndPassword(email: email, password: password);

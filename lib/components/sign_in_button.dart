@@ -56,8 +56,7 @@ class _SignInButtonState extends State<SignInButton> {
             if (user != null) {
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(
-                  builder: (context) => UserInfoScreen(
-                    user: user,
+                  builder: (context) => const UserInfoScreen(
                   ),
                 ),
               );

@@ -15,7 +15,7 @@ class SignInWithEmailScreen extends StatefulWidget {
 
 class _SignInWithEmailScreenState extends State<SignInWithEmailScreen> {
   final formkey = GlobalKey<FormState>();
-  final _auth = FirebaseAuth.instance;
+  //final _auth = FirebaseAuth.instance;
 
   bool _isSigningIn = false;
   String email = '';
@@ -91,75 +91,68 @@ class _SignInWithEmailScreenState extends State<SignInWithEmailScreen> {
                   ],
                 ),
               ),
-              FutureBuilder(
-                future: Authentication.initializeFirebase(context: context),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return const Text('Error initializing Firebase');
-                  } else if (snapshot.connectionState == ConnectionState.done) {
-                    return OutlinedButton(
-                      style: ButtonStyle(
-                        backgroundColor: MaterialStateProperty.all(Colors.white),
-                        alignment: Alignment.center,
-                        shape: MaterialStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(40),
+              OutlinedButton(
+                style: ButtonStyle(
+                  backgroundColor: MaterialStateProperty.all(Colors.white),
+                  alignment: Alignment.center,
+                  shape: MaterialStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(40),
+                    ),
+                  ),
+                ),
+                onPressed: () async {
+                  setState(() {
+                    _isSigningIn = true;
+                  });
+
+                  await Authentication.signInWithEmail(
+                      context: context,
+                      email: email,
+                      password: password);
+
+                  setState(() {
+                    _isSigningIn = false;
+                  });
+
+ //                 if (_auth.currentUser != null) {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => UserInfoScreen(
+                      ),
+                    ),
+                  );
+   //               }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 10, 0, 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const <Widget>[
+                      Padding(
+                        padding: EdgeInsets.only(left: 10, right: 10),
+                        child: Text(
+                          'Sign in',
+                          style: TextStyle(
+                            fontSize: 20,
+                            color: Colors.black54,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ),
-                      onPressed: () async {
-                        setState(() {
-                          _isSigningIn = true;
-                        });
-
-                        await Authentication.signInWithEmail(
-                            context: context,
-                            email: email,
-                            password: password);
-
-                        setState(() {
-                          _isSigningIn = false;
-                        });
-
-                        if (_auth.currentUser != null) {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (context) => UserInfoScreen(
-                                user: _auth.currentUser,
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(0, 10, 0, 10),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const <Widget>[
-                            Padding(
-                              padding: EdgeInsets.only(left: 10, right: 10),
-                              child: Text(
-                                'Sign in',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  color: Colors.black54,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            )
-                          ],
-                        ),
-                      ),
-                    );
-                  }
+                      )
+                    ],
+                  ),
+                ),
+              )
+              /*}
                   return CircularProgressIndicator(
                     valueColor: AlwaysStoppedAnimation<Color>(
                       CustomColors.firebaseOrange,
                     ),
                   );
                 },
-              )
+              )*/
 
             ],
           ),
