@@ -6,17 +6,41 @@ import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.convertors import PathConvertor, register_url_convertor
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.db import create_db_engine, create_session_factory
 from app.settings import Settings
 
+# The Flutter web build. The image puts it in /app/web, next to /app/server;
+# locally the directory does not exist and the app serves the API only.
+WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+
+class _WebPathConvertor(PathConvertor):
+    """A path that is never /api or /api/... .
+
+    An unknown /api/... path is a missing endpoint, never a client route: it
+    must get the API's JSON 404, not index.html with a 200 that an out-of-date
+    client could take for a real response. Keeping /api out of the catch-all's
+    pattern, rather than raising inside it, also keeps the catch-all from
+    matching API paths at all (a POST would get its 405), so the API answers
+    the same whether or not a web build is present.
+    """
+
+    regex = r"(?!api(?:/|$)).*"
+
+
+register_url_convertor("web_path", _WebPathConvertor())
+
+
+def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> FastAPI:
     settings = settings or Settings()
     engine = create_db_engine(settings.database_url)
 
@@ -64,7 +88,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    # Registered last, so every /api route above takes precedence.
+    if web_dir.is_dir():
+        _serve_web_client(app, web_dir)
+
     return app
+
+
+def _serve_web_client(app: FastAPI, web_dir: Path) -> None:
+    # StaticFiles does the lookup: it refuses paths that resolve outside
+    # web_dir and answers a matching If-None-Match with a 304.
+    static = StaticFiles(directory=web_dir)
+
+    @app.api_route("/{path:web_path}", methods=["GET", "HEAD"], include_in_schema=False)
+    async def web_client(path: str, request: Request) -> Response:
+        try:
+            response = await static.get_response(path, request.scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            # Not a file of the build: a client-side route, which the client's
+            # router resolves once index.html has loaded it.
+            response = await static.get_response("index.html", request.scope)
+        # Flutter puts no content hash in its file names (index.html,
+        # flutter_bootstrap.js, main.dart.js...), so a cached copy would keep a
+        # returning user on the previous release after a deploy, out of step
+        # with the API (plan D5). The browser revalidates on every load
+        # instead; the ETag makes an unchanged file a cheap 304.
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def _database_ok(engine: Engine) -> bool:
