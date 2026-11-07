@@ -936,13 +936,28 @@ install -m 644 "$SRC/deploy/prod/docker-compose.yml" /opt/wishlist/
 
 | Changed | Then |
 |---|---|
-| a compose file | `docker compose up -d --wait` in its directory (recreates what changed). A Postgres **patch or minor** bump (Dependabot) is just this; a **major** one is [below](#postgres-major-upgrade). |
+| a compose file | `docker compose up -d --wait` in its directory (recreates what changed), with the [cluster check](#checking-the-database-cluster-is-unchanged) before and after. A Postgres **patch or minor** bump (Dependabot) is just this; a **major** one is [below](#postgres-major-upgrade). |
 | `deploy/backup/*.sh` | `docker compose restart backup` in `/opt/wishlist` (it reads the script on start) |
 | `deploy/webhook/deploy-validation.sh` | nothing: read on each delivery |
 | `deploy/webhook/hooks.yaml.example` | re-create `hooks.yaml` as in step 7, keeping the secret: `SECRET=$(sed -n 's/^ *secret: "\(.*\)"$/\1/p' hooks.yaml)` first, then `sudo systemctl restart wishlist-webhook` |
 | `deploy/webhook/wishlist-webhook.service` | install it as in step 7, then `sudo systemctl daemon-reload && sudo systemctl restart wishlist-webhook` |
 | `deploy/caddy/Caddyfile.snippet` | edit the Wishlist blocks in `/etc/caddy/Caddyfile` by hand, then `caddy validate` before the reload, as in step 6 |
 | an `.env.example` | compare with the host's `.env` and add what is new; `docker compose up -d` |
+
+#### Checking the database cluster is unchanged
+
+For any compose file change, prove that the same Postgres cluster still
+serves. Its system identifier changes only when a new cluster is created.
+
+1. **[VPS]** In the compose file's directory, before applying, record the value:
+
+   ```bash
+   docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select system_identifier from pg_control_system()"'
+   ```
+
+2. Run `docker compose up -d --wait`.
+3. Run the same command again and compare. If the value changed, stop and
+   follow [If it happened anyway](#if-it-happened-anyway).
 
 ## Rollback
 
@@ -996,8 +1011,11 @@ resets it anyway.
 ## Postgres major upgrade
 
 The Postgres image is pinned to one exact version everywhere (D2), and a
-major version moves only by hand (D16): Dependabot ignores majors, because a
-new major cannot open the old one's data directory. The procedure is dump, new
+major version moves only by hand (D16): Dependabot ignores majors. The volume is
+mounted at `/var/lib/postgresql`, the parent of the per-major data directory,
+so a new major finds its own empty data directory there and silently starts an
+empty database instead of refusing to start; this is why majors are never
+bumped by a plain compose change ([if it happened anyway](#if-it-happened-anyway)). The procedure is dump, new
 volume, restore. Upgrade VAL first: its seed from PROD's dump into the new
 major is the rehearsal of PROD's restore.
 
@@ -1083,6 +1101,17 @@ Once PROD has run on the new major for a while and the nightly dumps are
 healthy: `docker volume rm wishlist-prod_pgdata-pg<old-major>`,
 `rm docker-compose.yml.pg<old-major>` and
 `sudo rm /opt/wishlist/backups/before-pg<new-major>.dump`.
+
+### If it happened anyway
+
+If a Postgres major was changed by a plain compose change, the
+[system identifier check](#checking-the-database-cluster-is-unchanged) shows a different
+value after `up -d --wait`, and `/api/health` is 200 all the same: the app
+migrated an empty schema and serves an empty database. Writes users make in
+that state land in the new cluster and are lost when the old one is put back.
+Recovery: put the previous exact image tag back in the compose file and run
+`docker compose up -d --wait`. The old cluster is untouched in the volume
+(unless the volume was removed).
 
 ## The webhook: pausing and troubleshooting
 
