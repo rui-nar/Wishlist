@@ -117,8 +117,11 @@ manual PROD deploy, nightly backup and restore — exactly as real features will
   ownership or the Postgres first-boot sequence (reviews R1-2, R1-4, R1-5).
 - **D18 — Uploaded files on disk, immutable, purged late.** Gift images
   (`docs/NEEDS.md`) live in a media directory per environment,
-  `/opt/wishlist/media` and `/opt/wishlist-val/media`, bind-mounted at
-  `/app/media` and owned by the app's fixed uid `10001`. Binding rules for the
+  `/opt/wishlist-media/prod` and `/opt/wishlist-media/val` (one parent, so a
+  single mount covers both when seeding, review R2-3), bind-mounted at
+  `/app/media` and owned by the app's fixed uid `10001`. The image sets
+  `MEDIA_DIR=/app/media`, and no deploy `.env` overrides it, so the app writes
+  where the mount is (review R2-1). Binding rules for the
   feature that will write them:
   - a file is never modified: it is named by its content hash;
   - deleting a gift removes only the database reference; a file is purged
@@ -130,7 +133,10 @@ manual PROD deploy, nightly backup and restore — exactly as real features will
   images on a 40 GB disk. Like the dumps, it does not survive losing the VPS
   (off-site copies stay open). Seeding VAL hard-links PROD's files into VAL's
   directory (same filesystem, no extra space; safe because files are never
-  modified). This plan provisions the directory, its ownership, the
+  modified). The link step runs as uid `10001` in a one-shot container that
+  mounts `/opt/wishlist-media` once: Debian's `fs.protected_hardlinks=1`
+  forbids the deploy user from linking files it does not own, and links
+  across two separate mounts fail (review R2-3). This plan provisions the directory, its ownership, the
   configuration, a writability check and the runbook; uploading, fetching and
   purging belong to the gifts feature. Rules out images in PostgreSQL (each
   nightly dump would carry them all, 30 times) and object storage (a new
@@ -234,7 +240,9 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
      Commit `server/uv.lock`. `.python-version` at the root: `3.14`.
   2. `server/app/settings.py`: `DATABASE_URL`, `APP_ENV`, `APP_VERSION`
      (default `dev`), `FRONTEND_ORIGIN` (comma-separated list of origins),
-     `MEDIA_DIR` (D18; default `./media` locally).
+     `MEDIA_DIR` (D18; default `./media` locally). The app creates
+     `MEDIA_DIR` on startup when it is missing (a no-op on the VPS, where it is
+     a mount; review R2-4).
      `CORSMiddleware` allows exactly those origins (none when empty), so the
      DEV client served by `flutter run` on its own port can call the API
      (review R1-3).
@@ -253,7 +261,7 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
      `Dockerfile`.
   7. Extend the root `.gitignore`: Python caches (`__pycache__/`,
      `.pytest_cache/`, `.ruff_cache/`, `.venv/`), `client/build/`,
-     `*.dump` (review R1-10).
+     `*.dump` (review R1-10), `media/` (review R2-4).
 - **Acceptance:** with a Postgres reachable at `DATABASE_URL`:
   `uv run --directory server pytest` passes, including
   `tests/test_version.py`, `tests/test_health.py` (DB up → 200; unreachable
@@ -346,8 +354,8 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
   2. `entrypoint.sh`: `alembic upgrade head`, then uvicorn with
      `--timeout-keep-alive 300 --proxy-headers --forwarded-allow-ips
      "${FORWARDED_ALLOW_IPS:-127.0.0.1}"`. Runs as a non-root user with the
-     fixed uid and gid `10001`, and `/app/media` exists and belongs to it
-     (D18).
+     fixed uid and gid `10001`, `/app/media` exists and belongs to it, and
+     the Dockerfile sets `ENV MEDIA_DIR=/app/media` (D18, review R2-1).
   3. The app serves the web build at `/` when the directory exists, `/api/*`
      taking precedence; unknown non-API paths return `index.html`.
   4. OCI label `org.opencontainers.image.source=https://github.com/rui-nar/Wishlist`.
@@ -355,7 +363,9 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
   wishlist:test .` succeeds; run against the DEV Postgres, `/api/version`
   reports `test-1`, `/` returns the client's `index.html`, `/api/health` is
   200 with `media: ok`; `server/tests/test_static.py` passes;
-  `docker run --rm --entrypoint id wishlist:test` prints `uid=10001`.
+  `docker run --rm --entrypoint id wishlist:test` prints `uid=10001`;
+  `docker run --rm --entrypoint printenv wishlist:test MEDIA_DIR` prints
+  `/app/media`.
 - **Out of scope:** CI, compose files for the VPS.
 - **Latitude:** decided at routing.
 - **Escalate if:** a file outside Scope is needed (X3).
@@ -408,8 +418,8 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
   1. `deploy/prod/docker-compose.yml`: `app` (`:latest`, `127.0.0.1:8010:8000`,
      `env_file: .env`, depends on `db` healthy), `db` (pinned Postgres, named
      volume, no `ports:`, `shared_buffers` and `max_connections` sized for its
-     limit), `backup` (D9, D14). The app mounts `/opt/wishlist/media` at
-     `/app/media` (D18). Memory limits as in the Review envelope;
+     limit), `backup` (D9, D14). The app mounts `/opt/wishlist-media/prod` at
+     `/app/media` (D18); `.env.example` does not set `MEDIA_DIR` and says why. Memory limits as in the Review envelope;
      healthchecks and restart policies as in Conventions.
      `deploy/prod/.env.example`.
   2. `deploy/val/`: the same with `:validation`, `127.0.0.1:8011`, its own
@@ -417,7 +427,9 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
      PROD's) and no `backup`; plus `seed-from-prod.sh`, which stops VAL's app,
      drops and recreates VAL's database, restores the newest PROD dump with
      `pg_restore --no-owner --no-privileges` as VAL's role, hard-links PROD's
-     media files into VAL's media directory without overwriting (D18), and
+     media files into VAL's media directory without overwriting, as uid
+     `10001` in a one-shot container mounting `/opt/wishlist-media` once
+     (D18, review R2-3), and
      starts the app again so its migrations bring the schema to VAL's head
      (review R1-2).
   3. `deploy/backup/backup.sh` and its loop: dump once on start, then sleep
@@ -434,9 +446,13 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
      prescribe, bring both stacks up from a fresh volume, wait for
      `/api/health` on 8010 and 8011 (including `media: ok`, which proves uid
      10001 can write the media directories as the runbook creates them),
-     check the backup service turns healthy with a dump present, place a test
-     file in PROD's media directory, run `seed-from-prod.sh`, and check VAL is
-     healthy again and has the test file (D17, D18).
+     check the backup service turns healthy with a dump present, write a test
+     file **through PROD's app container** (`docker compose exec app sh -c
+     'echo probe > "$MEDIA_DIR/smoke-probe"'`) and check it appears in
+     `/opt/wishlist-media/prod` on the host owned by uid 10001 (review R2-1),
+     run `seed-from-prod.sh` (as a non-root user, like the deploy user), and
+     check VAL is healthy again and has the test file (D17, D18, review
+     R2-3).
 - **Acceptance:** `docker compose ... config` succeeds for both stacks with
   the example `.env`; `shellcheck deploy/**/*.sh` is clean; the
   `deploy-smoke` workflow passes on a draft pull request from the unit's

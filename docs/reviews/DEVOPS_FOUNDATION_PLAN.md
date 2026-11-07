@@ -96,21 +96,21 @@ Subject: the round 1 fixes and the media storage decision (D18).
 - Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=S/local, confidence=inferred
 - Decision: Fix now (D3, floor F2)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan)
 
 ### R2-3 — Hard-linking PROD media into VAL fails under `fs.protected_hardlinks=1`
 - Trigger: owner runs `seed-from-prod.sh` as the deploy user once uid-10001 files exist → `Operation not permitted` → script stops after VAL's database was replaced, VAL left down
 - Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
 - Decision: Fix now (D6)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan)
 
 ### R2-4 — DEV media directory created by no unit and not ignored
 - Trigger: owner runs `.\dev.ps1` from a fresh clone → `/api/health` 503 `media: not writable`; a hand-made `media/` shows as untracked
 - Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
 - Decision: Fix now (D6)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan)
 
 ### R2-2 — Rolled-back image stops on a migration revision it does not know
 - Trigger: rollback to an image older than the database's Alembic revision (or VAL seeded while its image is behind PROD's) → `alembic upgrade head` fails "Can't locate revision" → app restarts in a loop
