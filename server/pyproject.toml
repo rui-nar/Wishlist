@@ -1,0 +1,51 @@
+[project]
+name = "wishlist-server"
+# Placeholder: the release version lives in the git tag (APP_VERSION), not here.
+version = "0.0.0"
+description = "Wishlist server (FastAPI)"
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.20.1",
+    "fastapi>=0.162.2",
+    # Majors capped: psycopg 3 and SQLAlchemy 2 are the stack (plan D1); a new
+    # major is a decision, not a Dependabot bump.
+    "psycopg[binary]>=3.3.8,<4",
+    "pydantic-settings>=2.16.2",
+    "sqlalchemy>=2.1.8,<3",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.4",
+]
+
+[tool.uv]
+# An application run from server/, not an installable package.
+package = false
+# A floor, not a pin: an exact pin would block Dependabot and local uv.
+required-version = ">=0.13"
+# Prefer the installed, signed CPython over a uv-managed one (Smart App Control
+# blocks unsigned interpreters on the dev machine); uv still downloads one where
+# no system 3.14 exists (CI).
+python-preference = "system"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The app is not installed (package = false): tests import it from server/.
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+# pyflakes and pycodestyle (the defaults), plus import order, pyupgrade and
+# bugbear.
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+# The migrations directory server/alembic/ would otherwise make ruff sort the
+# alembic library as first-party.
+known-third-party = ["alembic"]
