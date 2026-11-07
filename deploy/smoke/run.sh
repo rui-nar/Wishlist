@@ -102,6 +102,10 @@ sudo install -d -o "$deploy_user" -g "$deploy_user" -m 755 "$prod" "$prod/backup
 sudo install -d -o 999 -g 999 -m 700 "$prod/backups"
 sudo install -d -o root -g root -m 755 "$media"
 sudo install -d -o 10001 -g 10001 -m 750 "$media/prod" "$media/val"
+# Not a runbook step: shows whether this host has default ACLs, which replace
+# the umask for new files. Every mode above and below is set explicitly, so
+# the result must not depend on them.
+sudo getfacl -p /opt "$prod/backups" "$media/prod" 2>&1 || true
 
 as_file() { sudo install -o "$deploy_user" -g "$deploy_user" -m "$1" "${@:2}"; }
 as_file 644 "$repo/deploy/prod/docker-compose.yml" "$prod/"

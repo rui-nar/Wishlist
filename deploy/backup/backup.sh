@@ -12,7 +12,8 @@ set -u
 BACKUP_DIR=/backups
 KEEP=30
 
-# Dumps hold every user's data: readable by uid 999 only.
+# Dumps hold every user's data: readable by uid 999 only (and chmod-ed so in
+# dump()).
 umask 077
 
 log() {
@@ -25,8 +26,11 @@ dump() {
     # A temporary name the healthcheck and the rotation never match, renamed
     # only once complete: a dump cut short never passes for a good one.
     tmp="$BACKUP_DIR/.wishlist_$day.dump.partial"
+    # chmod as well as the umask: a default ACL on the host directory
+    # replaces the umask for new files, which would then be world-readable.
     if PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -h db -U "$POSTGRES_USER" \
             -d "$POSTGRES_DB" -Fc -f "$tmp" \
+        && chmod 600 "$tmp" \
         && mv -f "$tmp" "$final"; then
         log "wrote $final ($(du -h "$final" | cut -f1))"
     else
