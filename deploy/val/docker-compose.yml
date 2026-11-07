@@ -1,0 +1,95 @@
+# Wishlist VAL on the VPS (plan D2, D3, D8, D18): PROD's stack with its own
+# image tag, port, database, credentials and media, and no backup.
+#
+# Installed as /opt/wishlist-val/docker-compose.yml, next to its .env (copied
+# from .env.example and filled in, never committed) and seed-from-prod.sh.
+# docs/DEPLOYMENT.md creates the directory it mounts:
+#
+#   /opt/wishlist-media/val      10001:10001        (the app's uploaded files)
+#
+# `docker compose restart` does not pick up .env changes: the container has to
+# be recreated with `docker compose up -d`.
+
+# A fixed project name: the volume is `wishlist-val_pgdata` whatever the
+# directory is called, and never collides with PROD's or TraxJourney's.
+name: wishlist-val
+
+# Docker's default json-file driver keeps every log line forever. The 40 GB
+# disk is shared with TraxJourney, so each container keeps at most 3 × 10 MB.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    # Moved by pushing the `validation` git tag (plan D6); the webhook pulls it.
+    image: ghcr.io/rui-nar/wishlist:validation
+    restart: unless-stopped
+    # DATABASE_URL, APP_ENV, FRONTEND_ORIGIN and FORWARDED_ALLOW_IPS (plan D10).
+    env_file: .env
+    ports:
+      # Loopback only: Docker's published ports bypass ufw, so a bare
+      # `8011:8000` would be on the internet. Caddy reaches it on the host.
+      - "127.0.0.1:8011:8000"
+    volumes:
+      # The image sets MEDIA_DIR=/app/media and no .env overrides it (D18), so
+      # uploads always land here and survive the container.
+      - /opt/wishlist-media/val:/app/media
+    depends_on:
+      # The entrypoint runs `alembic upgrade head` first, which needs the
+      # database accepting TCP connections.
+      db:
+        condition: service_healthy
+    healthcheck:
+      # /api/health checks the database and that /app/media is writable; the
+      # image has Python but no curl. urlopen raises on the 503, so a failing
+      # part makes the container unhealthy in `docker ps`.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # Migrations run before uvicorn listens.
+      start_period: 2m
+      start_interval: 2s
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+    logging: *logging
+
+  db:
+    # Pinned to one exact version, the same in DEV, CI, VAL and PROD (plan D2).
+    # Major versions move only by hand (D16).
+    image: postgres:18.6
+    restart: unless-stopped
+    # POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB, read on first boot only.
+    env_file: .env
+    # Sized for the 192 MB limit: 48 MB of shared buffers, and 25 connections
+    # (the app's pool is 5 + 10 overflow, plus seed-from-prod.sh and an
+    # operator's psql) at a few MB each.
+    command: ["postgres", "-c", "shared_buffers=48MB", "-c", "max_connections=25"]
+    # No `ports:` (plan D3): only the app reaches it, over the project's
+    # network.
+    volumes:
+      # Postgres 18's image keeps its data in /var/lib/postgresql/18/docker and
+      # refuses a mount at the old /var/lib/postgresql/data.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      # -h localhost: without it pg_isready reports healthy while the image's
+      # first-boot init server listens on the unix socket only (review R1-4).
+      test: ["CMD-SHELL", "pg_isready -h localhost -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 1m
+      start_interval: 2s
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+    logging: *logging
+
+volumes:
+  pgdata:
