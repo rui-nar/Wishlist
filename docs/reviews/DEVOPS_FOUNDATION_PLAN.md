@@ -139,3 +139,33 @@ end to end and found them sound; one leftover below.
 - Decision: Fix now (D7)
 - Override: —
 - Outcome: fixed (in plan)
+
+## Round 4 — 2026-11-07, reviewed at 5525e7f
+
+Subject: the integrated diff of `feat/devops-foundation` against 7f67d95, the
+delivered implementation of the plan (DELIVERY.md §5 point 2). Generated
+Flutter platform files and lock files excluded from close reading. R4-1 and
+R4-2 come from the reviewer; R4-3 was entered by the orchestrator from U8's
+implementer report (triage only).
+
+### R4-2 — A Postgres major bump without the procedure starts an empty cluster, not a refused one
+- Trigger: owner changes `postgres:18.6` to a newer major in a VPS compose file and runs `up -d` instead of the runbook's upgrade procedure → the new image's PGDATA (`/var/lib/postgresql/<major>/docker`) is empty in the same volume, initdb runs, the app migrates an empty schema, health is 200 → PROD serves an empty database; users' new writes land in the new cluster and are lost when the old one is switched back in; the runbook (DEPLOYMENT.md:996-1002, :939) says the new major refuses to start
+- Scores: trigger=plausible, impact=wrong-visible (orchestrator: data-loss, see Decision), detect=user-visible, later=cheap, fix=S/local, confidence=inferred (mechanism verified by the triager in the compose files)
+- Decision: Fix now (D3) — orchestrator enforcement (skill step 7): the triager deferred it (D10), reasoning that the old cluster stays intact; but writes made while PROD runs on the empty cluster are persisted data that the only recovery (back to the old cluster) discards, so F2 applies
+- Override: —
+- Outcome: open
+
+### R4-1 — No concurrency group on the image build: overlapping `validation` builds can leave VAL on the older commit
+- Trigger: owner pushes the `validation` tag twice within one build's duration and the first run finishes last → `:validation` holds the older commit, the webhook deploys it and logs success → VAL serves the older commit; the next `deploy.ps1 -Target Val` stops and says so
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred (missing `concurrency:` verified by the triager)
+- Decision: Defer (D10)
+- Revisit when: VAL serves an older commit than the `validation` tag, `deploy.ps1 -Target Val` reports a still-running build after it finished, or the release flow starts pushing two tags close together
+- Override: —
+- Outcome: open
+
+### R4-3 — Rolling PROD back across a migration crash-loops, contradicting D15
+- Trigger: owner rolls PROD back one version after a release that added a migration → the older image's entrypoint runs `alembic upgrade head`, cannot locate the database's revision, exits → the app restarts in a loop
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap (triager: was proposed as expensive; released images are not a §3 boundary, and the host compose file can override the entrypoint), fix=S/local, confidence=inferred
+- Decision: Duplicate (D2) of R2-2 — its trigger and its revisit trigger ("before the runbook's rollback is first used on PROD") already cover this; the runbook now forbids rolling back across a migration (DEPLOYMENT.md:958-968). Noted by the triager: the entrypoint.sh:3-5 comment ("a rollback needs no downgrade") overstates D15 while R2-2 is open
+- Override: —
+- Outcome: open (with R2-2)
