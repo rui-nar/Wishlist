@@ -81,8 +81,11 @@ if (-not (Get-Command wt -ErrorAction SilentlyContinue)) {
 
 # Each pane loads .env itself: wt may open the tab in an already running
 # Windows Terminal, which does not inherit this shell's environment, and the
-# settings then never appear on a command line.
-$loadEnv = ". '$root\Load-DotEnv.ps1'; if (-not (Import-DotEnv)) { return }"
+# settings then never appear on a command line. For the same reason each pane
+# gets this shell's PATH: on the owner's machine wt started the panes with a
+# PATH missing System32, Git and uv.
+$pathLiteral = $env:Path -replace "'", "''"
+$loadEnv = "`$env:Path = '$pathLiteral'; . '$root\Load-DotEnv.ps1'; if (-not (Import-DotEnv)) { return }"
 $apiCmd = "Set-Location '$root\server'; $loadEnv; uv run uvicorn app.main:app --reload --port 8000"
 $clientCmd = "Set-Location '$root\client'; $loadEnv; & '$flutter' run -d chrome --web-port 5500 --dart-define=API_BASE_URL=http://localhost:8000"
 
@@ -91,12 +94,20 @@ function ConvertTo-Base64Command([string]$cmd) {
     [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($cmd))
 }
 
+# The panes run the same PowerShell as this script, by full path: wt launched
+# a bare `pwsh` with "The system cannot find the file specified" on the owner's
+# machine.
+$pwsh = (Get-Process -Id $PID).Path
+
+# Start-Process joins these with spaces and quotes nothing: a value containing
+# a space (the titles, a path) needs its own quotes, or wt reads its second
+# word as the command to run.
 Start-Process wt -ArgumentList @(
-    'new-tab', '--title', 'Wishlist API', '-d', $root,
-    'pwsh', '-NoExit', '-EncodedCommand', (ConvertTo-Base64Command $apiCmd),
+    'new-tab', '--title', '"Wishlist API"', '-d', "`"$root`"",
+    "`"$pwsh`"", '-NoExit', '-EncodedCommand', (ConvertTo-Base64Command $apiCmd),
     ';',
-    'split-pane', '-H', '--title', 'Wishlist client', '-d', $root,
-    'pwsh', '-NoExit', '-EncodedCommand', (ConvertTo-Base64Command $clientCmd)
+    'split-pane', '-H', '--title', '"Wishlist client"', '-d', "`"$root`"",
+    "`"$pwsh`"", '-NoExit', '-EncodedCommand', (ConvertTo-Base64Command $clientCmd)
 )
 
 Write-Host ''

@@ -209,6 +209,8 @@ Notes:
   blocked for worktree agents, so verifiers ran `dev.ps1` and `deploy.ps1`;
   two session interruptions (U3/U4, U6b) were resumed from the agents'
   uncommitted work.
-- Not yet checked: the client's `dev.ps1` start in Chrome (interactive), the
-  image build on a `validation` tag, and everything on the VPS (owner steps,
-  `docs/DEPLOYMENT.md`).
+- `dev.ps1`'s interactive start failed on the owner's first run (pane titles
+  split by `Start-Process`, then panes started by wt with a broken PATH); fixed
+  after delivery, and the owner confirmed the client shows the server's version.
+- Not yet checked: the image build on a `validation` tag, and everything on
+  the VPS (owner steps, `docs/DEPLOYMENT.md`).
