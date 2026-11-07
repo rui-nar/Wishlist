@@ -1,0 +1,34 @@
+name: Deploy smoke test
+
+# The VPS setup (deploy/) on Linux, which Docker Desktop on Windows cannot
+# reproduce: file ownership, Postgres's first boot, the backup and seeding VAL
+# from it (plan D17). deploy/smoke/run.sh does the work; this only gives it a
+# throwaway machine with passwordless sudo.
+on:
+  pull_request:
+    paths:
+      - "deploy/**"
+      - "Dockerfile"
+      - "entrypoint.sh"
+      - "server/alembic/**"
+      - ".github/workflows/deploy-smoke.yml"
+  # Any branch, by hand.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-smoke:
+    runs-on: ubuntu-24.04
+    # The image build (the Flutter SDK and the web client) takes most of it.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run the smoke test
+        run: bash deploy/smoke/run.sh
