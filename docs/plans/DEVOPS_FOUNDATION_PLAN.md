@@ -185,7 +185,8 @@ REVIEW.md defaults apply, with these additions:
 ## Boundaries crossed
 
 - **Shared VPS configuration:** new blocks in `/etc/caddy/Caddyfile`, a new
-  systemd unit, two new directories under `/opt`. TraxJourney's files are not
+  systemd unit, three new directories under `/opt`
+  (`/opt/wishlist`, `/opt/wishlist-val`, `/opt/wishlist-media`). TraxJourney's files are not
   edited apart from appending the Caddy blocks.
 - **Schema:** an initial, empty Alembic revision becomes the root every later
   migration descends from. No tables.

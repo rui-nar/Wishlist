@@ -138,4 +138,4 @@ end to end and found them sound; one leftover below.
 - Scores: trigger=concrete, impact=maintainability, detect=user-visible, later=cheap, fix=S/local, confidence=verified
 - Decision: Fix now (D7)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan)
