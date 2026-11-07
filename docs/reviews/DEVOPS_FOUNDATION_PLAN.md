@@ -86,3 +86,44 @@ Answer (user): about 1 GB in total; written into the plan's Review envelope.
 - Revisit when: a unit's diff or the integrated diff contains `__pycache__` or other cache/build artefacts
 - Override: user: Fix now — every finding is small and local; fix them all in the plan now
 - Outcome: fixed (in plan)
+
+## Round 2 — 2026-11-07, reviewed at 04085b9
+
+Subject: the round 1 fixes and the media storage decision (D18).
+
+### R2-1 — Nothing pins `MEDIA_DIR` to the bind-mounted `/app/media`
+- Trigger: image built with a WORKDIR other than `/app` and the default `MEDIA_DIR=./media` → health check and smoke test pass → uploads land in the container layer and vanish on the next `up -d`
+- Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D3, floor F2)
+- Override: —
+- Outcome: open
+
+### R2-3 — Hard-linking PROD media into VAL fails under `fs.protected_hardlinks=1`
+- Trigger: owner runs `seed-from-prod.sh` as the deploy user once uid-10001 files exist → `Operation not permitted` → script stops after VAL's database was replaced, VAL left down
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: open
+
+### R2-4 — DEV media directory created by no unit and not ignored
+- Trigger: owner runs `.\dev.ps1` from a fresh clone → `/api/health` 503 `media: not writable`; a hand-made `media/` shows as untracked
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: open
+
+### R2-2 — Rolled-back image stops on a migration revision it does not know
+- Trigger: rollback to an image older than the database's Alembic revision (or VAL seeded while its image is behind PROD's) → `alembic upgrade head` fails "Can't locate revision" → app restarts in a loop
+- Scores: trigger=plausible (triager: was concrete; a rollback follows a bad release, as scored in R1-6), impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: the first migration after the baseline is written (before it reaches PROD), before the runbook's rollback is first used on PROD, or VAL is seeded while its image is behind PROD's
+- Override: —
+- Outcome: open
+
+### R2-5 — Media purge counted in days, dump retention in number of dumps
+- Trigger: backup outage of several nights → 30 kept dumps span more than 30 days → restoring the oldest finds a purged image missing
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: the gifts feature plan implements the purge (state the rule relative to the oldest kept dump), or the backup healthcheck stays unhealthy for more than one night
+- Override: —
+- Outcome: open
