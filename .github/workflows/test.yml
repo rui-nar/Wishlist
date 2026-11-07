@@ -1,0 +1,106 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  # Any base branch: a pull request into a feature branch is tested too.
+  pull_request:
+  # Runs any branch by hand.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: server
+
+    # The tests run against real PostgreSQL, never SQLite (plan D12). The image
+    # is the one pinned in docker-compose.dev.yml and the deploy compose files;
+    # Dependabot does not update it here, so move it with them by hand.
+    services:
+      postgres:
+        image: postgres:18.6
+        env:
+          POSTGRES_USER: wishlist
+          POSTGRES_PASSWORD: wishlist
+          POSTGRES_DB: wishlist_test
+        ports:
+          - 5432:5432
+        # -h localhost: without it pg_isready reports healthy while the image's
+        # first-boot init server listens on the unix socket only (review R1-4).
+        options: >-
+          --health-cmd "pg_isready -h localhost -U wishlist -d wishlist_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      # The variable the app, Alembic and the tests read. 127.0.0.1, not
+      # localhost, as in .env.example. The image's user is a superuser, so it
+      # has CREATEDB, which the migration test needs.
+      DATABASE_URL: postgresql+psycopg://wishlist:wishlist@127.0.0.1:5432/wishlist_test
+      # The environment is synced once, explicitly, with --locked. Without this
+      # every `uv run` would first re-sync it.
+      UV_NO_SYNC: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # The uv version is the Dockerfile's uv stage tag, exactly: move both
+      # together. uv installs the Python of .python-version.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.13.4"
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Check migrations are in sync with models
+        # Applies every migration, then asks Alembic whether autogenerate would
+        # produce any further changes: fails when the models and the migration
+        # head have drifted apart.
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+
+      - name: Lint
+        run: uv run ruff check
+
+      - name: Run tests
+        run: uv run pytest -v --tb=short
+
+  client:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # The SDK version is the Dockerfile's FLUTTER_TAG and the dev machine's:
+      # move all three together.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.1"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
