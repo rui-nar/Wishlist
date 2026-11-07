@@ -9,6 +9,12 @@ the code. Plans and review ledgers are the record of how it got there.
 |---|---|
 | [NEEDS](NEEDS.md) | Need description: problem, users, use cases, constraints |
 
+## Running it
+
+| Doc | What it covers |
+|---|---|
+| [DEVELOPMENT](DEVELOPMENT.md) | Local DEV environment: prerequisites, `dev.ps1`, tests, resetting the database |
+
 ## How we work
 
 | Doc | What it covers |

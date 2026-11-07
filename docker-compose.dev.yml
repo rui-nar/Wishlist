@@ -1,0 +1,53 @@
+# Local DEV database (plan D2): one Postgres container, its own volume and
+# credentials. The API and the Flutter client run on the host (dev.ps1), not
+# in containers, so that uvicorn --reload and flutter hot reload work.
+#
+#   docker compose -f docker-compose.dev.yml up -d --wait
+#
+# dev.ps1 does this for you; see docs/DEVELOPMENT.md.
+
+# A fixed project name, so the volume is always `wishlist-dev_pgdata` whatever
+# the checkout's folder is called, and never collides with another project's.
+name: wishlist-dev
+
+services:
+  postgres:
+    # Pinned to one exact version, the same in DEV, CI, VAL and PROD (plan D2).
+    # Major versions move only by hand (D16).
+    image: postgres:18.6
+    restart: unless-stopped
+    # POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB come from .env (D10:
+    # never values inline).
+    env_file: .env
+    ports:
+      # Loopback only: nothing else on the network reaches the dev database.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Postgres 18's image moved PGDATA to /var/lib/postgresql/18/docker and
+      # declares the volume at /var/lib/postgresql: mounting the old
+      # /var/lib/postgresql/data path is refused by the 18 image. The parent
+      # also lets a future pg_upgrade --link see both majors' directories.
+      - pgdata:/var/lib/postgresql
+    configs:
+      # Runs on first boot only (empty volume), after POSTGRES_DB is created.
+      - source: create-test-database
+        target: /docker-entrypoint-initdb.d/10-create-test-database.sql
+    healthcheck:
+      # -h localhost: without it pg_isready reports healthy while the image's
+      # first-boot init server listens on the unix socket only, before the
+      # init scripts have run (review R1-4). `$$` defers the variables to the
+      # container's shell, which has them from env_file.
+      test: ["CMD-SHELL", "pg_isready -h localhost -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+configs:
+  # The tests' database (plan D12), next to the dev one so `dev.ps1 -Test`
+  # never touches dev data. Owned by POSTGRES_USER, who runs the init scripts.
+  create-test-database:
+    content: |
+      CREATE DATABASE wishlist_test;
+
+volumes:
+  pgdata:
