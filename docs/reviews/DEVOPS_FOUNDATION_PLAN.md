@@ -127,3 +127,15 @@ Subject: the round 1 fixes and the media storage decision (D18).
 - Revisit when: the gifts feature plan implements the purge (state the rule relative to the oldest kept dump), or the backup healthcheck stays unhealthy for more than one night
 - Override: —
 - Outcome: open
+
+## Round 3 — 2026-11-07, reviewed at e543c77
+
+Subject: the round 2 fixes (R2-1, R2-3, R2-4). The reviewer traced all three
+end to end and found them sound; one leftover below.
+
+### R3-1 — "Boundaries crossed" still lists two `/opt` directories, not three
+- Trigger: owner or U8's implementer reads "Boundaries crossed" for what Wishlist adds to the VPS → it omits `/opt/wishlist-media`, which D18, U6 and U8 create
+- Scores: trigger=concrete, impact=maintainability, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: open
