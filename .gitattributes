@@ -1,0 +1,7 @@
+* text=auto
+
+# Files that run on the VPS or in the image are LF-only: a CRLF shebang broke
+# TraxJourney's deploy (its #190).
+*.sh        text eol=lf
+deploy/**   text eol=lf
+Dockerfile  text eol=lf

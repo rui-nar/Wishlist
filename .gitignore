@@ -12,3 +12,18 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Python
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Flutter build output
+client/build/
+
+# Database dumps (backups, VAL seeds): never committed, the repository is public
+*.dump
+
+# Uploaded files (MEDIA_DIR defaults to ./media locally)
+media/
