@@ -14,6 +14,7 @@ the code. Plans and review ledgers are the record of how it got there.
 | Doc | What it covers |
 |---|---|
 | [DEVELOPMENT](DEVELOPMENT.md) | Local DEV environment: prerequisites, `dev.ps1`, tests, resetting the database |
+| [DEPLOYMENT](DEPLOYMENT.md) | VAL and PROD on the VPS: installing next to TraxJourney, deploying, backups, restore, rollback |
 
 ## How we work
 
