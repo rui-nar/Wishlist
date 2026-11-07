@@ -115,6 +115,26 @@ manual PROD deploy, nightly backup and restore — exactly as real features will
   directories created exactly as the runbook says: first boot, a backup,
   seeding VAL from it. Windows Docker Desktop cannot reproduce Linux
   ownership or the Postgres first-boot sequence (reviews R1-2, R1-4, R1-5).
+- **D18 — Uploaded files on disk, immutable, purged late.** Gift images
+  (`docs/NEEDS.md`) live in a media directory per environment,
+  `/opt/wishlist/media` and `/opt/wishlist-val/media`, bind-mounted at
+  `/app/media` and owned by the app's fixed uid `10001`. Binding rules for the
+  feature that will write them:
+  - a file is never modified: it is named by its content hash;
+  - deleting a gift removes only the database reference; a file is purged
+    only once it has been unreferenced for longer than the dump retention
+    (30 days), so restoring any kept dump finds every file it references.
+
+  That makes the media directory its own protection against logical errors (a
+  bad migration, an accidental deletion) without keeping 30 copies of the
+  images on a 40 GB disk. Like the dumps, it does not survive losing the VPS
+  (off-site copies stay open). Seeding VAL hard-links PROD's files into VAL's
+  directory (same filesystem, no extra space; safe because files are never
+  modified). This plan provisions the directory, its ownership, the
+  configuration, a writability check and the runbook; uploading, fetching and
+  purging belong to the gifts feature. Rules out images in PostgreSQL (each
+  nightly dump would carry them all, 30 times) and object storage (a new
+  external service and cost, worth revisiting for off-site copies).
 - **D10 — Configuration.** Every environment reads its settings from
   environment variables (`pydantic-settings`); `.env.example` lists them all.
   Real `.env` files are never committed, on the dev machine or the VPS, and
@@ -144,7 +164,9 @@ REVIEW.md defaults apply, with these additions:
   backup 64 MB. Postgres is configured to fit its limit (`shared_buffers`,
   `max_connections`). Hitting a limit kills only that container, which
   restarts; a TraxJourney peak exhausting the host is outside what Wishlist
-  can prevent. Backups rotate so the disk cannot fill.
+  can prevent. Backups rotate so the disk cannot fill. Media grow with use:
+  per-account image limits are open in `docs/NEEDS.md`, so until they exist
+  the runbook's daily check includes free disk space.
 - **New public endpoint.** `https://<val-host>/gh-webhook/...` accepts POSTs
   from anyone. Only deliveries with a valid `X-Hub-Signature-256` for the
   Wishlist secret, from `rui-nar/Wishlist`'s build workflow, may deploy.
@@ -211,7 +233,8 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
      psycopg 3 (binary), alembic, pydantic-settings; dev group: pytest, httpx.
      Commit `server/uv.lock`. `.python-version` at the root: `3.14`.
   2. `server/app/settings.py`: `DATABASE_URL`, `APP_ENV`, `APP_VERSION`
-     (default `dev`), `FRONTEND_ORIGIN` (comma-separated list of origins).
+     (default `dev`), `FRONTEND_ORIGIN` (comma-separated list of origins),
+     `MEDIA_DIR` (D18; default `./media` locally).
      `CORSMiddleware` allows exactly those origins (none when empty), so the
      DEV client served by `flutter run` on its own port can call the API
      (review R1-3).
@@ -219,9 +242,11 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
      `Base` for future models.
   4. `server/app/main.py`: the app; `GET /api/version` →
      `{"version": ..., "env": ...}`; `GET /api/health` → 200
-     `{"status": "ok", "database": "ok"}` after a `SELECT 1`, or 503
-     `{"status": "error", "database": "unreachable"}` without leaking the
-     error text.
+     `{"status": "ok", "database": "ok", "media": "ok"}` after a `SELECT 1`
+     and a write-then-delete of a temporary file in `MEDIA_DIR`; otherwise 503
+     with `"status": "error"` and the failing part (`"database":
+     "unreachable"` or `"media": "not writable"`), without leaking the error
+     text.
   5. Alembic in `server/alembic/`, `env.py` reading `DATABASE_URL` and the
      `Base` metadata; one empty baseline revision.
   6. `.gitattributes`: `* text=auto`, and `eol=lf` for `*.sh`, `deploy/**`,
@@ -232,7 +257,8 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
 - **Acceptance:** with a Postgres reachable at `DATABASE_URL`:
   `uv run --directory server pytest` passes, including
   `tests/test_version.py`, `tests/test_health.py` (DB up → 200; unreachable
-  URL → 503 with no exception text in the body) and
+  URL → 503 with no exception text in the body; read-only `MEDIA_DIR` → 503
+  `media: not writable`) and
   `tests/test_migrations.py` (`alembic upgrade head` then `alembic check`
   on an empty database) and `tests/test_cors.py` (an allowed origin gets
   `Access-Control-Allow-Origin`; another origin does not).
@@ -319,14 +345,17 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
      the web build in.
   2. `entrypoint.sh`: `alembic upgrade head`, then uvicorn with
      `--timeout-keep-alive 300 --proxy-headers --forwarded-allow-ips
-     "${FORWARDED_ALLOW_IPS:-127.0.0.1}"`. Runs as a non-root user.
+     "${FORWARDED_ALLOW_IPS:-127.0.0.1}"`. Runs as a non-root user with the
+     fixed uid and gid `10001`, and `/app/media` exists and belongs to it
+     (D18).
   3. The app serves the web build at `/` when the directory exists, `/api/*`
      taking precedence; unknown non-API paths return `index.html`.
   4. OCI label `org.opencontainers.image.source=https://github.com/rui-nar/Wishlist`.
 - **Acceptance:** `docker build --build-arg APP_VERSION=test-1 -t
   wishlist:test .` succeeds; run against the DEV Postgres, `/api/version`
   reports `test-1`, `/` returns the client's `index.html`, `/api/health` is
-  200; `server/tests/test_static.py` passes; the container's user is not root.
+  200 with `media: ok`; `server/tests/test_static.py` passes;
+  `docker run --rm --entrypoint id wishlist:test` prints `uid=10001`.
 - **Out of scope:** CI, compose files for the VPS.
 - **Latitude:** decided at routing.
 - **Escalate if:** a file outside Scope is needed (X3).
@@ -373,21 +402,24 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
 - **Scope:** `deploy/prod/**`, `deploy/val/**`, `deploy/caddy/Caddyfile.snippet`,
   `deploy/backup/**`, `deploy/smoke/**`, `.github/workflows/deploy-smoke.yml`.
 - **Context:** TraxJourney runbook §1–§3 and §5 (layout, loopback ports,
-  forwarded IPs, val seeding); D2, D3, D8, D9, D14, D17; Conventions
+  forwarded IPs, val seeding); D2, D3, D8, D9, D14, D17, D18; Conventions
   (healthcheck, restart policy); the memory budget in the Review envelope.
 - **Do:**
   1. `deploy/prod/docker-compose.yml`: `app` (`:latest`, `127.0.0.1:8010:8000`,
      `env_file: .env`, depends on `db` healthy), `db` (pinned Postgres, named
      volume, no `ports:`, `shared_buffers` and `max_connections` sized for its
-     limit), `backup` (D9, D14). Memory limits as in the Review envelope;
+     limit), `backup` (D9, D14). The app mounts `/opt/wishlist/media` at
+     `/app/media` (D18). Memory limits as in the Review envelope;
      healthchecks and restart policies as in Conventions.
      `deploy/prod/.env.example`.
   2. `deploy/val/`: the same with `:validation`, `127.0.0.1:8011`, its own
-     volume and credentials (a different database role from PROD's) and no
-     `backup`; plus `seed-from-prod.sh`, which stops VAL's app, drops and
-     recreates VAL's database, restores the newest PROD dump with
-     `pg_restore --no-owner --no-privileges` as VAL's role, and starts the app
-     again so its migrations bring the schema to VAL's head (review R1-2).
+     volume, media directory and credentials (a different database role from
+     PROD's) and no `backup`; plus `seed-from-prod.sh`, which stops VAL's app,
+     drops and recreates VAL's database, restores the newest PROD dump with
+     `pg_restore --no-owner --no-privileges` as VAL's role, hard-links PROD's
+     media files into VAL's media directory without overwriting (D18), and
+     starts the app again so its migrations bring the schema to VAL's head
+     (review R1-2).
   3. `deploy/backup/backup.sh` and its loop: dump once on start, then sleep
      until the next 02:00 UTC; `pg_dump -Fc` to a temp name then rename;
      delete all but the 30 newest; on failure log and keep looping.
@@ -400,9 +432,11 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
      `workflow_dispatch`), driven by `deploy/smoke/run.sh`: build the image,
      create the PROD and VAL directories with the ownership the runbook will
      prescribe, bring both stacks up from a fresh volume, wait for
-     `/api/health` on 8010 and 8011, check the backup service turns healthy
-     with a dump present, run `seed-from-prod.sh`, and check VAL is healthy
-     again (D17).
+     `/api/health` on 8010 and 8011 (including `media: ok`, which proves uid
+     10001 can write the media directories as the runbook creates them),
+     check the backup service turns healthy with a dump present, place a test
+     file in PROD's media directory, run `seed-from-prod.sh`, and check VAL is
+     healthy again and has the test file (D17, D18).
 - **Acceptance:** `docker compose ... config` succeeds for both stacks with
   the example `.env`; `shellcheck deploy/**/*.sh` is clean; the
   `deploy-smoke` workflow passes on a draft pull request from the unit's
@@ -463,7 +497,9 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
   down too), the GitHub secrets (`GHCR_TOKEN`) and webhook, the first VAL
   deploy, the first PROD release, backups (where, rotation, the `backup`
   container's health as the daily check, `chown 999:999` of the backups
-  directory), restoring and seeding VAL, rollback (one version back is safe by
+  directory), media (`chown 10001:10001` of both media directories, what D18
+  protects against and what it does not, free disk space as part of the daily
+  check), restoring and seeding VAL, rollback (one version back is safe by
   D15; point the compose back to `:latest` afterwards, or the next
   `deploy.ps1` refuses), upgrading Postgres across a major version (dump,
   new volume, restore; D16), and an Open items list (domain, off-site
@@ -489,7 +525,8 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
   `validation-<short sha>` with no manual step.
 - Pushing `v0.1.0` publishes `:latest`, `:<sha>` and `:v0.1.0`;
   `deploy.ps1 -Target Prod` deploys it and reports `v0.1.0` from
-  `https://<prod-host>/api/version` and 200 from `/api/health`.
+  `https://<prod-host>/api/version` and 200 from `/api/health`, including
+  `media: ok`.
 - `docker ps` on the VPS shows no Wishlist port bound outside `127.0.0.1`, and
   no Postgres port published at all.
 - TraxJourney prod and val answer `/api/version` as before throughout.
