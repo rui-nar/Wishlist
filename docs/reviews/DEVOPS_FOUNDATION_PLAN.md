@@ -153,7 +153,7 @@ implementer report (triage only).
 - Scores: trigger=plausible, impact=wrong-visible (orchestrator: data-loss, see Decision), detect=user-visible, later=cheap, fix=S/local, confidence=inferred (mechanism verified by the triager in the compose files)
 - Decision: Fix now (D3) — orchestrator enforcement (skill step 7): the triager deferred it (D10), reasoning that the old cluster stays intact; but writes made while PROD runs on the empty cluster are persisted data that the only recovery (back to the old cluster) discards, so F2 applies
 - Override: —
-- Outcome: open
+- Outcome: fixed (db7c724, U9)
 
 ### R4-1 — No concurrency group on the image build: overlapping `validation` builds can leave VAL on the older commit
 - Trigger: owner pushes the `validation` tag twice within one build's duration and the first run finishes last → `:validation` holds the older commit, the webhook deploys it and logs success → VAL serves the older commit; the next `deploy.ps1 -Target Val` stops and says so
@@ -169,3 +169,46 @@ implementer report (triage only).
 - Decision: Duplicate (D2) of R2-2 — its trigger and its revisit trigger ("before the runbook's rollback is first used on PROD") already cover this; the runbook now forbids rolling back across a migration (DEPLOYMENT.md:958-968). Noted by the triager: the entrypoint.sh:3-5 comment ("a rollback needs no downgrade") overstates D15 while R2-2 is open
 - Override: —
 - Outcome: open (with R2-2)
+
+## Delivery
+
+Delivered on `feat/devops-foundation` from 2026-11-07 to 2026-11-08, from
+a1fba9f to db7c724.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Server skeleton: version, health, CORS, Alembic baseline | Opus | S2 | 1 | — | yes | — |
+| U2 | Flutter client skeleton showing both versions | Opus | S2 | 1 | — | yes | — |
+| U3 | Local DEV: Postgres, `dev.ps1`, `.env.example`, DEVELOPMENT.md | Opus | S2 | 2 | — | no | — |
+| U4 | Production image and entrypoint | Opus | S2 | 1 | — | yes | R4-3 (→ R2-2) |
+| U5 | CI: tests, image publishing, Dependabot | Opus | S2 | 1 | — | yes | R4-1 |
+| U6 | PROD/VAL compose, backup, smoke test | Opus | S2 | 2 | X2 → U6b | no | R4-2 |
+| U6b | Dump mode set explicitly (fix unit after U6's second failure) | Opus | S5 | 1 | — | yes | — |
+| U7 | Webhook, `deploy.ps1` | Opus | S2 | 1 | — | yes | — |
+| U8 | Deployment runbook | Opus | S2 | 1 | — | yes | R4-2 |
+| U9 | Runbook: what a Postgres major bump does (fixes R4-2) | Sonnet | — | 1 | — | yes | — |
+
+Notes:
+
+- Every plan unit failed S2: the plan's examples were TraxJourney files, and
+  this repository had no code. The user kept them all on Opus.
+- Scope changes: `Load-DotEnv.ps1` moved from U7 to U3 before delivery (U3's
+  `dev.ps1` needed it a wave earlier); U7's Scope was widened in advance to
+  one `deploy.env` line in the root `.gitignore` (X3).
+- Plan change during delivery, owner's decision: images are pushed with the
+  workflow's `GITHUB_TOKEN`, not a stored `GHCR_TOKEN`.
+- U3's second attempt came from integration, not its verifier: `localhost` in
+  `.env.example` made every test connection wait 5 s on Windows (164 s vs
+  8 s).
+- U6 failed the GitHub smoke test twice: a glob the non-root runner could not
+  expand, then a dump created 666 under the runner's default ACL on `/opt`
+  (confirmed by `getfacl` in the passing run). Local runs as root had hidden
+  both.
+- Delivery mechanics: agent worktrees started from `master`, so each brief
+  told the implementer to reset to the feature branch first; PowerShell is
+  blocked for worktree agents, so verifiers ran `dev.ps1` and `deploy.ps1`;
+  two session interruptions (U3/U4, U6b) were resumed from the agents'
+  uncommitted work.
+- Not yet checked: the client's `dev.ps1` start in Chrome (interactive), the
+  image build on a `validation` tag, and everything on the VPS (owner steps,
+  `docs/DEPLOYMENT.md`).
