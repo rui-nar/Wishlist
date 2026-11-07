@@ -1,0 +1,85 @@
+# adnanh/webhook config: redeploys VAL the moment the "Build and publish
+# Docker image" workflow finishes publishing a new :validation image (plan D6).
+# Wishlist's own instance (plan D7): copied to
+# /opt/wishlist-val/webhook/hooks.yaml on the VPS and read by the
+# wishlist-webhook unit on 127.0.0.1:9998, never TraxJourney's hooks file.
+#
+# The secret below lives inline, so the filled-in hooks.yaml exists only on the
+# VPS and is never committed (the repository is public). The example ships
+# with an EMPTY secret on purpose. webhook refuses to check a signature against
+# an empty secret, so a copy nobody filled in rejects every delivery (HTTP 500)
+# instead of accepting payloads signed with a placeholder anyone can read here.
+# Use a secret of Wishlist's own, never TraxJourney's.
+#
+# Rule semantics follow TraxJourney's hooks, checked against the webhook 2.8.0
+# source (the version Debian 12 and 13 ship; payload-hmac-sha256 needs 2.8.0
+# or later, older releases silently never match it). They are not verified
+# against a live delivery until the runbook's end-to-end step passes.
+#
+# Deliberately scoped to VAL only, not PROD: auto-deploying PROD on every
+# release would remove the manual gate of `deploy.ps1 -Target Prod` (plan D6).
+
+- id: deploy-validation
+  execute-command: "/opt/wishlist-val/webhook/deploy-validation.sh"
+  command-working-directory: "/opt/wishlist-val"
+  response-message: "Deploying validation..."
+  # The script checks /api/version against the commit that was built.
+  pass-arguments-to-command:
+    - source: payload
+      name: workflow_run.head_sha
+  # Every rule must hold (a single `and`, no `or`): a signature alone would
+  # also deploy on `requested`/`in_progress` deliveries, failed builds and
+  # v* release builds.
+  trigger-rule:
+    and:
+      # GitHub sends "sha256=<hex HMAC of the raw body>"; webhook strips the
+      # prefix and compares in constant time.
+      - match:
+          type: payload-hmac-sha256
+          secret: ""
+          parameter:
+            source: header
+            name: X-Hub-Signature-256
+      - match:
+          type: value
+          value: "workflow_run"
+          parameter:
+            source: header
+            name: X-GitHub-Event
+      # workflow_run is also delivered with action requested and in_progress.
+      - match:
+          type: value
+          value: "completed"
+          parameter:
+            source: payload
+            name: action
+      - match:
+          type: value
+          value: "success"
+          parameter:
+            source: payload
+            name: workflow_run.conclusion
+      # For a run started by a tag push, head_branch holds the tag name.
+      - match:
+          type: value
+          value: "validation"
+          parameter:
+            source: payload
+            name: workflow_run.head_branch
+      # GitHub sends the repository's current name: a rename stops deploys
+      # until this value follows it.
+      - match:
+          type: value
+          value: "rui-nar/Wishlist"
+          parameter:
+            source: payload
+            name: repository.full_name
+      # The name in docker-build.yml, matched exactly: another workflow run on
+      # the `validation` ref (the tests, started by hand) completes too, and
+      # publishes no image.
+      - match:
+          type: value
+          value: "Build and publish Docker image"
+          parameter:
+            source: payload
+            name: workflow_run.name
