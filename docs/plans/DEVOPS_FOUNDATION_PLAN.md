@@ -309,8 +309,8 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
 
 - **Goal:** One command starts Postgres, the API with reload and the Flutter
   client against it on the Windows dev machine.
-- **Scope:** `docker-compose.dev.yml`, `dev.ps1`, `.env.example`,
-  `docs/DEVELOPMENT.md`, `docs/README.md`.
+- **Scope:** `docker-compose.dev.yml`, `dev.ps1`, `Load-DotEnv.ps1`,
+  `.env.example`, `docs/DEVELOPMENT.md`, `docs/README.md`.
 - **Context:** `E:\Dev\TraxJourney\dev.ps1`, `Load-DotEnv.ps1`,
   `.env.example`; D2, D10, D12.
 - **Do:**
@@ -469,10 +469,10 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
 
 - **Goal:** VAL redeploys itself on a new `:validation` image; PROD and VAL can
   be deployed and verified by hand from Windows.
-- **Scope:** `deploy/webhook/**`, `deploy.ps1`, `deploy.env.example`,
-  `Load-DotEnv.ps1`.
+- **Scope:** `deploy/webhook/**`, `deploy.ps1`, `deploy.env.example`.
 - **Context:** `E:\Dev\TraxJourney\vps\webhook\` (all three files),
-  `deploy.ps1`, `deploy.env.example`, `Load-DotEnv.ps1`; D6, D7, D8, D11.
+  `deploy.ps1`, `deploy.env.example`; this repository's `Load-DotEnv.ps1`
+  (from U3, reused as is); D6, D7, D8, D11.
 - **Do:**
   1. `deploy/webhook/hooks.yaml.example`: TraxJourney's rules with
      `rui-nar/Wishlist`, empty secret, command
@@ -494,7 +494,7 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
 - **Out of scope:** prod auto-deploy, notifications.
 - **Latitude:** decided at routing.
 - **Escalate if:** a file outside Scope is needed (X3).
-- **Depends on:** U4. The ports and directories it uses are fixed by D7 and
+- **Depends on:** U3 (`Load-DotEnv.ps1`), U4. The ports and directories it uses are fixed by D7 and
   D8, not by U6 (review R1-9).
 
 ### Wave 4
