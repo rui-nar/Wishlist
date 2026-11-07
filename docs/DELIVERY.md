@@ -43,17 +43,26 @@ A unit goes to **Sonnet** only when every S rule holds. Otherwise it goes to
 - **S1 — Checkable.** Acceptance names checks that can be run.
 - **S2 — Precedented.** Context names an existing example in the codebase that
   the unit follows.
-- **S3 — One side.** Scope is client-only or backend-only, not both.
+- **S3 — One side.** Scope is within one of: the server (`server/`), the
+  client (`client/`), or the infrastructure (`deploy/`, `Dockerfile`,
+  `entrypoint.sh`, `.github/`, the dev scripts at the root).
 - **S4 — No expensive boundary.** Nothing that is costly to change once shipped
-  (REVIEW.md F4): no change to the shape of stored documents or an API used by
-  shipped clients, no data migration, no change to data already stored, no
-  change to an export format.
-- **S5 — Not sensitive.** Scope does not touch authentication or authorization
-  (sign-in, sessions, access rules), payments, or background work and
-  concurrency.
+  (REVIEW.md F4): no change to the request or response shape of an existing
+  endpoint, no model change or Alembic migration, no change to data already
+  stored, no change to an export format.
+- **S5 — Not sensitive.** Scope does not touch authentication or
+  authorization (sign-in, sessions, roles, access checks), **what a recipient
+  may see of invitee activity** (the surprise rule), billing and
+  entitlements, the reservation and pledge logic (concurrency), background
+  jobs, or secrets handling in `deploy/`.
 
-The client and backend folders, the sensitive paths for S5 and the checks run
-at integration (lint and tests) are listed here once the stack is chosen.
+Checks run at integration, and by every unit whose Scope they cover:
+
+| Side | Checks |
+|---|---|
+| Server | `uv run --directory server ruff check`, `uv run --directory server alembic upgrade head` then `alembic check`, `uv run --directory server pytest` (against PostgreSQL, `docs/DEVELOPMENT.md`) |
+| Client | `flutter analyze` and `flutter test` in `client/` |
+| Infrastructure | `shellcheck` on changed scripts, `actionlint` on changed workflows, the `deploy-smoke` workflow when `deploy/`, `Dockerfile` or `entrypoint.sh` changed |
 
 Sonnet units get `Latitude: none`. Opus units get `Latitude: local design`.
 
@@ -84,8 +93,8 @@ wave starts once the previous one is verified and integrated.
   git worktree.
 - **W3 — Capped.** At most four units per wave. Each parallel branch has to be
   integrated, and integration cost grows faster than the number of branches.
-- **W4 — One migration per wave.** At most one unit in a wave changes the
-  stored data shape or adds a data migration.
+- **W4 — One migration per wave.** At most one unit in a wave adds an Alembic
+  migration; two would create two heads.
 
 ## 5. Review points
 

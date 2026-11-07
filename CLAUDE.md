@@ -66,7 +66,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 # Project Specific Instructions
 ## testing
-ensure tests are available for every feature to ensure non-regressions. the project's lint and test commands must pass before a change is done (listed in docs/DELIVERY.md §2 once the stack is chosen).
+ensure tests are available for every feature to ensure non-regressions. the lint and test checks listed in docs/DELIVERY.md §2 must pass before a change is done.
 
 ## versioning
 versions are standard x.y.z where y is for features and z is for patches. unless instructed otherwise, bumping a release means to increase the feature version.
@@ -79,8 +79,11 @@ adversarial reviews (including "fable review" requests), re-reviews and any revi
 ## delivery
 multi-step features go plan (`write-plan`) → adversarial review → `deliver-plan`, which applies docs/DELIVERY.md: units routed to Sonnet or Opus implementer agents, verified, integrated and reviewed once. implementing a plan file always goes through `deliver-plan`. small direct requests don't.
 
-## current stage
-the project is restarting from scratch. there is no code and no tech stack yet: first we converge on the need description (docs/NEEDS.md), then choose the stack together. do not assume or propose a stack before the needs are agreed; never write code before the stack is chosen. the default branch is `master`.
+## needs
+docs/NEEDS.md is the need description. features are planned from it; a need that is missing or contradicted there is asked about and recorded there first, not assumed in a plan. the surprise rule (a recipient never sees or infers invitee activity) is the product's main invariant: every feature touching lists, gifts or occasions tests it for each role.
+
+## current stack
+a Python FastAPI server (SQLAlchemy 2, Alembic, PostgreSQL, uv) in `server/` serving Flutter clients for web, Android and iOS in `client/`, deployed with Docker on the VPS shared with TraxJourney (docs/plans/DEVOPS_FOUNDATION_PLAN.md). any architecture decision shall keep this structure in mind. the default branch is `master`.
 
 ## approach
 Go for the long game, don't take the easy solution, the easy fix or the short-term win. If in doubt ask what the user prefers.
