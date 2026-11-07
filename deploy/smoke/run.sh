@@ -121,10 +121,14 @@ check_app 8010 production
 check_ports compose_prod 8010
 
 log "Old dumps for the rotation, and the healthcheck failing on them"
+# The runner's shell cannot list the 999-owned, mode 700 backups directory, so
+# a glob there would stay literal: every path under it is named in full and
+# reached through sudo (or a container), here and below.
 for day in $(seq -w 1 31); do
-    sudo touch -d '40 days ago' "$prod/backups/wishlist_2000-01-$day.dump"
+    old="$prod/backups/wishlist_2000-01-$day.dump"
+    sudo touch -d '40 days ago' "$old"
+    sudo chown 999:999 "$old"
 done
-sudo chown 999:999 "$prod"/backups/wishlist_2000-01-*.dump
 if compose_prod run --rm --no-deps -T --entrypoint sh backup /backup/healthcheck.sh; then
     fail "the backup healthcheck passes with no dump newer than 26 hours"
 fi
