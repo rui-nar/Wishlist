@@ -176,8 +176,8 @@ REVIEW.md defaults apply, with these additions:
 - **New public endpoint.** `https://<val-host>/gh-webhook/...` accepts POSTs
   from anyone. Only deliveries with a valid `X-Hub-Signature-256` for the
   Wishlist secret, from `rui-nar/Wishlist`'s build workflow, may deploy.
-- **External services.** GitHub Actions (builds with a GHCR push token in
-  repository secrets) and GHCR (the VPS pulls with a read-only token). The
+- **External services.** GitHub Actions (pushes to GHCR with the workflow's
+  own `GITHUB_TOKEN`, no stored push token) and GHCR (the VPS pulls with a read-only token). The
   repository is **public**: nothing committed may contain a secret, a real
   host name of the deploy user, or a key.
 - **Trusted.** The VPS host, its `.env` files, the deploy user and the owner.
@@ -391,7 +391,10 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
   2. `docker-build.yml` on tags `v*` and `validation`, image
      `ghcr.io/rui-nar/wishlist`, the same tag selection as TraxJourney's
      (`:validation` only for `validation`; `:latest`, `:<sha>`, `:<tag>` for
-     `v*`), `APP_VERSION` passed as a build arg. Workflow name exactly
+     `v*`), `APP_VERSION` passed as a build arg. GHCR login uses the built-in
+     `GITHUB_TOKEN` with `permissions: packages: write` (owner's decision: no
+     personal token to store or renew); the image's OCI source label links
+     the package to the repository. Workflow name exactly
      `Build and publish Docker image` (the webhook matches on it).
   3. Dependabot for uv, pub, docker and github-actions, weekly, with major
      updates of the Postgres image ignored (D16).
@@ -399,8 +402,7 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
   `docker run --rm -v ${PWD}:/repo -w /repo rhysd/actionlint:latest`); the
   test workflow passes on a draft pull request opened from the unit's branch
   (review R1-8). The image build is
-  verified at integration by pushing the `validation` tag (requires the
-  `GHCR_TOKEN` secret, an owner step).
+  verified at integration by pushing the `validation` tag.
 - **Out of scope:** mobile release workflows.
 - **Latitude:** decided at routing.
 - **Escalate if:** a file outside Scope is needed (X3).
@@ -511,7 +513,7 @@ CLAUDE.md's current stage), as REVIEW.md §8 and DELIVERY.md §7 require.
   provides), checking ports and free RAM/disk, directories and `.env` files
   (secrets generated with `openssl rand -hex 32`), Caddy (append the snippet,
   `caddy validate` before every reload, since a bad reload takes TraxJourney
-  down too), the GitHub secrets (`GHCR_TOKEN`) and webhook, the first VAL
+  down too), the GHCR package (built with `GITHUB_TOKEN`, no secret; its visibility) and the webhook, the first VAL
   deploy, the first PROD release, backups (where, rotation, the `backup`
   container's health as the daily check, `chown 999:999` of the backups
   directory), media (`chown 10001:10001` of both media directories, what D18
