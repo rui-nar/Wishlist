@@ -1,0 +1,24 @@
+# An allow-list: the build context is only what the image is built from, so a
+# local .env, a database dump or the media directory can never end up in an
+# image pushed to a public registry.
+*
+!client/
+!server/
+!entrypoint.sh
+
+# Local build output, caches and environments inside the allowed directories.
+client/.dart_tool/
+client/build/
+client/android/
+client/ios/
+server/.venv/
+server/tests/
+server/media/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+
+# Secrets, wherever they are.
+**/.env
+**/.env.*
+**/*.dump
