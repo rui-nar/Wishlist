@@ -166,6 +166,11 @@ Later candidates: group gift activity, occasion reminders.
 - **Offline (mobile):** owners can add and edit gifts offline, synced later;
   invitees can read what they already viewed, and every invitee action needs a
   connection.
+- **Look:** direction "Lagoon", built on TraxJourney's design foundations
+  (Inter, 8-point grid, 6/8/12/16 px radii, flat bordered cards, slate greys,
+  sentence case, no emoji): deep teal primary `#0F766E`, rose `#E11D48` for
+  invitee activity, Space Grotesk for titles. Light and dark themes. Mock-ups:
+  https://claude.ai/artifact/PSc8n5pwZLeVxvLCPHNVmi (private to the owner).
 - **Email:** Brevo, as TraxJourney (password reset and notifications).
 - **Hosting:** the server side runs on the owner's existing VPS (OVH, France),
   next to TraxJourney.
