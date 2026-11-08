@@ -51,15 +51,21 @@ class GiftClaimOut(BaseModel):
     state: Literal["reserved", "group", "taken"]
     # Always false for `taken`.
     bought: bool
+    # The caller's own unbought claim of an occasion that has passed: it no
+    # longer holds the gift, but they may still mark it bought (D8, review
+    # R3-1); nobody else sees it. Always false for `taken` and when bought.
+    expired: bool
     # By when they joined, then by name; always empty for `taken`.
     participants: list[ParticipantOut]
 
 
 class OccasionClaims(BaseModel):
-    # The occasion's date has passed (D8): the client offers no action.
+    # The occasion's date has passed (D8): the client offers no action but
+    # marking bought the caller's own claims, expired ones included.
     passed: bool
-    # One per gift of the list with a live claim, oldest gift first; a gift
-    # absent from it is free.
+    # One per gift of the list with a live claim, and one per expired claim
+    # of this occasion the caller is in, oldest gift first; a gift absent
+    # from it is free.
     gifts: list[GiftClaimOut]
 
 
