@@ -160,6 +160,15 @@ GoRouter buildRouter({
                 builder: (context, state) =>
                     OccasionFormScreen(listId: state.pathParameters['id']!),
               ),
+              // The occasion's gifts and their activity, for an owner who
+              // gives (RESERVING_PLAN D14); after occasions/new.
+              GoRoute(
+                path: 'occasions/:occasionId',
+                builder: (context, state) => OccasionScreen(
+                  occasionId: state.pathParameters['occasionId']!,
+                  listId: state.pathParameters['id'],
+                ),
+              ),
               GoRoute(
                 path: 'occasions/:occasionId/edit',
                 builder: (context, state) => OccasionFormScreen(

@@ -215,6 +215,7 @@ class _ListDetailScreenState extends State<ListDetailScreen>
         const SizedBox(height: Spacing.s32),
         OccasionsSection(
           listId: list.id,
+          recipientKind: list.recipientKind,
           occasions: list.occasions,
           linkBase: _linkBase,
           onChanged: reload,

@@ -19,9 +19,19 @@ import 'shared_repository.dart';
 
 enum _OccasionAction { leave }
 
-/// The occasion and what its givers did, loaded together; no claims for an
-/// owner, who is sent to the list.
+/// The occasion and what its givers did, loaded together; no claims for
+/// someone sent elsewhere: an owner on Shared with me, a recipient, or an
+/// invitee on an owner's location.
 typedef _Page = ({OccasionView view, OccasionClaims? claims});
+
+/// What the page shows above the gifts, from either view.
+typedef _Header = ({
+  String name,
+  DateTime date,
+  String line,
+  String recipient,
+  List<SharedGift> gifts,
+});
 
 /// An occasion shared with the user: its list, who the gifts are for, the
 /// privacy banner, and the gifts with their links, prices and rose activity
@@ -29,12 +39,23 @@ typedef _Page = ({OccasionView view, OccasionClaims? claims});
 /// group gift or marks it bought (RESERVING_PLAN D13). The menu leaves the
 /// occasion. Nothing here edits the list (LISTS_GIFTS_SHARING_PLAN D8, D11).
 ///
-/// An owner who opens it is sent to the list, where they manage it; the
-/// occasion's activity is not asked for (RESERVING_PLAN D14).
+/// An owner who opens it from Shared with me is sent to the list, where they
+/// manage it; the occasion's activity is not asked for (RESERVING_PLAN D14).
+///
+/// Opened under the list ([listId], `/lists/:id/occasions/:occasionId`), it
+/// is the giver mode of an owner of a list for someone else: the same gifts,
+/// chips, sheet and actions, and no menu, since an owner has nothing to
+/// leave. An owner of a list for themselves, the recipient, is sent to the
+/// list without the activity being asked for (D4, D14); an invitee is sent
+/// to the occasion under Shared with me. An occasion of another list is not
+/// found there.
 class OccasionScreen extends StatefulWidget {
-  const OccasionScreen({super.key, required this.occasionId});
+  const OccasionScreen({super.key, required this.occasionId, this.listId});
 
   final String occasionId;
+
+  /// The list the location names, in giver mode; null under Shared with me.
+  final String? listId;
 
   @override
   State<OccasionScreen> createState() => _OccasionScreenState();
@@ -68,10 +89,24 @@ class _OccasionScreenState extends State<OccasionScreen>
 
   Future<_Page> _fetch() async {
     final view = await _repository.occasion(widget.occasionId);
-    if (view is OwnedOccasion) {
+    final String? elsewhere = switch (view) {
+      // Not an occasion of the list the location names: as if it were gone.
+      OwnedOccasion(:final listId)
+          when widget.listId != null && listId != widget.listId =>
+        throw const ApiException(404),
+      // A giver on their own list's occasion: here.
+      OwnedOccasion(:final givesHere) when givesHere && widget.listId != null =>
+        null,
+      // Any other owner, the recipient first, manages it from the list.
+      OwnedOccasion(:final listId) => '/lists/$listId',
+      InviteeOccasion() when widget.listId != null =>
+        '/shared/${Uri.encodeComponent(widget.occasionId)}',
+      InviteeOccasion() => null,
+    };
+    if (elsewhere != null) {
       if (mounted) {
         // In place of this page, so going back does not come here again.
-        Router.neglect(context, () => context.go('/lists/${view.listId}'));
+        Router.neglect(context, () => context.go(elsewhere));
       }
       return (view: view, claims: null);
     }
@@ -228,14 +263,20 @@ class _OccasionScreenState extends State<OccasionScreen>
       future: _page,
       builder: (context, snapshot) {
         final page = snapshot.data;
-        final view = page?.view;
-        final occasion = view is InviteeOccasion ? view : null;
-        final claims = _claims ?? page?.claims;
+        final claims = page?.claims == null ? null : _claims ?? page!.claims;
+        // Nothing of the occasion until its claims are in, nor for someone
+        // on their way elsewhere.
+        final view = claims == null ? null : page!.view;
+        final listId = widget.listId;
         return Scaffold(
           appBar: AppBar(
-            title: Text(occasion?.occasion.listTitle ?? ''),
+            title: Text(switch (view) {
+              InviteeOccasion(:final occasion) => occasion.listTitle,
+              OwnedOccasion(:final listTitle) => listTitle,
+              null => '',
+            }),
             actions: [
-              if (occasion != null)
+              if (view is InviteeOccasion)
                 PopupMenuButton<_OccasionAction>(
                   enabled: !_leaving,
                   onSelected: (_) => _leave(),
@@ -251,17 +292,25 @@ class _OccasionScreenState extends State<OccasionScreen>
           body: PageFrame(
             child: SafeArea(
               child: snapshot.hasError
-                  ? LoadFailure(
-                      error: snapshot.error,
-                      onRetry: reload,
-                      notFound: l10n.occasionNoLongerShared,
-                      backLocation: '/shared',
-                      backLabel: l10n.backToSharedWithMe,
-                    )
-                  : occasion == null || claims == null
-                      // Loading, or an owner on their way to the list.
+                  ? listId == null
+                      ? LoadFailure(
+                          error: snapshot.error,
+                          onRetry: reload,
+                          notFound: l10n.occasionNoLongerShared,
+                          backLocation: '/shared',
+                          backLabel: l10n.backToSharedWithMe,
+                        )
+                      : LoadFailure(
+                          error: snapshot.error,
+                          onRetry: reload,
+                          notFound: l10n.occasionNotFound,
+                          backLocation: '/lists/$listId',
+                          backLabel: l10n.backToList,
+                        )
+                  : view == null
+                      // Loading, or on the way elsewhere.
                       ? const Center(child: CircularProgressIndicator())
-                      : _content(context, occasion, claims),
+                      : _content(context, _header(l10n, view), claims!),
             ),
           ),
         );
@@ -269,31 +318,48 @@ class _OccasionScreenState extends State<OccasionScreen>
     );
   }
 
+  /// An invitee reads who the gifts are for and who shared them; an owner
+  /// giving, who their list is for.
+  _Header _header(AppLocalizations l10n, OccasionView view) => switch (view) {
+        InviteeOccasion(:final occasion, :final gifts) => (
+            name: occasion.name,
+            date: occasion.date,
+            line: l10n.sharedForBy(
+              personName(l10n, occasion.recipientName),
+              peopleNames(l10n, occasion.ownerNames),
+            ),
+            recipient: personName(l10n, occasion.recipientName),
+            gifts: gifts,
+          ),
+        OwnedOccasion() => (
+            name: view.name,
+            date: view.date,
+            line: recipientLine(l10n, view.recipientKind, view.recipientName),
+            recipient: personName(l10n, view.recipientName!),
+            gifts: view.gifts,
+          ),
+      };
+
   Widget _content(
     BuildContext context,
-    InviteeOccasion view,
+    _Header header,
     OccasionClaims claims,
   ) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final occasion = view.occasion;
-    final recipient = personName(l10n, occasion.recipientName);
     final metadata = theme.textTheme.bodyLarge?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
     return ListView(
       padding: PageFrame.paddingOf(context, ContentWidths.reading),
       children: [
-        Text(occasion.name, style: theme.textTheme.headlineMedium),
+        Text(header.name, style: theme.textTheme.headlineMedium),
         const SizedBox(height: Spacing.s4),
-        Text(formatOccasionDate(context, occasion.date), style: metadata),
-        Text(
-          l10n.sharedForBy(recipient, peopleNames(l10n, occasion.ownerNames)),
-          style: metadata,
-        ),
+        Text(formatOccasionDate(context, header.date), style: metadata),
+        Text(header.line, style: metadata),
         const SizedBox(height: Spacing.s16),
-        PrivacyBanner(message: l10n.recipientDoesNotSee(recipient)),
-        if (view.gifts.isEmpty) ...[
+        PrivacyBanner(message: l10n.recipientDoesNotSee(header.recipient)),
+        if (header.gifts.isEmpty) ...[
           const SizedBox(height: Spacing.s16),
           Card(
             child: Padding(
@@ -306,7 +372,7 @@ class _OccasionScreenState extends State<OccasionScreen>
             ),
           ),
         ],
-        for (final gift in view.gifts) ...[
+        for (final gift in header.gifts) ...[
           const SizedBox(height: Spacing.s12),
           _card(context, gift, claims.gifts[gift.id], claims.passed),
         ],

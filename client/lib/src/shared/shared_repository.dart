@@ -76,10 +76,33 @@ sealed class OccasionView {
 }
 
 /// The caller owns the occasion's list: the list is where they manage it.
+/// When the list is for someone else, they give too, from the occasion
+/// (RESERVING_PLAN D4, D14).
 class OwnedOccasion extends OccasionView {
-  const OwnedOccasion(this.listId);
+  const OwnedOccasion({
+    required this.listId,
+    required this.listTitle,
+    required this.recipientKind,
+    required this.recipientName,
+    required this.name,
+    required this.date,
+    required this.gifts,
+  });
 
   final String listId;
+  final String listTitle;
+  final RecipientKind recipientKind;
+
+  /// Set exactly when [recipientKind] is [RecipientKind.other].
+  final String? recipientName;
+  final String name;
+  final DateTime date;
+
+  /// Oldest first; their image paths are the owners'.
+  final List<SharedGift> gifts;
+
+  /// The owner gives on this occasion; a recipient never does (D4).
+  bool get givesHere => recipientKind == RecipientKind.other;
 }
 
 /// The caller is an invitee: the occasion, its list and its gifts.
@@ -293,15 +316,25 @@ class SharedRepository {
 
   Future<OccasionView> occasion(String id) async {
     final json = await _api.getJson('/api/occasions/${_segment(id)}');
+    final gifts = [
+      for (final gift in json['gifts'] as List<dynamic>)
+        SharedGift.fromJson(gift as Map<String, dynamic>),
+    ];
     if (json['role'] == 'owner') {
-      return OwnedOccasion((json['list'] as Map<String, dynamic>)['id'] as String);
+      final list = json['list'] as Map<String, dynamic>;
+      return OwnedOccasion(
+        listId: list['id'] as String,
+        listTitle: list['title'] as String,
+        recipientKind: RecipientKind.fromJson(list['recipient_kind'] as String),
+        recipientName: list['recipient_name'] as String?,
+        name: json['name'] as String,
+        date: parseDate(json['date'] as String),
+        gifts: gifts,
+      );
     }
     return InviteeOccasion(
       occasion: SharedOccasion.fromJson(json),
-      gifts: [
-        for (final gift in json['gifts'] as List<dynamic>)
-          SharedGift.fromJson(gift as Map<String, dynamic>),
-      ],
+      gifts: gifts,
     );
   }
 

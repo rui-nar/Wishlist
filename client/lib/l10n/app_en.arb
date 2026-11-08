@@ -424,6 +424,10 @@
   "@seeInvitees": {
     "description": "List detail: opens an occasion's invitees."
   },
+  "occasionGiftsAndReservations": "Gifts and reservations",
+  "@occasionGiftsAndReservations": {
+    "description": "List detail, on a list for someone else only: opens an occasion's gifts with who reserved, bought or pledged, where the owner can give too."
+  },
   "editOccasion": "Rename or change the date",
   "@editOccasion": {
     "description": "List detail: an occasion's menu item opening its form."

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:wishlist/src/api/api_client.dart';
+import 'package:wishlist/src/lists/lists_repository.dart';
 import 'package:wishlist/src/shared/shared_repository.dart';
 
 import '../lists/support/fake_lists_server.dart';
@@ -122,7 +123,8 @@ void main() {
     expect(view.gifts[2].image, isNull);
   });
 
-  test("occasion: an owner's answer names the list to open", () async {
+  test("occasion: an owner's answer names the list, who it is for and its "
+      'gifts', () async {
     answer = {
       'id': 'o1',
       'list_id': 'l1',
@@ -137,13 +139,64 @@ void main() {
         'recipient_kind': 'other',
         'recipient_name': 'Léa',
       },
-      'gifts': [],
+      'gifts': [
+        {
+          'id': 'g1',
+          'list_id': 'l1',
+          'title': 'Headphones',
+          'description': '',
+          'links': <String>[],
+          'price_amount': '149.00',
+          'price_currency': 'EUR',
+          'image': {
+            'id': 'i1',
+            'width': 8,
+            'height': 8,
+            'url': '/api/images/i1/full',
+            'thumb_url': '/api/images/i1/thumb',
+          },
+        },
+      ],
     };
 
     final view = await repository().occasion('o1');
 
     expect(view, isA<OwnedOccasion>());
-    expect((view as OwnedOccasion).listId, 'l1');
+    view as OwnedOccasion;
+    expect(view.listId, 'l1');
+    expect(view.listTitle, 'Christmas');
+    expect(view.recipientKind, RecipientKind.other);
+    expect(view.recipientName, 'Léa');
+    expect(view.givesHere, isTrue);
+    expect(view.name, 'Christmas 2026');
+    expect(view.date, DateTime(2026, 12, 24));
+    expect(view.gifts.single.id, 'g1');
+    expect(view.gifts.single.priceCurrency, 'EUR');
+    expect(view.gifts.single.image!.thumbUrl, '/api/images/i1/thumb');
+  });
+
+  test("occasion: the owner of a list for themselves doesn't give", () async {
+    answer = {
+      'id': 'o1',
+      'list_id': 'l1',
+      'name': 'Birthday',
+      'date': '2027-03-02',
+      'join_token': null,
+      'member_count': 0,
+      'role': 'owner',
+      'list': {
+        'id': 'l1',
+        'title': 'Birthday',
+        'recipient_kind': 'self',
+        'recipient_name': null,
+      },
+      'gifts': [],
+    };
+
+    final view = await repository().occasion('o1') as OwnedOccasion;
+
+    expect(view.recipientKind, RecipientKind.self);
+    expect(view.givesHere, isFalse);
   });
 
   test('the token goes in the body, never in the URL', () async {

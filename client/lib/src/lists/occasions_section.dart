@@ -7,7 +7,15 @@ import 'common.dart';
 import 'lists_repository.dart';
 import 'share_link.dart';
 
-enum _OccasionAction { createLink, regenerateLink, revokeLink, members, edit, delete }
+enum _OccasionAction {
+  createLink,
+  regenerateLink,
+  revokeLink,
+  members,
+  gifts,
+  edit,
+  delete,
+}
 
 /// The smallest hit area of a control (DESIGN_SYSTEM_PLAN D6).
 const double _minHitArea = 44;
@@ -15,16 +23,24 @@ const double _minHitArea = 44;
 /// A list's occasions, in its detail screen: creating one, and for each its
 /// date, its invitee count, its link to copy or share, and its invitees. Its
 /// menu creates, regenerates or revokes the link, renames and deletes it (LISTS_GIFTS_SHARING_PLAN D4, D5).
+///
+/// On a list for someone else, each occasion also opens its gifts and
+/// reservations, where the owner gives like an invitee; on a list for the
+/// owner, the recipient, nothing leads there (RESERVING_PLAN D4, D14).
 class OccasionsSection extends StatelessWidget {
   const OccasionsSection({
     super.key,
     required this.listId,
+    required this.recipientKind,
     required this.occasions,
     required this.linkBase,
     required this.onChanged,
   });
 
   final String listId;
+
+  /// Who the list is for: the owner gives only on a list for someone else.
+  final RecipientKind recipientKind;
 
   /// By date.
   final List<Occasion> occasions;
@@ -64,6 +80,7 @@ class OccasionsSection extends StatelessWidget {
           const SizedBox(height: Spacing.s12),
           _OccasionCard(
             occasion: occasion,
+            gives: recipientKind == RecipientKind.other,
             link: occasion.joinToken == null || linkBase == null
                 ? null
                 : shareLink(linkBase!, occasion.joinToken!),
@@ -78,11 +95,15 @@ class OccasionsSection extends StatelessWidget {
 class _OccasionCard extends StatefulWidget {
   const _OccasionCard({
     required this.occasion,
+    required this.gives,
     required this.link,
     required this.onChanged,
   });
 
   final Occasion occasion;
+
+  /// The owner gives on it: the card opens its gifts and reservations.
+  final bool gives;
 
   /// The link to copy or share; null when the occasion has none, or when a
   /// link would have no host.
@@ -127,6 +148,8 @@ class _OccasionCardState extends State<_OccasionCard> {
         }
       case _OccasionAction.members:
         await context.push('$_location/members');
+      case _OccasionAction.gifts:
+        await context.push(_location);
       case _OccasionAction.edit:
         await context.push('$_location/edit');
       case _OccasionAction.delete:
@@ -298,6 +321,12 @@ class _OccasionCardState extends State<_OccasionCard> {
                   icon: const Icon(Icons.group_outlined),
                   label: Text(l10n.seeInvitees),
                 ),
+                if (widget.gives)
+                  OutlinedButton.icon(
+                    onPressed: () => _onAction(_OccasionAction.gifts),
+                    icon: const Icon(Icons.redeem_outlined),
+                    label: Text(l10n.occasionGiftsAndReservations),
+                  ),
               ],
             ),
           ],

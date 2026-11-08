@@ -76,6 +76,34 @@ String _groupOccasion(FakeListsServer server) {
   return occasion;
 }
 
+/// Alice's own list for Léa, its occasion with Carol's reservation and a
+/// group gift Alice is in: her giver view (RESERVING_PLAN D14).
+String _giverOccasion(FakeListsServer server) {
+  final list = server.addList('Christmas', recipientName: 'Léa');
+  final headphones = server.addGift(
+    list,
+    'Noise-cancelling headphones',
+    links: ['https://shop.example/h'],
+    priceAmount: '149.00',
+    priceCurrency: 'EUR',
+  );
+  final book = server.addGift(list, 'A book about the sea');
+  server.addGift(list, 'Wool socks');
+  final occasion = server.addOccasion(
+    list,
+    'Christmas 2026',
+    '2026-12-24',
+    invitees: ['Carol Lambert'],
+  );
+  server
+    ..addClaim(book, occasion, [FakeListsServer.giver('Carol Lambert')])
+    ..addClaim(headphones, occasion, [
+      FakeListsServer.giver('Carol Lambert', amount: '50.00', currency: 'EUR'),
+      FakeListsServer.giver(kAliceName, mine: true),
+    ], group: true);
+  return '/lists/$list/occasions/$occasion';
+}
+
 void main() {
   const brightnesses = {'light': Brightness.light, 'dark': Brightness.dark};
 
@@ -103,6 +131,7 @@ void main() {
     'occasion_activity': (server) =>
         ('/shared/${_activeOccasion(server)}', null),
     'gift_sheet_group': (server) => ('/shared/${_groupOccasion(server)}', null),
+    'occasion_giver': (server) => (_giverOccasion(server), null),
     'pledge_dialog': (server) => ('/shared/${_groupOccasion(server)}', null),
     'join_confirmation': (server) {
       _bobsOccasion(server);
