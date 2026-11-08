@@ -13,3 +13,4 @@ the plan.
 | Plan | Issues | Delivered in |
 |---|---|---|
 | [DEVOPS_FOUNDATION_PLAN](DEVOPS_FOUNDATION_PLAN.md) | — | not yet delivered |
+| [DESIGN_SYSTEM_PLAN](DESIGN_SYSTEM_PLAN.md) | — | not yet delivered |
