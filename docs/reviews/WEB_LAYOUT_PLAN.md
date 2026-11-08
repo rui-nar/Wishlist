@@ -42,3 +42,33 @@ Written into D6 and the envelope.
 - Decision: Fix now (D7)
 - Override: —
 - Outcome: fixed (in plan: D9 amended to Material's adaptive layout)
+
+## Round 2 — 2026-11-08, unit review of U2 (DELIVERY.md §5 point 3), reviewed at a9346dc
+
+Envelope questions, answered by the orchestrator under the standing
+instruction: (1) the welcome copy describes what the deployed build does; the
+reserving plan updates it when reserving ships. (2) The welcome page is the
+entry for any signed-out visit to bare home on every platform, but a user
+whose session ended should land on the sign-in card (R2-3, deferred by rule).
+
+### R2-1 — The welcome page promises invitee coordination that the shipped product does not have
+- Trigger: a visitor reads "let them coordinate without spoiling the surprise", registers and shares → invitees can only read; no invitee action exists yet
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: open
+
+### R2-2 — A home link with any query string skips the welcome page and hides the welcome link
+- Trigger: a signed-out visitor opens `/?fbclid=…` → the guard compares the whole location to `/` and sends `/sign-in?from=/?fbclid=…`, hiding "What is Wishlist?"
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: open
+
+### R2-3 — A returning user whose stored session is refused lands on the welcome page instead of the sign-in card
+- Trigger: a returning user opens `/` with an expired or revoked token → restore gets 401 → signedOut → the guard sends them to `/welcome`
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=M/shared, confidence=verified
+- Decision: Defer (D8)
+- Revisit when: users report landing on the welcome page after their session expired, session lifetime is shortened or revocation becomes common, or AuthController's signed-out handling is next changed
+- Override: —
+- Outcome: open
