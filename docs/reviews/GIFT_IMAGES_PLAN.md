@@ -113,7 +113,7 @@ measurement records the API's idle RSS in docs/DEPLOYMENT.md.
 - Scores: trigger=concrete, impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=inferred
 - Decision: Fix now (D7)
 - Override: —
-- Outcome: open
+- Outcome: fixed (5ecd446)
 
 ### R2-2 — Transparency promotion runs on the full-size decode before the reduction
 - Trigger: an RGB PNG with a tRNS chunk at the 4096² cap → full-size RGBA copy → about 112 MB peak
@@ -136,7 +136,7 @@ measurement records the API's idle RSS in docs/DEPLOYMENT.md.
 - Scores: trigger=concrete (triager: was plausible), impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=inferred
 - Decision: Fix now (D7)
 - Override: —
-- Outcome: open
+- Outcome: fixed (5ecd446)
 
 ## Round 3 — 2026-11-08, unit review of U2 (DELIVERY.md §5 point 3), reviewed at 383d3b1
 
