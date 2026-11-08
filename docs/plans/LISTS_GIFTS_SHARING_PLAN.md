@@ -71,9 +71,17 @@ chosen here must not need rewriting when they arrive.
   send to the server, so loading the link does not put it in the server's
   access log; both endpoints take it in the JSON body (`{"token": "..."}`,
   at most 64 characters), never in the URL (round-1 and round-2 envelope
-  answers). The client reads the fragment when `/join` loads, keeps the
-  pending token in memory (and in the browser's session storage, so a reload
-  during sign-in keeps it), and removes the fragment from the address bar. Joining twice is not an error (200, same
+  answers). The path URL strategy never hands the fragment to the router,
+  and the sign-in redirect runs before any screen builds, so the client
+  captures the token at start, from the live browser URL
+  (`Uri.base.fragment` when `Uri.base.path` is `/join`), before the router
+  is created; keeps it as the pending token in memory and in the browser's
+  session storage (so a reload during sign-in keeps it); and removes the
+  fragment from the address bar with `history.replaceState`. The pending
+  token is cleared as soon as it is used, whatever the outcome (joined,
+  cancelled, owner, invalid), and the client then opens the occasion or the
+  list with a replace, not a push, so the browser's back button does not
+  return to `/join` (review R3-1, R3-2). Joining twice is not an error (200, same
   occasion). Regenerating the link
   replaces the token, so the old link stops working; revoking sets it to null.
   Members who already joined keep access (`docs/NEEDS.md`, Access).
@@ -385,7 +393,11 @@ REVIEW.md defaults apply, with these additions:
   4. The share link uses `public_base_url` from `/api/config` when set,
      otherwise the web client's own origin.
   5. Tests: join flow (signed out → sign-in → back to the confirmation;
-     the fragment is read and removed; a reload keeps the pending token);
+     the token capture is a function of the start URL, tested with
+     `/join#abc` → pending `abc` and the fragment removed; a reload keeps the
+     pending token; after join, cancel, owner or 404 the pending token is
+     cleared and a second load of `/join` without a fragment shows the
+     invalid-link state);
      confirmation screen content; "Cancel" makes no join call; "Join" joins
      and opens the occasion; `role: member` skips the confirmation;
      `role: owner` and a 409 open the list; 404 shows the invalid-link
@@ -395,7 +407,12 @@ REVIEW.md defaults apply, with these additions:
      occasion section, shared with me, occasion view, join confirmation,
      join error, light and dark.
 - **Acceptance:** `flutter analyze`; `flutter test`; `.\goldens.ps1 -Check`;
-  `flutter build web --release`.
+  `flutter build web --release`; a browser check, because `flutter test` has
+  no URL strategy: with `.\dev.ps1` running, opening
+  `http://localhost:5500/join#<token>` signed out leads through sign-in to
+  the confirmation screen (the implementer runs it if a Google client ID is
+  configured, otherwise with the token-capture function exercised by a
+  `flutter test --platform chrome` test, and says which).
 - **Out of scope:** reservations and other invitee actions, notifications,
   mobile app links.
 - **Latitude:** decided at routing.

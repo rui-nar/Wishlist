@@ -98,3 +98,23 @@ fragment (`/join#<token>`) before the link format ships.
 - Decision: Fix now (D7)
 - Override: —
 - Outcome: fixed (in plan: at most 64 characters, 422 test)
+
+## Round 3 — 2026-11-08, reviewed at e59f327
+
+Round 3 is the cap (§6). Its Fix now items are applied to the plan; they are
+checked again in the review of the integrated diff, not in a fourth round of
+the plan.
+
+### R3-1 — The path URL strategy never hands the fragment to the router; the sign-in redirect erases it
+- Trigger: a signed-out invitee opens `/join#<token>` → the router sees `/join`, redirects to sign-in, the hash is gone → back on `/join` nothing is pending → "link no longer valid" for every new invitee
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: fixed (in plan: token captured from `Uri.base` before the router is created; browser-level check in U4's acceptance)
+
+### R3-2 — The pending join token is never cleared; back to `/join` replays it
+- Trigger: an invitee joins, then presses back → `/join` finds the pending token and forwards again → back is a trap
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified (triager)
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan: cleared on every outcome; navigation by replace; test)
