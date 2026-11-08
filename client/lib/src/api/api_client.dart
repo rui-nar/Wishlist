@@ -57,13 +57,23 @@ class ApiClient {
   void Function(String token)? onUnauthorized;
 
   Future<Map<String, dynamic>> getJson(String path) async =>
-      _json(await _send('GET', path));
+      _decode<Map<String, dynamic>>(await _send('GET', path));
+
+  /// A GET whose answer is a JSON array.
+  Future<List<dynamic>> getJsonList(String path) async =>
+      _decode<List<dynamic>>(await _send('GET', path));
 
   Future<Map<String, dynamic>> postJson(
     String path,
     Map<String, dynamic> body,
   ) async =>
-      _json(await _send('POST', path, body: body));
+      _decode<Map<String, dynamic>>(await _send('POST', path, body: body));
+
+  Future<Map<String, dynamic>> patchJson(
+    String path,
+    Map<String, dynamic> body,
+  ) async =>
+      _decode<Map<String, dynamic>>(await _send('PATCH', path, body: body));
 
   /// A POST whose answer has no body (204).
   Future<void> post(String path) => _send('POST', path);
@@ -105,9 +115,10 @@ class ApiClient {
     return response;
   }
 
-  Map<String, dynamic> _json(http.Response response) {
+  /// The body as [T]: a JSON object or a JSON array.
+  T _decode<T>(http.Response response) {
     try {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      return jsonDecode(response.body) as T;
     } catch (_) {
       throw const ApiUnreachableException();
     }
