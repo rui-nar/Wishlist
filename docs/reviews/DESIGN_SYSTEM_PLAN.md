@@ -57,3 +57,16 @@ now and named in the privacy policy. Written into the plan's envelope and D4.
 - Decision: Fix now (D7)
 - Override: —
 - Outcome: fixed (in plan: the D2 table lists every role, U1 step 8 checks them)
+
+## Round 2 — 2026-11-08, reviewed at 9ad65ce
+
+Every pair the contrast test lists was recomputed by the reviewer in both
+themes and passes. No Fix now: review of the plan complete (§6).
+
+### R2-1 — Dark metadata grey on surfaceContainerHighest is 4.04:1, untested
+- Trigger: a filled text field (fill = `surfaceContainerHighest`) in dark mode → hints and labels in `#94A3B8` on `#334155` → below 4.5:1 while the contrast test passes
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=inferred (arithmetic verified)
+- Decision: Defer (D10)
+- Revisit when: `InputDecorationTheme` sets `filled: true`, any screen puts `onSurfaceVariant` text on `surfaceContainerHighest`, or the owner's dark-palette check flags low-contrast hints — then add the pair to `contrast_test.dart` and fix the colour if it fails
+- Override: —
+- Outcome: open
