@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
+import 'l10n/app_localizations.dart';
 import 'src/config.dart';
 import 'src/design/theme.dart';
 import 'src/version_screen.dart';
@@ -28,7 +29,11 @@ class WishlistApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Wishlist',
+      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+      // The device's language when it is English or French (D8). Otherwise
+      // English, the first supported locale (l10n.yaml).
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: ThemeMode.system,

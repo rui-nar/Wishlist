@@ -1,0 +1,53 @@
+{
+  "@@locale": "en",
+  "appTitle": "Wishlist",
+  "@appTitle": {
+    "description": "The app's name, in the window or tab title and the app bar."
+  },
+  "appVersion": "App {version}",
+  "@appVersion": {
+    "description": "The version of the app the user runs.",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "v1.2.3"
+      }
+    }
+  },
+  "serverVersion": "Server {version} ({env})",
+  "@serverVersion": {
+    "description": "The server's version and the environment it runs in.",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "v1.2.0"
+      },
+      "env": {
+        "type": "String",
+        "example": "validation"
+      }
+    }
+  },
+  "serverUnreachable": "Server unreachable",
+  "@serverUnreachable": {
+    "description": "The server's version could not be read: the server could not be reached."
+  },
+  "serverTimedOut": "Server unreachable (timed out)",
+  "@serverTimedOut": {
+    "description": "The server's version could not be read: the server took too long to answer."
+  },
+  "serverHttpError": "Server answered HTTP {status}",
+  "@serverHttpError": {
+    "description": "The server's version could not be read: the server answered with an HTTP error status.",
+    "placeholders": {
+      "status": {
+        "type": "int",
+        "example": "503"
+      }
+    }
+  },
+  "serverUnexpectedAnswer": "Unexpected answer from the server",
+  "@serverUnexpectedAnswer": {
+    "description": "The server's version could not be read: its answer was not in the expected form."
+  }
+}
