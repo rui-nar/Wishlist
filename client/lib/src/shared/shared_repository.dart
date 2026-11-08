@@ -51,6 +51,7 @@ class SharedGift extends GiftDraft {
     super.links,
     super.priceAmount,
     super.priceCurrency,
+    this.image,
   });
 
   factory SharedGift.fromJson(Map<String, dynamic> json) => SharedGift(
@@ -60,9 +61,13 @@ class SharedGift extends GiftDraft {
         links: [for (final link in json['links'] as List<dynamic>) link as String],
         priceAmount: json['price_amount'] as String?,
         priceCurrency: json['price_currency'] as String?,
+        image: GiftImage.fromJsonOrNull(json['image']),
       );
 
   final String id;
+
+  /// Its paths are under the occasion; null when the gift has no picture.
+  final GiftImage? image;
 }
 
 /// `GET /api/occasions/{id}`, told apart by its `role`.

@@ -4,6 +4,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,13 @@ import 'package:wishlist/src/auth/auth_controller.dart';
 import 'package:wishlist/src/shared/pending_join.dart';
 
 import '../../support/fakes.dart';
+
+/// A valid 8 x 8 PNG (two blue and two orange squares) every image of
+/// [FakeListsServer] serves, whatever the variant.
+final kTestImage = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAHElEQVR4nGOwbvoGR1/nccMR'
+  'AxUlkDnIiqgoAQB9j2ohclFlTgAAAABJRU5ErkJggg==',
+);
 
 /// The signed-in user's display name, as the server gives it to others.
 const kAliceName = 'Alice Martin';
@@ -68,6 +76,14 @@ class FakeListsServer {
 
   final status = <String, int>{};
 
+  /// Image id → its `{id, width, height}`: pending ones (uploaded, not yet
+  /// attached) and attached ones. The paths are made when it is shown, as
+  /// the server does (GIFT_IMAGES D7).
+  final images = <String, Map<String, dynamic>>{};
+
+  /// The bytes of every `POST /api/images`.
+  final uploads = <Uint8List>[];
+
   /// Every call to these endpoints, as `'<METHOD> <path>'`.
   final calls = <String>[];
 
@@ -109,6 +125,7 @@ class FakeListsServer {
     List<String> links = const [],
     String? priceAmount,
     String? priceCurrency,
+    bool image = false,
   }) {
     final id = 'gift-${_next++}';
     gifts.add({
@@ -119,9 +136,61 @@ class FakeListsServer {
       'links': links,
       'price_amount': priceAmount,
       'price_currency': priceCurrency,
+      if (image) 'image': _ownerImage(addImage()),
     });
     return id;
   }
+
+  /// A new image on the server; returns its id.
+  String addImage() {
+    final id = 'image-${_next++}';
+    images[id] = {'id': id, 'width': 8, 'height': 8};
+    return id;
+  }
+
+  /// An image as its list's owners see it: `/api/images/...` paths.
+  Map<String, dynamic> _ownerImage(String id) => {
+        ...images[id]!,
+        'url': '/api/images/$id/full',
+        'thumb_url': '/api/images/$id/thumb',
+      };
+
+  /// An image as an occasion's invitees see it.
+  Map<String, dynamic> _inviteeImage(String occasionId, String id) => {
+        ...images[id]!,
+        'url': '/api/occasions/$occasionId/images/$id/full',
+        'thumb_url': '/api/occasions/$occasionId/images/$id/thumb',
+      };
+
+  /// Applies `image_id` of a gift create or update: absent leaves the image,
+  /// `null` removes it, an id attaches that image.
+  void _applyImageId(Map<String, dynamic> gift, Map<String, dynamic> body) {
+    gift.remove('image_id');
+    if (!body.containsKey('image_id')) return;
+    final id = body['image_id'] as String?;
+    if (id == null) {
+      gift.remove('image');
+    } else {
+      gift['image'] = _ownerImage(id);
+    }
+  }
+
+  /// The gift as an invitee of [occasionId] sees it.
+  Map<String, dynamic> _sharedGift(String occasionId, Map<String, dynamic> gift) {
+    final image = gift['image'] as Map<String, dynamic>?;
+    return {
+      ...gift,
+      if (image != null) 'image': _inviteeImage(occasionId, image['id'] as String),
+    }..remove('list_id');
+  }
+
+  http.Response _imageResponse(String id) => images.containsKey(id)
+      ? http.Response.bytes(
+          kTestImage,
+          200,
+          headers: {'content-type': 'image/png'},
+        )
+      : http.Response('{"detail":"Not found"}', 404);
 
   /// An occasion of [listId] on [date] (`2026-12-24`), with a link when
   /// [token] is given, and [invitees] (display names) who joined it.
@@ -198,6 +267,7 @@ class FakeListsServer {
     '/api/occasions',
     '/api/shared',
     '/api/join',
+    '/api/images',
   ];
 
   Future<http.Response> _handle(http.Request request) async {
@@ -211,7 +281,9 @@ class FakeListsServer {
     }
     final call = '${request.method} $path';
     calls.add(call);
-    if (request.body.isNotEmpty) {
+    final isJson =
+        (request.headers['content-type'] ?? '').startsWith('application/json');
+    if (isJson && request.body.isNotEmpty) {
       bodies[call] = jsonDecode(request.body) as Map<String, dynamic>;
     }
     await hold?.future;
@@ -251,6 +323,18 @@ class FakeListsServer {
     if (call == 'POST /api/join/preview' || call == 'POST /api/join') {
       return _join(call, body?['token'], json, notFound);
     }
+    if (call == 'POST /api/images') {
+      uploads.add(request.bodyBytes);
+      return json(_ownerImage(addImage()), 201);
+    }
+    if (call == 'POST /api/images/from-url') {
+      return json(_ownerImage(addImage()), 201);
+    }
+    if (request.method == 'GET' &&
+        segments[1] == 'images' &&
+        segments.length == 4) {
+      return _imageResponse(segments[2]);
+    }
     if (segments[1] == 'occasions') {
       return _occasion(request, segments, body, json, notFound, noContent);
     }
@@ -277,6 +361,7 @@ class FakeListsServer {
       if (segments.length == 4 && request.method == 'POST') {
         final id = addGift(list['id'] as String, body!['title'] as String);
         gift(id)!.addAll(body);
+        _applyImageId(gift(id)!, body);
         return json(gift(id)!, 201);
       }
       switch (request.method) {
@@ -309,6 +394,7 @@ class FakeListsServer {
     switch (request.method) {
       case 'PATCH':
         found.addAll(body!);
+        _applyImageId(found, body);
         return json(found);
       case 'DELETE':
         gifts.remove(found);
@@ -374,6 +460,9 @@ class FakeListsServer {
     final rest = segments.skip(3).join('/');
     if (!of.mine) {
       if (!joined.contains(id)) return notFound;
+      if (request.method == 'GET' && segments.length == 6 && segments[3] == 'images') {
+        return _imageResponse(segments[4]);
+      }
       switch ((request.method, rest)) {
         case ('GET', ''):
           return json({
@@ -381,8 +470,7 @@ class FakeListsServer {
             'role': 'invitee',
             'gifts': [
               for (final gift in gifts)
-                if (gift['list_id'] == of.list['id'])
-                  {...gift}..remove('list_id'),
+                if (gift['list_id'] == of.list['id']) _sharedGift(id, gift),
             ],
           });
         case ('DELETE', 'membership'):
@@ -390,6 +478,9 @@ class FakeListsServer {
           return noContent;
       }
       return notFound;
+    }
+    if (request.method == 'GET' && segments.length == 6 && segments[3] == 'images') {
+      return _imageResponse(segments[4]);
     }
     switch ((request.method, rest)) {
       case ('GET', ''):
@@ -501,3 +592,15 @@ FakeUrlLauncher installFakeUrlLauncher() {
 /// The text field labelled [label].
 Finder fieldLabelled(String label) =>
     find.widgetWithText(TextFormField, label);
+
+/// Lets the images the screen asked for download and decode: decoding runs
+/// off the test's fake clock, so it is waited for in real time.
+Future<void> loadImages(WidgetTester tester) async {
+  for (var i = 0; i < 3; i++) {
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+  }
+  await tester.pumpAndSettle();
+}

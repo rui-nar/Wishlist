@@ -45,6 +45,18 @@ void main() {
       server.addGift(list, 'Wool socks');
       return '/lists/$list';
     },
+    'list_detail_image': (server) {
+      final list = server.addList('Christmas', recipientName: 'Léa');
+      server.addGift(
+        list,
+        'Noise-cancelling headphones',
+        priceAmount: '149.00',
+        priceCurrency: 'EUR',
+        image: true,
+      );
+      server.addGift(list, 'Wool socks');
+      return '/lists/$list';
+    },
     'gift_form': (server) {
       final list = server.addList('Christmas', recipientName: 'Léa');
       final gift = server.addGift(
@@ -91,6 +103,7 @@ void main() {
 
   // What a screen does once open, before its picture is taken.
   final after = <String, Future<void> Function(WidgetTester)>{
+    'list_detail_image': loadImages,
     // The occasions, below the gifts.
     'list_occasions': (tester) async {
       await tester.scrollUntilVisible(

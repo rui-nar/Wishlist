@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
+import '../api/api_image.dart';
 import '../api/config.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import '../design/widgets/gift_card.dart';
+import '../design/widgets/image_viewer.dart';
 import '../design/widgets/status_chip.dart';
 import 'common.dart';
 import 'gift_link_action.dart';
@@ -186,6 +188,16 @@ class _ListDetailScreenState extends State<ListDetailScreen>
           const SizedBox(height: Spacing.s12),
           GiftCard(
             title: gift.title,
+            image: gift.image == null
+                ? null
+                : ApiImage(context.read<ApiClient>(), gift.image!.thumbUrl),
+            onImageTap: gift.image == null
+                ? null
+                : () => showImageViewer(
+                      context,
+                      ApiImage(context.read<ApiClient>(), gift.image!.url),
+                      semanticLabel: gift.title,
+                    ),
             metadata: gift.priceAmount == null
                 ? null
                 : formatPrice(gift.priceAmount!, gift.priceCurrency!, locale),

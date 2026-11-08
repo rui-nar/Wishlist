@@ -82,6 +82,43 @@ void main() {
     expect(invitee.gifts.single.priceAmount, '149.00');
   });
 
+  test('occasion: a gift keeps the occasion paths of its image, or none',
+      () async {
+    const gift = {
+      'id': 'g1',
+      'title': 'Headphones',
+      'description': '',
+      'links': <String>[],
+      'price_amount': null,
+      'price_currency': null,
+    };
+    answer = {
+      ..._shared,
+      'role': 'invitee',
+      'gifts': [
+        {
+          ...gift,
+          'image': {
+            'id': 'i1',
+            'width': 800,
+            'height': 600,
+            'url': '/api/occasions/o1/images/i1/full',
+            'thumb_url': '/api/occasions/o1/images/i1/thumb',
+          },
+        },
+        {...gift, 'id': 'g2', 'image': null},
+        {...gift, 'id': 'g3'},
+      ],
+    };
+
+    final view = await repository().occasion('o1') as InviteeOccasion;
+
+    expect(view.gifts[0].image!.url, '/api/occasions/o1/images/i1/full');
+    expect(view.gifts[0].image!.thumbUrl, '/api/occasions/o1/images/i1/thumb');
+    expect(view.gifts[1].image, isNull);
+    expect(view.gifts[2].image, isNull);
+  });
+
   test("occasion: an owner's answer names the list to open", () async {
     answer = {
       'id': 'o1',

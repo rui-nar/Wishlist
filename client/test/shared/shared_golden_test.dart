@@ -16,8 +16,9 @@ final Object _skip = Platform.isLinux
     ? false
     : r'goldens render on Linux only: run .\goldens.ps1';
 
-/// Bob's list for Léa, with an occasion Alice can join with `tok`.
-String _bobsOccasion(FakeListsServer server) {
+/// Bob's list for Léa, with an occasion Alice can join with `tok`; the
+/// first gift has a picture when [image] is set.
+String _bobsOccasion(FakeListsServer server, {bool image = false}) {
   final list = server.addList(
     'Christmas',
     recipientName: 'Léa',
@@ -29,6 +30,7 @@ String _bobsOccasion(FakeListsServer server) {
     links: ['https://shop.example/h', 'https://other.example/h'],
     priceAmount: '149.00',
     priceCurrency: 'EUR',
+    image: image,
   );
   server.addGift(
     list,
@@ -56,6 +58,11 @@ void main() {
     },
     'occasion_view': (server) {
       final occasion = _bobsOccasion(server);
+      server.joined.add(occasion);
+      return ('/shared/$occasion', null);
+    },
+    'occasion_view_image': (server) {
+      final occasion = _bobsOccasion(server, image: true);
       server.joined.add(occasion);
       return ('/shared/$occasion', null);
     },
@@ -91,6 +98,7 @@ void main() {
             location,
             pendingJoin: PendingJoin(MemoryJoinBrowser(), token),
           );
+          if (screen == 'occasion_view_image') await loadImages(tester);
 
           await expectLater(
             find.byType(WishlistApp),

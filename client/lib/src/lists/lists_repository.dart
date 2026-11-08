@@ -2,6 +2,8 @@
 /// (LISTS_GIFTS_SHARING_PLAN D8).
 library;
 
+import 'dart:typed_data';
+
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
@@ -150,6 +152,68 @@ String formatJsonDate(DateTime date) =>
     '${date.month.toString().padLeft(2, '0')}-'
     '${date.day.toString().padLeft(2, '0')}';
 
+/// A gift's picture as the server describes it (GIFT_IMAGES D11). The paths
+/// are the server's to choose: the owner's are under `/api/images`, the
+/// invitee's under the occasion. Used as they come.
+class GiftImage {
+  const GiftImage({
+    required this.id,
+    required this.width,
+    required this.height,
+    required this.url,
+    required this.thumbUrl,
+  });
+
+  factory GiftImage.fromJson(Map<String, dynamic> json) => GiftImage(
+        id: json['id'] as String,
+        width: json['width'] as int,
+        height: json['height'] as int,
+        url: json['url'] as String,
+        thumbUrl: json['thumb_url'] as String,
+      );
+
+  /// Null when the JSON has no image or a null one.
+  static GiftImage? fromJsonOrNull(Object? json) =>
+      json == null ? null : GiftImage.fromJson(json as Map<String, dynamic>);
+
+  final String id;
+  final int width;
+  final int height;
+
+  /// The full version (at most 1600 px on its longest side).
+  final String url;
+
+  /// The 256 px square.
+  final String thumbUrl;
+}
+
+/// An uploaded image waiting to be attached by saving a gift: the same
+/// object as a gift's image (D11).
+typedef PendingImage = GiftImage;
+
+/// What saving a gift does to its image (D11): `image_id` absent, an id, or
+/// `null`.
+sealed class ImageChange {
+  const ImageChange();
+}
+
+/// Leaves the image as it is; sends no `image_id`.
+class KeepImage extends ImageChange {
+  const KeepImage();
+}
+
+/// Attaches the pending image [id].
+class AttachImage extends ImageChange {
+  const AttachImage(this.id);
+
+  final String id;
+}
+
+/// Removes the image; sends `image_id: null`.
+class RemoveImage extends ImageChange {
+  const RemoveImage();
+}
+
 /// What a gift says (D3). Also the body of an add or an edit.
 class GiftDraft {
   const GiftDraft({
@@ -158,6 +222,7 @@ class GiftDraft {
     this.links = const [],
     this.priceAmount,
     this.priceCurrency,
+    this.imageChange = const KeepImage(),
   });
 
   final String title;
@@ -173,14 +238,23 @@ class GiftDraft {
   /// An ISO 4217 code in capitals; set exactly when [priceAmount] is.
   final String? priceCurrency;
 
+  /// What the save does to the gift's image; unchanged unless the owner
+  /// chose otherwise.
+  final ImageChange imageChange;
+
   /// Every field, so an edit also clears a description, the links or the
-  /// price the owner removed.
+  /// price the owner removed; `image_id` only when the image changes.
   Map<String, dynamic> toJson() => {
         'title': title,
         'description': description,
         'links': links,
         'price_amount': priceAmount,
         'price_currency': priceCurrency,
+        ...switch (imageChange) {
+          KeepImage() => <String, dynamic>{},
+          AttachImage(:final id) => {'image_id': id},
+          RemoveImage() => {'image_id': null},
+        },
       };
 }
 
@@ -194,6 +268,7 @@ class Gift extends GiftDraft {
     super.links,
     super.priceAmount,
     super.priceCurrency,
+    this.image,
   });
 
   factory Gift.fromJson(Map<String, dynamic> json) => Gift(
@@ -204,10 +279,14 @@ class Gift extends GiftDraft {
         links: [for (final link in json['links'] as List<dynamic>) link as String],
         priceAmount: json['price_amount'] as String?,
         priceCurrency: json['price_currency'] as String?,
+        image: GiftImage.fromJsonOrNull(json['image']),
       );
 
   final String id;
   final String listId;
+
+  /// Null when the gift has no picture.
+  final GiftImage? image;
 }
 
 /// The list, gift and occasion calls of a list's owner. Errors are
@@ -275,6 +354,23 @@ class ListsRepository {
 
   Future<void> deleteGift(String giftId) =>
       _api.delete('/api/gifts/${_segment(giftId)}');
+
+  /// Sends the image's bytes; the answer is a pending image that saving a
+  /// gift attaches (GIFT_IMAGES D1). A refusal is an [ApiException] whose
+  /// body carries a stable `detail` code (D11).
+  Future<PendingImage> uploadImage(Uint8List bytes) async =>
+      GiftImage.fromJson(await _api.postBytes('/api/images', bytes));
+
+  /// Has the server download the image at [url] (D6). It may take the
+  /// fetch's 20 s plus the processing lock's 30 s wait, so the call waits
+  /// 60 s instead of 10 (review R1-5).
+  Future<PendingImage> imageFromUrl(String url) async => GiftImage.fromJson(
+        await _api.postJson(
+          '/api/images/from-url',
+          {'url': url},
+          timeout: const Duration(seconds: 60),
+        ),
+      );
 
   /// Creates an occasion of the list, without a link yet (D5).
   Future<Occasion> createOccasion(
