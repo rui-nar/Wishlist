@@ -10,6 +10,8 @@ dependencies = [
     # Verifies Google ID tokens; requests is its HTTP transport, which fetches
     # Google's signing certificates.
     "google-auth>=2.62.1",
+    # Decodes uploaded images and re-encodes them as WebP (gift images plan D4).
+    "pillow>=13.0.0",
     # Majors capped: psycopg 3 and SQLAlchemy 2 are the stack (plan D1); a new
     # major is a decision, not a Dependabot bump.
     "psycopg[binary]>=3.3.8,<4",

@@ -21,6 +21,7 @@ from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
 from app.db import create_db_engine, create_session_factory
 from app.lists.router import router as lists_router
+from app.media.router import router as media_router
 from app.settings import Settings
 
 # The Flutter web build. The image puts it in /app/web, next to /app/server;
@@ -112,6 +113,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
 
     app.include_router(accounts_router)
     app.include_router(lists_router)
+    app.include_router(media_router)
     app.add_exception_handler(RequestValidationError, _validation_error)
 
     # Registered last, so every /api route above takes precedence.
