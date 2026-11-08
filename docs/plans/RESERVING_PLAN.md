@@ -198,9 +198,14 @@ data model chosen here must not need rewriting when they arrive.
   Two `PUT …/pledge` on a free gift at the same moment therefore end in one
   group gift with two participants; a reservation and a pledge at the same
   moment end with exactly one of them. Account deletion (D10) locks the
-  user row `FOR UPDATE` first, so a write by the same account at the same
-  moment either commits before the release runs or fails its foreign key
-  and answers 404; no unbought claim is left without a participant. Tests
+  occasions the user gives in or owns `FOR UPDATE` first, then the user
+  row, the same order claim writes take them (occasion `FOR SHARE`, then
+  the participant's foreign key on the user): the other order deadlocks
+  (review R6-1, found in delivery). A write by the same account in one of
+  those occasions then either commits before the release runs or waits and
+  answers 404; one in an occasion joined after the locks may fail its
+  foreign key with a 500 (R6-2, deferred). No unbought claim is left
+  without a participant. Tests
   use real concurrent requests against Postgres (U1, U3, U5), with both
   patterns of `test_concurrent_join.py`.
 - **D8 — When an occasion has passed.** An occasion dated D has passed from
@@ -259,7 +264,8 @@ data model chosen here must not need rewriting when they arrive.
   - **Deleting an account** (NEEDS, Deleting an account): the same in every
     occasion, and their participant rows on bought reservations go too
     (through the foreign key), so a bought gift stays "bought" with no name
-    and nothing identifies them. `delete_me` locks the user row, releases,
+    and nothing identifies them. `delete_me` locks the occasions, then the
+    user row (D7), releases,
     deletes the lists they own alone (which cascades their claims), then
     deletes the user.
   - Owners of a "for someone else" list are not members: nothing to leave
@@ -686,7 +692,8 @@ REVIEW.md defaults apply, with these additions:
   2. `leave_occasion`: take the occasion `FOR UPDATE`, release, then delete
      the membership. `remove_member`: release after its existing lock, in
      the same transaction. Answers unchanged.
-  3. `delete_me`: lock the user row `FOR UPDATE`, release in every
+  3. `delete_me`: lock the occasions the user gives in or owns, then the
+     user row `FOR UPDATE` (D7, review R6-1), release in every
      occasion, then the existing list and user deletion.
   4. `delete_occasion`: lock the occasion `FOR UPDATE`, delete its unbought
      claims, then the occasion (the foreign key keeps bought ones with a null

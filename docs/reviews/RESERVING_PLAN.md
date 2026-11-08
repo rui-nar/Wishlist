@@ -97,3 +97,30 @@ D table (same scores as images R1-7, decided D9 by the triager), no triage pass.
 - Guard: the deterministic test takes only the claim's `FOR UPDATE` before the join, waits for the join's lock wait, then deletes and commits, so the retry branch is exercised
 - Override: —
 - Outcome: open
+
+## Round 6 — 2026-11-08, unit review of U5 (DELIVERY.md §5 point 3), reviewed at 54105ba
+
+Envelope question (orchestrator, standing instruction): the extra statements
+an owner's removal runs per claim of the departing invitee (a handful at most)
+are noise of the same order as the lock waits the envelope excludes; release
+stays per claim to keep claim locks ordered. Decisions taken by the
+orchestrator from the D table, no triage pass.
+
+Approved deviations recorded for U5: `delete_list` also changed (Do 4 needs
+list deletion to delete claims before the cascades); `delete_me` locks
+occasions before the user row (R6-1).
+
+### R6-1 — The plan says delete_me locks the user row first; the code must lock occasions first
+- Trigger: a maintainer aligns the code with the plan's order → deadlock against a claim write by the same user → 500
+- Scores: trigger=concrete, impact=maintainability, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan: D7, D10, U5 Do 3)
+
+### R6-2 — A write by the deleting user in a newly joined occasion answers 500 during delete_me
+- Trigger: a user deletes their account on one device and at that moment joins, reserves, pledges or signs in on another → the insert's foreign key on the user fails → 500 instead of 404
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=M/shared, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: an IntegrityError on a users foreign key is logged, or account deletion gains a grace period or asynchronous processing
+- Override: —
+- Outcome: open
