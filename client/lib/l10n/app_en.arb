@@ -672,7 +672,7 @@
   "@welcomeHeadline": {
     "description": "The welcome page: the headline, under the app's name."
   },
-  "welcomePurpose": "Keep the things you'd love to receive in one place, and share them with family and friends for each occasion.",
+  "welcomePurpose": "Keep the things you'd love to receive in one place, share them with family and friends for each occasion, and let them choose without spoiling the surprise.",
   "@welcomePurpose": {
     "description": "The welcome page: the sentence under the headline, saying what the app is for."
   },
@@ -700,13 +700,13 @@
   "@welcomeOccasionsBody": {
     "description": "The welcome page: the text of the card about occasions."
   },
-  "welcomeControlTitle": "You stay in control",
-  "@welcomeControlTitle": {
-    "description": "The welcome page: the title of the card about controlling who sees a shared list."
+  "welcomeSurpriseTitle": "The surprise stays a surprise",
+  "@welcomeSurpriseTitle": {
+    "description": "The welcome page: the title of the card about keeping the surprise."
   },
-  "welcomeControlBody": "Stop a link from working or remove someone from an occasion at any time.",
-  "@welcomeControlBody": {
-    "description": "The welcome page: the text of the card about controlling who sees a shared list: disabling a share link, removing an invitee."
+  "welcomeSurpriseBody": "Whoever a list is for never sees what was reserved or bought. The people you invite see who is giving what, and can team up on a bigger gift.",
+  "@welcomeSurpriseBody": {
+    "description": "The welcome page: the text of the card about keeping the surprise: the recipient sees nothing of what was reserved or bought, invitees see who gives what."
   },
   "registerTitle": "Create your account",
   "@registerTitle": {
