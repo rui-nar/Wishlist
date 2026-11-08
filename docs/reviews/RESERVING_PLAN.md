@@ -68,7 +68,7 @@ the occasion has passed. The recipient-blindness tests (U7) must keep passing.
 - Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=M/shared, confidence=verified
 - Decision: Fix now (D6)
 - Override: —
-- Outcome: open
+- Outcome: fixed (91d7635 server, 0aa0a85 client)
 
 ### R3-2 — Leaving the screen during a write shows a failure for a write that succeeded
 - Trigger: back pressed while a reserve is in flight → the reload runs on an unmounted state and throws → generic failure snackbar
@@ -76,14 +76,14 @@ the occasion has passed. The recipient-blindness tests (U7) must keep passing.
 - Decision: Defer (D10)
 - Revisit when: a giver reports an error after a write that went through, or any change to `_act` or `_reloadClaims` (then capture l10n before the await). R3-3's fix changes `_act`, so it is fixed with it.
 - Override: —
-- Outcome: open
+- Outcome: fixed with R3-3 (0aa0a85)
 
 ### R3-3 — Nothing shows an action in flight, and taps are swallowed silently
 - Trigger: a slow write → the user taps again → nothing happens, no feedback
 - Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
 - Decision: Fix now (D7)
 - Override: —
-- Outcome: open
+- Outcome: fixed (0aa0a85)
 
 ## Round 4 — 2026-11-08, unit review of U3 (DELIVERY.md §5 point 3), reviewed at 55544f4
 
@@ -96,7 +96,7 @@ D table (same scores as images R1-7, decided D9 by the triager), no triage pass.
 - Decision: Guard (D9)
 - Guard: the deterministic test takes only the claim's `FOR UPDATE` before the join, waits for the join's lock wait, then deletes and commits, so the retry branch is exercised
 - Override: —
-- Outcome: open
+- Outcome: guard added (91d7635)
 
 ## Round 6 — 2026-11-08, unit review of U5 (DELIVERY.md §5 point 3), reviewed at 54105ba
 
