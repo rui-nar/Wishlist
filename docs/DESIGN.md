@@ -44,6 +44,9 @@ grep -rnE "Color\(0x|EdgeInsets\.all\([0-9]" client/lib --exclude-dir=design
 | Colours with a Material role (`primary`, `surface`, `onSurfaceVariant`, `outline`, `error`...) | `LightColors`, `DarkColors` | `Theme.of(context).colorScheme` |
 | Page background, body text | `LightColors`, `DarkColors`, carried by `WishlistColors` | `context.wishlistColors` (`scaffoldBackgroundColor` and the body text styles already use them) |
 | Invitee activity (rose) and its container colours | `LightColors`, `DarkColors`, carried by `WishlistColors` | `context.wishlistColors`, for invitee activity only (below) |
+| Backdrop motif: `motifA`, `motifB`, `motifC` | `LightColors`, `DarkColors`, carried by `WishlistColors` | never directly: `Backdrop` paints them (Layout, below) |
+| Window classes: `medium` 600, `expanded` 840 | `Breakpoints` | against `MediaQuery.sizeOf(context).width` (Layout) |
+| Content widths: `reading` 760, `form` 560, `welcome` 1120 | `ContentWidths` | through `PageFrame` (Layout) |
 | Spacing: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64 | `Spacing.s4` ... `Spacing.s64` | directly: `EdgeInsets.all(Spacing.s16)` |
 | Radii: `sm` 6 (tags, thumbnails), `md` 8 (buttons, fields), `lg` 12 (cards), `xl` 16 (dialogs, sheets), `pill` | `Radii` | directly, or through the themed widget |
 | Font families | `FontFamilies.display`, `FontFamilies.text` | through the text theme |
@@ -119,6 +122,7 @@ Do not wrap a Material widget in a custom one to style it: change the theme in
 | `StatusChip` | A pill. Variants: `inviteeActivity` (rose), `hidden` (teal) and `neutral` |
 | `PrivacyBanner` | A teal container with an eye-off icon and a message, telling someone what is hidden from them |
 | `GiftCard` | The gift card of the mock-up: image slot (or placeholder), title, metadata line, chips, optional action |
+| `PageFrame`, `Backdrop` | A page's body: content capped and centred on the abstract backdrop (Layout, below) |
 
 **Components take display values, never data** (plan D7). A component gets
 strings and widgets, not a gift or a list. It never decides what a role may
@@ -128,6 +132,70 @@ the surprise rule is the server's.
 A new custom widget gets widget tests for its behaviour (tap targets of at
 least 44 px, semantics labels on icon-only controls) and goldens in light and
 dark.
+
+## Layout
+
+How a page sits in the window, from a phone to a desktop monitor
+([the web layout plan](plans/WEB_LAYOUT_PLAN.md), D1, D2, D4, D5).
+
+**Window classes.** Material 3's: compact below `Breakpoints.medium` (600 px),
+medium up to `Breakpoints.expanded` (840 px), expanded from there. A layout
+compares `MediaQuery.sizeOf(context).width` with them, never the platform or
+`kIsWeb`: a narrow browser window gets the phone layout, a tablet the wide
+one.
+
+**Content widths.** Page content is a centred column, capped at
+`ContentWidths.reading` (760) for lists, details and the account screen,
+`ContentWidths.form` (560) for forms and `ContentWidths.welcome` (1120) for
+the welcome page. Below the cap it fills the window, padded `Spacing.s16` on
+compact windows and `Spacing.s24` from medium. App bars keep the full window
+width.
+
+**`PageFrame`** (`design/widgets/page_frame.dart`) does this, so no screen
+computes a width. Every page puts its body in one, in one of two forms:
+
+- **A body that scrolls** (`ListView`, `SingleChildScrollView`): `PageFrame`,
+  with the scroll view's padding from `PageFrame.paddingOf(context, width)`.
+  The scroll view spans the window, so the scroll bar stays at the window
+  edge and the wheel scrolls anywhere over the page, while its content is
+  capped:
+
+  ```dart
+  body: PageFrame(
+    child: ListView(
+      padding: PageFrame.paddingOf(context, ContentWidths.reading),
+      children: [...],
+    ),
+  ),
+  ```
+
+- **A body that does not scroll by itself** (a `Center`ed card, a short
+  `Column`): `PageFrame.centered(maxWidth: ContentWidths.form, child: ...)`.
+  The frame pads it, caps it and centres it horizontally; a `Center` child
+  still centres vertically. `padding:` replaces the class padding when a page
+  needs its own.
+
+`paddingOf` measures the window. A page drawn beside something else, such as
+a navigation rail, gets a column narrower by that thing's width, still
+centred.
+
+**Backdrop.** `PageFrame` draws a `Backdrop` (`design/widgets/backdrop.dart`)
+as the bottom layer of the body: the page background and an abstract motif of
+large, soft, overlapping curved shapes, anchored to the top-right and
+bottom-left corners so the centre stays calm. It is painted, not an image,
+and has no randomness: the same window size draws the same picture.
+`BackdropIntensity.bold` is for the welcome page and the sign-in screen,
+`BackdropIntensity.subtle` (the default) for every other screen. Scaffolds
+stay opaque, so two pages never show through each other during a transition.
+
+- **The motif is teal and slate only, never rose** (Invitee colour, below).
+  Its colours are `motifA`, `motifB` and `motifC` in `tokens.dart`; change
+  them there.
+- **Text on the motif keeps 4.5:1.** Headings, body text and metadata drawn
+  straight on the page sit on the motif. `contrast_test.dart` checks
+  `bodyText`, `onSurface` and `onSurfaceVariant` on each motif colour and on
+  every blend the backdrop paints; a new motif colour must pass it. Text that
+  needs more calm goes on a `Card`, whose surface stays opaque.
 
 ## Invitee colour
 
@@ -189,7 +257,9 @@ English or French, and English otherwise.
 ## Goldens
 
 Every custom widget has golden tests, images compared pixel by pixel, in light
-and dark (`client/test/design/widgets/widgets_golden_test.dart`). The skeleton
+and dark (`client/test/design/widgets/widgets_golden_test.dart`). The backdrop's
+are at both intensities, at 390x844 and 1440x900
+(`client/test/design/widgets/backdrop_golden_test.dart`). The skeleton
 screen's are also in English and French
 (`client/test/version_screen_golden_test.dart`). They render on Linux only; how to regenerate and check them is in
 [DEVELOPMENT](DEVELOPMENT.md#golden-tests). A golden changes only in a commit

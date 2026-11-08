@@ -67,6 +67,13 @@ abstract final class LightColors {
   static const inviteeActivity = Color(0xFFE11D48);
   static const inviteeActivityContainer = Color(0xFFFFE4E6);
   static const onInviteeActivityContainer = Color(0xFF9F1239);
+
+  /// The backdrop's motif (WEB_LAYOUT_PLAN D4): teal, slate-blue and a
+  /// teal mist. Teal and slate only, never rose. Light enough that
+  /// [bodyText], [onSurface] and [onSurfaceVariant] keep 4.5:1 on each (D5).
+  static const motifA = Color(0xFFA7E3D9);
+  static const motifB = Color(0xFFC7D4E3);
+  static const motifC = Color(0xFFD5EEF0);
 }
 
 /// Dark palette (D2, D3). Same roles as [LightColors].
@@ -107,6 +114,11 @@ abstract final class DarkColors {
   static const inviteeActivity = Color(0xFFFB7185);
   static const inviteeActivityContainer = Color(0xFF4C0519);
   static const onInviteeActivityContainer = Color(0xFFFFE4E6);
+
+  /// Dark enough that the text colours keep 4.5:1 on each (D5).
+  static const motifA = Color(0xFF06403F);
+  static const motifB = Color(0xFF1E2E52);
+  static const motifC = Color(0xFF0D3647);
 }
 
 /// The 8-point spacing grid, with 4, 12 and 20 for tight spots. Each name is
@@ -122,6 +134,28 @@ abstract final class Spacing {
   static const double s40 = 40;
   static const double s48 = 48;
   static const double s64 = 64;
+}
+
+/// Window classes of Material 3 (WEB_LAYOUT_PLAN D1): compact below
+/// [medium], medium from [medium], expanded from [expanded]. Compared with
+/// the window's width (`MediaQuery.sizeOf`), never with the platform, so a
+/// narrow browser window gets the phone layout.
+abstract final class Breakpoints {
+  static const double medium = 600;
+  static const double expanded = 840;
+}
+
+/// The widths page content is capped at (WEB_LAYOUT_PLAN D2), through
+/// `PageFrame`.
+abstract final class ContentWidths {
+  /// Lists, details and the account screen.
+  static const double reading = 760;
+
+  /// Forms.
+  static const double form = 560;
+
+  /// The welcome page.
+  static const double welcome = 1120;
 }
 
 /// Corner radii.

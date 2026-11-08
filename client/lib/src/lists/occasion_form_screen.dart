@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import 'common.dart';
 import 'lists_repository.dart';
 
@@ -124,25 +125,28 @@ class _OccasionFormScreenState extends State<OccasionFormScreen> {
       appBar: AppBar(
         title: Text(_creating ? l10n.newOccasion : l10n.editOccasionTitle),
       ),
-      body: SafeArea(
-        child: _creating
-            ? _buildForm(context)
-            : FutureBuilder<Occasion>(
-                future: _occasion,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return LoadFailure(
-                      error: snapshot.error,
-                      onRetry: _load,
-                      notFound: l10n.occasionNotFound,
-                    );
-                  }
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  return _buildForm(context);
-                },
-              ),
+      body: PageFrame(
+        child: SafeArea(
+          child: _creating
+              ? _buildForm(context)
+              : FutureBuilder<Occasion>(
+                  future: _occasion,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return LoadFailure(
+                        error: snapshot.error,
+                        onRetry: _load,
+                        maxWidth: ContentWidths.form,
+                        notFound: l10n.occasionNotFound,
+                      );
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    return _buildForm(context);
+                  },
+                ),
+        ),
       ),
     );
   }
@@ -153,7 +157,7 @@ class _OccasionFormScreenState extends State<OccasionFormScreen> {
     return Form(
       key: _form,
       child: ListView(
-        padding: const EdgeInsets.all(Spacing.s16),
+        padding: PageFrame.paddingOf(context, ContentWidths.form),
         children: [
           Card(
             child: Padding(

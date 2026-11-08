@@ -54,12 +54,50 @@ void main() {
       'onError on error': (s.onError, s.error),
     };
 
+    // Text drawn straight on the page sits on the backdrop's motif
+    // (WEB_LAYOUT_PLAN D5).
+    final text = {
+      'body text': w.bodyText,
+      'headings': s.onSurface,
+      'metadata': s.onSurfaceVariant,
+    };
+    final motif = {
+      'motifA': w.motifA,
+      'motifB': w.motifB,
+      'motifC': w.motifC,
+    };
+    for (final MapEntry(key: fgName, value: fg) in text.entries) {
+      for (final MapEntry(key: bgName, value: bg) in motif.entries) {
+        pairs['$fgName on $bgName'] = (fg, bg);
+      }
+    }
+
     group('$name theme', () {
       for (final MapEntry(key: label, value: (fg, bg)) in pairs.entries) {
         test('$label is at least 4.5:1', () {
           expect(_contrast(fg, bg), greaterThanOrEqualTo(4.5));
         });
       }
+
+      // The backdrop paints the motif colours translucent over the page
+      // background and over each other, so pixels are blends of them.
+      test('text is at least 4.5:1 on every blend of the backdrop', () {
+        final layers = [w.pageBackground, ...motif.values];
+        for (final a in layers) {
+          for (final b in layers) {
+            for (var i = 0; i <= 10; i++) {
+              final bg = Color.lerp(a, b, i / 10)!;
+              for (final MapEntry(key: label, value: fg) in text.entries) {
+                expect(
+                  _contrast(fg, bg),
+                  greaterThanOrEqualTo(4.5),
+                  reason: '$label on $bg',
+                );
+              }
+            }
+          }
+        }
+      });
     });
   }
 }

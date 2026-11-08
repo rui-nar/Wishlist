@@ -6,6 +6,7 @@ import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
 import '../api/config.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import '../design/widgets/gift_card.dart';
 import '../design/widgets/status_chip.dart';
 import 'common.dart';
@@ -128,16 +129,18 @@ class _ListDetailScreenState extends State<ListDetailScreen>
                 ),
             ],
           ),
-          body: SafeArea(
-            child: snapshot.hasError
-                ? LoadFailure(
-                    error: snapshot.error,
-                    onRetry: reload,
-                    notFound: l10n.listNotFound,
-                  )
-                : list == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : _content(context, list),
+          body: PageFrame(
+            child: SafeArea(
+              child: snapshot.hasError
+                  ? LoadFailure(
+                      error: snapshot.error,
+                      onRetry: reload,
+                      notFound: l10n.listNotFound,
+                    )
+                  : list == null
+                      ? const Center(child: CircularProgressIndicator())
+                      : _content(context, list),
+            ),
           ),
         );
       },
@@ -149,7 +152,7 @@ class _ListDetailScreenState extends State<ListDetailScreen>
     final theme = Theme.of(context);
     final locale = Localizations.localeOf(context).toString();
     return ListView(
-      padding: const EdgeInsets.all(Spacing.s16),
+      padding: PageFrame.paddingOf(context, ContentWidths.reading),
       children: [
         Text(
           recipientLine(l10n, list.recipientKind, list.recipientName),

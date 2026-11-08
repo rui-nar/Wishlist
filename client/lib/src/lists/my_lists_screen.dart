@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import 'common.dart';
 import 'lists_repository.dart';
 
@@ -52,37 +53,39 @@ class _MyListsScreenState extends State<MyListsScreen>
         ],
       ),
       bottomNavigationBar: widget.bottomNavigationBar,
-      body: SafeArea(
-        child: FutureBuilder<List<ListSummary>>(
-          future: _lists,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return LoadFailure(error: snapshot.error, onRetry: reload);
-            }
-            final lists = snapshot.data;
-            if (lists == null) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final newList = FilledButton.icon(
-              onPressed: () => context.push('/lists/new'),
-              icon: const Icon(Icons.add),
-              label: Text(l10n.newList),
-            );
-            if (lists.isEmpty) return _Empty(button: newList);
-            return ListView(
-              padding: const EdgeInsets.all(Spacing.s16),
-              children: [
-                Align(alignment: Alignment.centerLeft, child: newList),
-                for (final list in lists) ...[
-                  const SizedBox(height: Spacing.s12),
-                  _ListCard(
-                    list: list,
-                    onTap: () => context.push('/lists/${list.id}'),
-                  ),
+      body: PageFrame(
+        child: SafeArea(
+          child: FutureBuilder<List<ListSummary>>(
+            future: _lists,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return LoadFailure(error: snapshot.error, onRetry: reload);
+              }
+              final lists = snapshot.data;
+              if (lists == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final newList = FilledButton.icon(
+                onPressed: () => context.push('/lists/new'),
+                icon: const Icon(Icons.add),
+                label: Text(l10n.newList),
+              );
+              if (lists.isEmpty) return _Empty(button: newList);
+              return ListView(
+                padding: PageFrame.paddingOf(context, ContentWidths.reading),
+                children: [
+                  Align(alignment: Alignment.centerLeft, child: newList),
+                  for (final list in lists) ...[
+                    const SizedBox(height: Spacing.s12),
+                    _ListCard(
+                      list: list,
+                      onTap: () => context.push('/lists/${list.id}'),
+                    ),
+                  ],
                 ],
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -98,7 +101,7 @@ class _Empty extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(Spacing.s16),
+      padding: PageFrame.paddingOf(context, ContentWidths.reading),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(Spacing.s24),

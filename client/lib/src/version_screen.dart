@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 
 import '../l10n/app_localizations.dart';
 import 'design/tokens.dart';
+import 'design/widgets/page_frame.dart';
 import 'error_line.dart';
 import 'server_version.dart';
 
@@ -36,46 +37,42 @@ class _VersionScreenState extends State<VersionScreen> {
     final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.appTitle)),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(Spacing.s16),
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Spacing.s16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      l10n.appVersion(widget.appVersion),
-                      style: textTheme.bodyLarge,
-                    ),
-                    const SizedBox(height: Spacing.s8),
-                    FutureBuilder<ServerVersion>(
-                      future: _server,
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          return ErrorLine(
-                            _failureText(l10n, snapshot.error!),
-                          );
-                        }
-                        final server = snapshot.data;
-                        if (server == null) {
-                          return const Align(
-                            alignment: Alignment.centerLeft,
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-                        return Text(
-                          l10n.serverVersion(server.version, server.env),
-                          style: textTheme.bodyLarge,
+      body: PageFrame.centered(
+        child: SafeArea(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Spacing.s16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    l10n.appVersion(widget.appVersion),
+                    style: textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: Spacing.s8),
+                  FutureBuilder<ServerVersion>(
+                    future: _server,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return ErrorLine(
+                          _failureText(l10n, snapshot.error!),
                         );
-                      },
-                    ),
-                  ],
-                ),
+                      }
+                      final server = snapshot.data;
+                      if (server == null) {
+                        return const Align(
+                          alignment: Alignment.centerLeft,
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+                      return Text(
+                        l10n.serverVersion(server.version, server.env),
+                        style: textTheme.bodyLarge,
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ),

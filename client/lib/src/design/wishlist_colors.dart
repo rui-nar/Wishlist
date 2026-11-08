@@ -16,6 +16,9 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
     required this.onInviteeActivityContainer,
     required this.pageBackground,
     required this.bodyText,
+    required this.motifA,
+    required this.motifB,
+    required this.motifC,
   });
 
   /// Rose accent for invitee activity: reservations, purchases, pledges,
@@ -34,12 +37,21 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
   /// Running text, softer than the `onSurface` of headings.
   final Color bodyText;
 
+  /// The backdrop's motif colours (WEB_LAYOUT_PLAN D4): teal and slate tints
+  /// that text keeps 4.5:1 on (D5). Read by `Backdrop` only.
+  final Color motifA;
+  final Color motifB;
+  final Color motifC;
+
   static const light = WishlistColors(
     inviteeActivity: LightColors.inviteeActivity,
     inviteeActivityContainer: LightColors.inviteeActivityContainer,
     onInviteeActivityContainer: LightColors.onInviteeActivityContainer,
     pageBackground: LightColors.pageBackground,
     bodyText: LightColors.bodyText,
+    motifA: LightColors.motifA,
+    motifB: LightColors.motifB,
+    motifC: LightColors.motifC,
   );
 
   static const dark = WishlistColors(
@@ -48,6 +60,9 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
     onInviteeActivityContainer: DarkColors.onInviteeActivityContainer,
     pageBackground: DarkColors.pageBackground,
     bodyText: DarkColors.bodyText,
+    motifA: DarkColors.motifA,
+    motifB: DarkColors.motifB,
+    motifC: DarkColors.motifC,
   );
 
   @override
@@ -57,6 +72,9 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
     Color? onInviteeActivityContainer,
     Color? pageBackground,
     Color? bodyText,
+    Color? motifA,
+    Color? motifB,
+    Color? motifC,
   }) {
     return WishlistColors(
       inviteeActivity: inviteeActivity ?? this.inviteeActivity,
@@ -66,6 +84,9 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
           onInviteeActivityContainer ?? this.onInviteeActivityContainer,
       pageBackground: pageBackground ?? this.pageBackground,
       bodyText: bodyText ?? this.bodyText,
+      motifA: motifA ?? this.motifA,
+      motifB: motifB ?? this.motifB,
+      motifC: motifC ?? this.motifC,
     );
   }
 
@@ -80,6 +101,9 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
           onInviteeActivityContainer, other.onInviteeActivityContainer, t)!,
       pageBackground: Color.lerp(pageBackground, other.pageBackground, t)!,
       bodyText: Color.lerp(bodyText, other.bodyText, t)!,
+      motifA: Color.lerp(motifA, other.motifA, t)!,
+      motifB: Color.lerp(motifB, other.motifB, t)!,
+      motifC: Color.lerp(motifC, other.motifC, t)!,
     );
   }
 }

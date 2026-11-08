@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import 'auth_controller.dart';
 
 /// The signed-in user's name and email, the version screen, sign-out and
@@ -51,49 +52,51 @@ class _AccountScreenState extends State<AccountScreen> {
     final user = context.select((AuthController auth) => auth.user);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.accountTitle)),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(Spacing.s16),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(Spacing.s16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // No user for the frame between signing out and the
-                  // guard's redirect.
-                  if (user != null) ...[
-                    Text(user.name, style: theme.textTheme.titleMedium),
-                    const SizedBox(height: Spacing.s4),
-                    Text(
-                      user.email,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+      body: PageFrame(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: PageFrame.paddingOf(context, ContentWidths.reading),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Spacing.s16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // No user for the frame between signing out and the
+                    // guard's redirect.
+                    if (user != null) ...[
+                      Text(user.name, style: theme.textTheme.titleMedium),
+                      const SizedBox(height: Spacing.s4),
+                      Text(
+                        user.email,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
+                      const SizedBox(height: Spacing.s24),
+                    ],
+                    OutlinedButton.icon(
+                      onPressed: () => context.push('/about'),
+                      icon: const Icon(Icons.info_outline),
+                      label: Text(l10n.aboutApp),
                     ),
-                    const SizedBox(height: Spacing.s24),
+                    const SizedBox(height: Spacing.s12),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _signOut,
+                      icon: const Icon(Icons.logout),
+                      label: Text(l10n.signOut),
+                    ),
+                    const SizedBox(height: Spacing.s12),
+                    TextButton.icon(
+                      onPressed: _busy ? null : _delete,
+                      style: TextButton.styleFrom(
+                        foregroundColor: theme.colorScheme.error,
+                      ),
+                      icon: const Icon(Icons.delete_outline),
+                      label: Text(l10n.deleteAccount),
+                    ),
                   ],
-                  OutlinedButton.icon(
-                    onPressed: () => context.push('/about'),
-                    icon: const Icon(Icons.info_outline),
-                    label: Text(l10n.aboutApp),
-                  ),
-                  const SizedBox(height: Spacing.s12),
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : _signOut,
-                    icon: const Icon(Icons.logout),
-                    label: Text(l10n.signOut),
-                  ),
-                  const SizedBox(height: Spacing.s12),
-                  TextButton.icon(
-                    onPressed: _busy ? null : _delete,
-                    style: TextButton.styleFrom(
-                      foregroundColor: theme.colorScheme.error,
-                    ),
-                    icon: const Icon(Icons.delete_outline),
-                    label: Text(l10n.deleteAccount),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

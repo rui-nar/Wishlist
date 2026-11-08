@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import 'common.dart';
 import 'lists_repository.dart';
 
@@ -104,25 +105,28 @@ class _ListFormScreenState extends State<ListFormScreen> {
       appBar: AppBar(
         title: Text(_creating ? l10n.newList : l10n.renameListTitle),
       ),
-      body: SafeArea(
-        child: _creating
-            ? _buildForm(context)
-            : FutureBuilder<ListDetail>(
-                future: _list,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return LoadFailure(
-                      error: snapshot.error,
-                      onRetry: _load,
-                      notFound: l10n.listNotFound,
-                    );
-                  }
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  return _buildForm(context);
-                },
-              ),
+      body: PageFrame(
+        child: SafeArea(
+          child: _creating
+              ? _buildForm(context)
+              : FutureBuilder<ListDetail>(
+                  future: _list,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return LoadFailure(
+                        error: snapshot.error,
+                        onRetry: _load,
+                        maxWidth: ContentWidths.form,
+                        notFound: l10n.listNotFound,
+                      );
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    return _buildForm(context);
+                  },
+                ),
+        ),
       ),
     );
   }
@@ -133,7 +137,7 @@ class _ListFormScreenState extends State<ListFormScreen> {
     return Form(
       key: _form,
       child: ListView(
-        padding: const EdgeInsets.all(Spacing.s16),
+        padding: PageFrame.paddingOf(context, ContentWidths.form),
         children: [
           Card(
             child: Padding(

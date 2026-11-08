@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 
@@ -9,7 +10,10 @@ import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
 import '../api/config.dart';
 import '../design/tokens.dart';
+import '../design/widgets/backdrop.dart';
+import '../design/widgets/page_frame.dart';
 import '../error_line.dart';
+import '../app_router.dart';
 import 'auth_controller.dart';
 // Web: Google's own button. Android and iOS: a stub, since they show a
 // themed button calling authenticate().
@@ -17,7 +21,13 @@ import 'google_button_stub.dart'
     if (dart.library.js_interop) 'google_button_web.dart';
 import 'google_sign_in_init.dart';
 
-/// The app's name and the Google button, in a card (ACCOUNTS_PLAN D10).
+/// The app's name and the Google button, in a card (ACCOUNTS_PLAN D10), on
+/// the bold backdrop (WEB_LAYOUT_PLAN D9).
+///
+/// [register] is the welcome page's Register (WEB_LAYOUT_PLAN D7): the first
+/// Google sign-in creates the account, so it changes only the heading and
+/// the prompt. [offerWelcome] adds a link to the welcome page, for a visitor
+/// who is not in the middle of following a link.
 ///
 /// Reads the Google client ID from `/api/config` (D6) and initialises Google
 /// sign-in with it: the only place that does, so Google's script loads only
@@ -25,7 +35,14 @@ import 'google_sign_in_init.dart';
 /// available instead of showing a button that cannot work. Once signed in,
 /// the router's guard takes the user where they were going.
 class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key});
+  const SignInScreen({
+    super.key,
+    this.register = false,
+    this.offerWelcome = false,
+  });
+
+  final bool register;
+  final bool offerWelcome;
 
   @override
   State<SignInScreen> createState() => _SignInScreenState();
@@ -112,44 +129,65 @@ class _SignInScreenState extends State<SignInScreen> {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(Spacing.s16),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Spacing.s24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(l10n.appTitle, style: textTheme.headlineMedium),
-                    const SizedBox(height: Spacing.s8),
-                    Text(l10n.signInPrompt, style: textTheme.bodyLarge),
-                    const SizedBox(height: Spacing.s24),
-                    FutureBuilder<ClientConfig>(
-                      future: _config,
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          return _ConfigError(
-                            message: snapshot.error is ApiException
-                                ? l10n.serverError
-                                : l10n.serverUnreachable,
-                            onRetry: _retryConfig,
-                          );
-                        }
-                        final config = snapshot.data;
-                        if (config == null) return const _Progress();
-                        if (config.googleClientId == null) {
-                          return Text(
-                            l10n.signInNotConfigured,
-                            style: textTheme.bodyLarge,
-                          );
-                        }
-                        return _signIn(context, l10n);
-                      },
-                    ),
-                  ],
+      body: PageFrame(
+        intensity: BackdropIntensity.bold,
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: PageFrame.paddingOf(context, ContentWidths.form),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(Spacing.s24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        widget.register ? l10n.registerTitle : l10n.appTitle,
+                        style: textTheme.headlineMedium,
+                      ),
+                      const SizedBox(height: Spacing.s8),
+                      Text(
+                        widget.register
+                            ? l10n.registerPrompt
+                            : l10n.signInPrompt,
+                        style: textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: Spacing.s24),
+                      FutureBuilder<ClientConfig>(
+                        future: _config,
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return _ConfigError(
+                              message: snapshot.error is ApiException
+                                  ? l10n.serverError
+                                  : l10n.serverUnreachable,
+                              onRetry: _retryConfig,
+                            );
+                          }
+                          final config = snapshot.data;
+                          if (config == null) return const _Progress();
+                          if (config.googleClientId == null) {
+                            return Text(
+                              l10n.signInNotConfigured,
+                              style: textTheme.bodyLarge,
+                            );
+                          }
+                          return _signIn(context, l10n);
+                        },
+                      ),
+                      if (widget.offerWelcome) ...[
+                        const SizedBox(height: Spacing.s16),
+                        Center(
+                          child: TextButton.icon(
+                            onPressed: () => context.go(kWelcomePath),
+                            icon: const Icon(Icons.help_outline),
+                            label: Text(l10n.whatIsWishlist),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),

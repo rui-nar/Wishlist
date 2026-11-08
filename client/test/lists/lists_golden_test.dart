@@ -102,12 +102,25 @@ void main() {
     },
   };
 
+  // Each picture's screen and window: every screen on a phone, named
+  // without its size, and the screens also drawn on a desktop window
+  // (WEB_LAYOUT_PLAN D2, D3), named with it.
+  const wide = {'my_lists', 'list_detail'};
+  final windows = [
+    for (final screen in screens.keys) ...[
+      (screen: screen, size: const Size(390, 844), suffix: ''),
+      if (wide.contains(screen))
+        (screen: screen, size: const Size(1440, 900), suffix: '_1440x900'),
+    ],
+  ];
+
   group('goldens', skip: _skip, () {
-    for (final MapEntry(key: screen, value: setUp) in screens.entries) {
+    for (final (:screen, :size, :suffix) in windows) {
       for (final MapEntry(key: mode, value: brightness)
           in brightnesses.entries) {
-        testWidgets('$screen, $mode', (tester) async {
-          tester.view.physicalSize = const Size(390, 844);
+        final name = '$screen${suffix}_$mode';
+        testWidgets('$screen$suffix, $mode', (tester) async {
+          tester.view.physicalSize = size;
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.reset);
           tester.platformDispatcher.localesTestValue = const [
@@ -120,12 +133,12 @@ void main() {
           addTearDown(() => WidgetsApp.debugAllowBannerOverride = true);
 
           final server = FakeListsServer();
-          await startApp(tester, server, setUp(server));
+          await startApp(tester, server, screens[screen]!(server));
           await after[screen]?.call(tester);
 
           await expectLater(
             find.byType(WishlistApp),
-            matchesGoldenFile('goldens/${screen}_$mode.png'),
+            matchesGoldenFile('goldens/$name.png'),
           );
         }, tags: ['golden']);
       }

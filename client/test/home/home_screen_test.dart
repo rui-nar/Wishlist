@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishlist/src/auth/account_screen.dart';
+import 'package:wishlist/src/design/tokens.dart';
 import 'package:wishlist/src/lists/list_detail_screen.dart';
 import 'package:wishlist/src/lists/list_form_screen.dart';
+import 'package:wishlist/src/lists/my_lists_screen.dart';
+import 'package:wishlist/src/shared/shared_with_me_screen.dart';
 
 import '../lists/support/fake_lists_server.dart';
 
@@ -112,5 +115,89 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AccountScreen), findsOneWidget);
+  });
+
+  group('window classes (WEB_LAYOUT_PLAN D3)', () {
+    void windowWidth(WidgetTester tester, double width) {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+    }
+
+    testWidgets('compact: a navigation bar and no rail', (tester) async {
+      windowWidth(tester, 390);
+      await startApp(tester, server, '/');
+
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(NavigationRail), findsNothing);
+    });
+
+    testWidgets('expanded: a navigation rail and no bar', (tester) async {
+      windowWidth(tester, 1280);
+      await startApp(tester, server, '/');
+
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+      // The rail is on the left, the app bar beside it.
+      final rail = tester.getRect(find.byType(NavigationRail));
+      final appBar = tester.getRect(find.byType(AppBar));
+      expect(rail.left, 0);
+      expect(appBar.left, rail.right);
+      expect(appBar.right, 1280);
+    });
+
+    testWidgets("the rail's second destination opens shared with me",
+        (tester) async {
+      windowWidth(tester, 1280);
+      await startApp(tester, server, '/');
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.text('Shared with me'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SharedWithMeScreen), findsOneWidget);
+      expect(find.byType(MyListsScreen), findsNothing);
+    });
+
+    testWidgets('crossing the breakpoint keeps my lists without reloading',
+        (tester) async {
+      server.addList('Birthday');
+      windowWidth(tester, 800);
+      await startApp(tester, server, '/');
+      final state = tester.state(find.byType(MyListsScreen));
+
+      windowWidth(tester, 1280);
+      await tester.pumpAndSettle();
+      expect(find.byType(NavigationRail), findsOneWidget);
+      windowWidth(tester, 800);
+      await tester.pumpAndSettle();
+      expect(find.byType(NavigationBar), findsOneWidget);
+
+      expect(
+        server.calls.where((call) => call == 'GET /api/lists'),
+        hasLength(1),
+      );
+      expect(tester.state(find.byType(MyListsScreen)), same(state));
+      expect(find.text('Birthday'), findsOneWidget);
+    });
+
+    testWidgets('a list card is at most the reading width', (tester) async {
+      server.addList('Birthday');
+      windowWidth(tester, 1440);
+      await startApp(tester, server, '/');
+
+      final card = find.ancestor(
+        of: find.text('Birthday'),
+        matching: find.byType(Card),
+      );
+      expect(
+        tester.getSize(card).width,
+        lessThanOrEqualTo(ContentWidths.reading),
+      );
+    });
   });
 }
