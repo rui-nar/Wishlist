@@ -35,9 +35,9 @@ const _publicPaths = {kWelcomePath, kAboutPath};
 
 /// Where the guard sends a request for [uri], or null to let it through.
 ///
-/// Signed out, `/` goes to the welcome page, the welcome page, the sign-in
-/// screen and the version screen pass, and every other location goes to
-/// `/sign-in?from=<location>` (WEB_LAYOUT_PLAN D6). Signed in, the welcome
+/// Signed out, `/` goes to the welcome page whatever its query, the welcome
+/// page, the sign-in screen and the version screen pass, and every other
+/// location goes to `/sign-in?from=<location>` (WEB_LAYOUT_PLAN D6). Signed in, the welcome
 /// page goes to `/`, and the sign-in screen goes to `from`
 /// when [safeFrom] accepts it, `/` otherwise. Share links (`/join`) rely on
 /// this return; their token waits in [PendingJoin], not in the location, so
@@ -60,8 +60,10 @@ String? authRedirect(AuthStatus status, Uri uri, {required bool joinPending}) {
     return from;
   }
   if (onSignIn || _publicPaths.contains(uri.path)) return null;
+  // No route under `/` reads a query, so a home link with one (`?fbclid=…`)
+  // is still home (review R2-2).
+  if (uri.path == '/') return kWelcomePath;
   final location = uri.toString();
-  if (location == '/') return kWelcomePath;
   return Uri(path: kSignInPath, queryParameters: {'from': location})
       .toString();
 }

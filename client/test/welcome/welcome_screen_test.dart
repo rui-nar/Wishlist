@@ -47,14 +47,18 @@ void main() {
     expect(location(tester).path, '/welcome');
     expect(find.text('Wish lists for every occasion'), findsOneWidget);
     expect(
-      find.text("Keep the things you'd love to receive, share them with "
-          'family and friends for each occasion, and let them coordinate '
-          'without spoiling the surprise.'),
+      find.text("Keep the things you'd love to receive in one place, and "
+          'share them with family and friends for each occasion.'),
       findsOneWidget,
     );
     expect(find.text('Lists for everything you wish for'), findsOneWidget);
     expect(find.text('Shared for each occasion'), findsOneWidget);
-    expect(find.text('The surprise stays a surprise'), findsOneWidget);
+    expect(find.text('You stay in control'), findsOneWidget);
+    expect(
+      find.text('Stop a link from working or remove someone from an '
+          'occasion at any time.'),
+      findsOneWidget,
+    );
     expect(find.byType(AppBar), findsNothing);
     // Nothing is asked of the server or of Google before sign-in.
     expect(server.calls, isNot(contains('GET /api/config')));
@@ -149,7 +153,7 @@ void main() {
     expect(find.widgetWithText(FilledButton, "S'inscrire"), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Se connecter'),
         findsOneWidget);
-    expect(find.text('La surprise reste une surprise'), findsOneWidget);
+    expect(find.text('Vous gardez la main'), findsOneWidget);
   });
 
   group('layout', () {

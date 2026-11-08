@@ -41,8 +41,10 @@ void main() {
 
     test('signed out: home goes to the welcome page (WEB_LAYOUT D6)', () {
       expect(redirect(AuthStatus.failed, '/'), '/welcome');
-      // Home with a query is a deep link like any other.
-      expect(redirect(AuthStatus.signedOut, '/?x=1'), '/sign-in?from=%2F%3Fx%3D1');
+      // Home with a query is still home: no route under it reads one
+      // (review R2-2).
+      expect(redirect(AuthStatus.signedOut, '/?x=1'), '/welcome');
+      expect(redirect(AuthStatus.signedOut, '/?fbclid=abc'), '/welcome');
     });
 
     test('signed out: the welcome page and the version screen pass (D6)', () {
