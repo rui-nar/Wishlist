@@ -57,7 +57,9 @@ flutter pub get --enforce-lockfile
 flutter test $@ --tags golden
 '@ -replace "`r", ''
 
-$testArgs = if ($Check) { @() } else { @('--update-goldens') }
+# @() around the if: an if expression unrolls a one-element array into a bare
+# string, which @testArgs would then splat one character at a time.
+$testArgs = @(if (-not $Check) { '--update-goldens' })
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 # The repository is mounted at /repo. Named volumes cache the SDK and the pub
