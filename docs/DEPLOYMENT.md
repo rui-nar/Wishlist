@@ -34,6 +34,7 @@ below; replace them as you run the commands.
 | `<old-major>`, `<new-major>` | Postgres major versions, e.g. `18` and `19` ([Postgres major upgrade](#postgres-major-upgrade)) |
 | `<old-postgres-tag>` | the exact Postgres image tag before a major upgrade, e.g. `18.6` |
 | `<postgres-password>` | never typed: the text in `deploy/*/.env.example` that [step 5](#5-env-files) replaces with a generated password |
+| `<google-web-client-id>` | the ID of Wishlist's web OAuth client in the Google Cloud console, ending in `.apps.googleusercontent.com` ([step 11](#11-google-sign-in)). Public, not a secret, but never committed |
 
 Four placeholders are also the literal text of files in `deploy/`:
 `<prod-host>` and `<val-host>` in `Caddyfile.snippet`, `<deploy-user>` in
@@ -42,8 +43,9 @@ files. Inside the `sed` and `grep` patterns that fill in or check those files
 (each marked `# literal placeholder`), leave them as they are.
 
 Commands are marked **[VPS]** (bash, logged in as `<deploy-user>`),
-**[dev]** (PowerShell in the repository checkout on the Windows dev machine)
-or **[GitHub]** (the web UI of `rui-nar/Wishlist`).
+**[dev]** (PowerShell in the repository checkout on the Windows dev machine),
+**[GitHub]** (the web UI of `rui-nar/Wishlist`) or **[Google Cloud]** (the
+Google Cloud console, in Wishlist's project).
 
 ## What Wishlist adds to the VPS
 
@@ -293,9 +295,11 @@ Each `sed` generates one password and writes it into both `POSTGRES_PASSWORD`
 and `DATABASE_URL`, which must match. The rest of the examples needs no
 change: `APP_ENV`, an empty `FRONTEND_ORIGIN` (the web client is served by the
 app itself, the mobile apps send no `Origin`), and `FORWARDED_ALLOW_IPS`
-(checked after the first start, [step 8](#8-first-val-deploy)). Never add
-`MEDIA_DIR` or `APP_VERSION`: the image sets both, and the comments in
-`.env.example` say what breaks otherwise.
+(checked after the first start, [step 8](#8-first-val-deploy)).
+`GOOGLE_CLIENT_IDS` stays empty until [step 11](#11-google-sign-in): until
+then the app runs and answers sign-in with "Google sign-in is not
+configured". Never add `MEDIA_DIR` or `APP_VERSION`: the image sets both, and
+the comments in `.env.example` say what breaks otherwise.
 
 Things to know about these files:
 
@@ -679,6 +683,117 @@ git grep -n -i -F -e <prod-host> -e <val-host> -e <vps-host> -e <deploy-user>   
 
 The last command takes the real names. (The placeholders themselves are
 expected in this document and in `deploy/`.)
+
+## 11. Google sign-in
+
+Sign-in uses one web OAuth client for every environment: the one created for
+DEV in [DEVELOPMENT](DEVELOPMENT.md#google-sign-in-in-dev), in the same Google
+Cloud project. VAL and PROD add their origins to it and put its ID in their
+`.env`. This step needs the hostnames ([step 6](#6-caddy)): Google accepts
+only `https` origins, apart from `localhost`.
+
+**[Google Cloud]** Google Auth Platform → Clients → `Wishlist web` →
+Authorised JavaScript origins. Add, next to `http://localhost:5500`:
+
+| Origin | For |
+|---|---|
+| `https://<val-host>` | VAL |
+| `https://<prod-host>` | PROD |
+
+An origin is the scheme and host only: no path, no trailing slash. Redirect
+URIs stay empty (accounts plan D2: the client sends Google's ID token to the
+server, nothing redirects). The client secret is not used anywhere: it goes
+into no `.env` and no GitHub secret.
+
+**[Google Cloud]** Google Auth Platform → Audience. While the publishing
+status is **Testing**, only the listed test users can sign in, which is
+enough for VAL. Before PROD serves anyone else, **Publish app**. Sign-in asks
+only for `openid`, `email` and `profile`, which need no Google review; adding
+a logo to the branding does.
+
+**[VPS]** Set the ID in each `.env` (it is the same in both), then recreate
+the app:
+
+```bash
+cd /opt/wishlist-val                     # then the same in /opt/wishlist
+grep -n '^GOOGLE_CLIENT_IDS=' .env       # GOOGLE_CLIENT_IDS= (empty)
+sed -i 's/^GOOGLE_CLIENT_IDS=.*/GOOGLE_CLIENT_IDS=<google-web-client-id>/' .env
+grep -n '^GOOGLE_CLIENT_IDS=' .env       # GOOGLE_CLIENT_IDS=<google-web-client-id>
+docker compose up -d --wait --wait-timeout 300
+```
+
+If `grep` prints nothing, the `.env` predates this setting (an install made
+before the accounts plan): add the line from `.env.example` first
+([Updating the files on the host](#updating-the-files-on-the-host), last row).
+`docker compose restart` would not re-read `.env` ([step 5](#5-env-files)).
+
+**[dev]** Each environment hands the ID to its clients:
+
+```powershell
+curl.exe -s https://<val-host>/api/config    # {"google_client_id":"<google-web-client-id>"}
+curl.exe -s https://<prod-host>/api/config   # the same
+```
+
+`{"google_client_id":null}` means the app did not get the value: check the
+line in `.env`, then `docker compose up -d` again. Then sign in on
+`https://<val-host>` in a browser. An origin error from Google's button means
+the origin in the table above differs from the address in the browser, or was
+added a few minutes ago and has not reached Google's servers yet.
+
+**[dev]** The ID was not committed:
+
+```powershell
+git grep -n -F <google-web-client-id>     # nothing
+```
+
+### Android OAuth client
+
+The Android app gets the web client's ID from `/api/config` and passes it to
+Google as its server client ID, so the ID token it receives is issued for the
+web client and `GOOGLE_CLIENT_IDS` needs nothing more (accounts plan D2, D12).
+Google also requires an **Android** OAuth client in the same project,
+registered with the app's package name and the SHA-1 of the key that signed
+the installed app. Without it, the Google button fails on the device; the web
+is not affected. No client secret is involved, and its client ID goes
+nowhere: Google matches the installed app against the registration.
+
+**Not possible for VAL and PROD yet**, for two reasons:
+
+- **The package name is a placeholder.** The Android application id is
+  `com.example.wishlist` (`client/android/app/build.gradle.kts`, and
+  `client/README.md`, "Placeholder application id"). The real one is an open
+  decision of the DevOps plan. A registration made with the placeholder stops
+  matching when the id changes and has to be replaced then.
+- **There is no release key.** Release builds are signed with the debug key
+  for now (`build.gradle.kts`). The release key is the app's identity: an
+  update signed with another key cannot be installed over an existing copy,
+  and a published app cannot be re-keyed.
+
+Until then, a client registered with the placeholder and the debug key lets
+debug builds sign in on the dev machine. Each key needs its own Android
+client (one package name and one SHA-1 each), and every machine has its own
+debug key.
+
+**[dev]** The debug key's SHA-1 (`keytool` comes with the JDK Flutter uses):
+
+```powershell
+keytool -list -v -keystore $HOME\.android\debug.keystore -alias androiddebugkey -storepass android
+```
+
+**[Google Cloud]** Google Auth Platform → Clients → Create client:
+
+| Field | Value |
+|---|---|
+| Application type | **Android** |
+| Name | `Wishlist Android debug` (and later `Wishlist Android release`) |
+| Package name | the application id: `com.example.wishlist` today, the real one once chosen |
+| SHA-1 certificate fingerprint | the `SHA1:` line printed by `keytool` |
+
+Once the real application id and the release key exist, register a second
+client with the release key's SHA-1 (`keytool -list -v -keystore` on the
+release keystore). If Google Play ends up signing the app with a key other
+than the release key (a key Google generated for Play App Signing), register
+that key's SHA-1 too, as Play Console shows it under App integrity.
 
 ## Daily check
 
@@ -1196,7 +1311,8 @@ Each item of the plan's Definition of done, and where it is checked:
 ## Open items
 
 - [ ] **Domain and hostnames** for PROD and VAL. Needed for [step 6](#6-caddy)
-      onwards; later also for CORS origins and OAuth redirect URIs.
+      onwards, including the Google sign-in origins of
+      [step 11](#11-google-sign-in).
 - [ ] **Off-site backups** of the dumps **and** the media directory (shared
       problem with TraxJourney). Today both are lost with the VPS, its disk or
       OVH's datacenter. Needed before PROD holds real users' data.
