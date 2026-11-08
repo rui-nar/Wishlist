@@ -30,8 +30,8 @@ chosen here must not need rewriting when they arrive.
 ## Decisions
 
 - **D1 — Lists have owners, through a table.** `lists`: `id` (UUID),
-  `title`, `recipient_kind` (`self` | `other`), `recipient_name` (required
-  when `other`, null when `self`), `created_at`, `updated_at`. `list_owners`:
+  `title` (1–100), `recipient_kind` (`self` | `other`), `recipient_name`
+  (1–100, required when `other`, null when `self`), `created_at`, `updated_at`. `list_owners`:
   (`list_id`, `user_id`), both FKs cascading, primary key on the pair. The
   creator is the only owner for now; co-owners are a need (`docs/NEEDS.md`),
   so ownership is a table from the start rather than a `lists.owner_id`
@@ -45,7 +45,9 @@ chosen here must not need rewriting when they arrive.
 - **D3 — Gifts.** `gifts`: `id`, `list_id` (FK cascade), `title` (1–200),
   `description` (0–2000), `links` (Postgres `text[]`, at most 10, each an
   absolute `http` or `https` URL of at most 2048 characters), `price_amount`
-  (`numeric(12,2)`, ≥ 0, optional) and `price_currency` (ISO 4217 code from a
+  (`numeric(12,2)`, ≥ 0, at most 10 integer digits and 2 decimals, checked by
+  the request schema so a larger or more precise value answers 422 instead of
+  overflowing or being rounded; optional) and `price_currency` (ISO 4217 code from a
   fixed list in the server, required when an amount is given), `created_at`,
   `updated_at`. Gifts are listed oldest first. Images are a later plan
   (media storage, link fetching, purge rules: R2-5 of the DevOps review).
@@ -61,14 +63,21 @@ chosen here must not need rewriting when they arrive.
   link again later. The link is `<PUBLIC_BASE_URL>/join/<token>`
   (`PUBLIC_BASE_URL` from settings, returned by `/api/config` for the mobile
   apps; on the web the client uses its own origin). Opening it requires
-  signing in (the accounts plan's `from` return), then `POST
-  /api/join/<token>` makes the user a member and returns the occasion's id.
-  Joining twice is not an error (200, same occasion). Regenerating the link
+  signing in (the accounts plan's `from` return). The client then shows a
+  confirmation screen built from `POST /api/join/preview` (occasion name and
+  date, list title, recipient, owners' names) and joins only when the user
+  confirms, with `POST /api/join`, which makes the user a member and returns
+  the occasion's id. Both endpoints take the token in the JSON body
+  (`{"token": "..."}`), never in the URL, so it does not reach access logs
+  (round-1 envelope answers). Joining twice is not an error (200, same
+  occasion). Regenerating the link
   replaces the token, so the old link stops working; revoking sets it to null.
   Members who already joined keep access (`docs/NEEDS.md`, Access).
 - **D6 — Owners cannot join their own occasion.** An owner of the list
   (recipient or not) who opens the link gets 409 "you own this list" and the
-  client opens the list instead. For a "for me" list this is the needs' rule
+  client opens the list instead: the 409 body carries `list_id`, and the
+  preview answers with `"role": "owner"` and the `list_id`, so the client opens
+  the list without offering to join (review R1-3). For a "for me" list this is the needs' rule
   ("a recipient cannot join their own occasion"); for a "for someone else"
   list the owner already sees everything an invitee sees.
 - **D7 — Authorization in two functions, and 404 for everything hidden.**
@@ -96,10 +105,18 @@ chosen here must not need rewriting when they arrive.
   | `DELETE /api/occasions/{id}/link` | owner | revoke the link |
   | `GET /api/occasions/{id}/members` | owner | who joined (display names) |
   | `DELETE /api/occasions/{id}/members/{user_id}` | owner | remove an invitee |
-  | `POST /api/join/{token}` | anyone signed in | join; 404 for an unknown or revoked token, 409 for an owner |
+  | `POST /api/join/preview` `{"token"}` | anyone signed in | occasion name and date, list title, recipient, owners' names, and `role` (`owner`, `member` or `none`), with `list_id` for an owner and `occasion_id` for a member; 404 for an unknown or revoked token |
+  | `POST /api/join` `{"token"}` | anyone signed in | join → `{"occasion_id"}`; 404 for an unknown or revoked token; 409 `{"list_id"}` for an owner |
   | `GET /api/shared` | invitee | occasions I joined: occasion name and date, list title, recipient, owner names |
-  | `GET /api/occasions/{id}` | owner or invitee | the occasion, its list and its gifts |
+  | `GET /api/occasions/{id}` | owner or invitee | the occasion, its list and its gifts, in a per-role model (below) |
   | `DELETE /api/occasions/{id}/membership` | invitee | leave the occasion |
+
+  The invitee's view of an occasion (`GET /api/occasions/{id}` for a member,
+  and `GET /api/shared`) has its own response model: occasion id, name and
+  date; list title; the recipient's display name (`recipient_name`, or the
+  owners' display names for a "for me" list); the owners' display names; the
+  gifts. It never contains a join token, a member list or the list's other
+  occasions: those are in owners' models only (review R1-1, R1-4).
 
   Responses are Pydantic models listing their fields explicitly; no endpoint
   serialises a model object wholesale, so a later column (a reservation, a
@@ -115,7 +132,9 @@ chosen here must not need rewriting when they arrive.
   stranger) and checks, for every endpoint of D8, what each role gets. Today
   there is no invitee activity to hide, so the matrix proves access (owners and
   members see what they should, strangers and removed members get 404, owners
-  of a "for me" list cannot become invitees). Later plans add their activity
+  of a "for me" list cannot become invitees) and content: every response an
+  invitee or a stranger receives is scanned recursively and contains no
+  `join_token` key and no id of an occasion they are not a member of. Later plans add their activity
   to the same scenario and assert the recipient sees none of it. Members'
   identities are shown only to the list's owners and are not activity.
 - **D11 — Client structure.** `client/lib/src/lists/` (my lists, list
@@ -136,6 +155,11 @@ chosen here must not need rewriting when they arrive.
 
 REVIEW.md defaults apply, with these additions:
 
+- **Join tokens never travel in API URLs.** The API takes them in request
+  bodies; the client's `/join/<token>` route keeps the token in the browser's
+  history, which is accepted (whoever reads it already holds the link).
+- **Joining is explicit.** Opening a link shows what will be joined and asks
+  for confirmation; nothing is joined on a click alone.
 - **Share links are bearer capabilities.** Anyone holding an occasion's link
   can join it after signing in; forwarding is expected (`docs/NEEDS.md`,
   Access). The owner's control is regenerating or revoking the link and
@@ -211,10 +235,12 @@ REVIEW.md defaults apply, with these additions:
   7. One Alembic revision; read it.
   8. Tests:
      - list CRUD; recipient rules (`other` requires a name, `self` refuses
-       one, the kind cannot be changed by `PATCH`);
+       one, the kind cannot be changed by `PATCH`); a title or recipient name
+       of 101 characters → 422;
      - gift CRUD; validation (title length, 11 links refused, `javascript:`
        and relative URLs refused, a currency without an amount refused, an
-       unknown currency refused, a negative price refused);
+       unknown currency refused, a negative price refused, 10000000000 and
+       19.999 → 422);
      - `test_roles.py` with the scenario of D10 for the endpoints of this
        unit: owner allowed; another user, and an unauthenticated request, get
        404 and 401 respectively; ids of other users' lists and gifts are
@@ -257,7 +283,17 @@ REVIEW.md defaults apply, with these additions:
      - an invitee of occasion A cannot read occasion B of the same list;
      - a stranger gets 404 everywhere, including with a valid occasion id;
      - owners of a "for me" list and of a "for someone else" list get 409 on
-       join;
+       join with their `list_id`, and `role: owner` with `list_id` on preview;
+       a member gets `role: member` with the occasion id; anyone else
+       `role: none` and no ids;
+     - content: every response to an invitee, a stranger or a preview is
+       scanned recursively and contains no `join_token` key and no id of an
+       occasion the caller is not a member of (an invitee of occasion A sees
+       nothing of occasion B, even though both are on one list);
+     - the invitee model names the recipient: `recipient_name` for a "for
+       someone else" list, the owner's display name for a "for me" list;
+     - the token is accepted only in the body: `POST /api/join/<token>` is
+       404;
      - an unknown, regenerated-away or revoked token → 404;
      - a removed invitee gets 404 afterwards and can rejoin only with a
        current link;
@@ -329,8 +365,11 @@ REVIEW.md defaults apply, with these additions:
      stops working), revoke, see members and remove one (confirmation),
      rename, delete.
   2. `/join/:token`: signed-out users go through sign-in and come back (the
-     accounts plan's `from`); then `POST /api/join/<token>`; on success open
-     the occasion; on 404 explain the link is no longer valid; on 409 open
+     accounts plan's `from`); then `POST /api/join/preview` and a
+     confirmation screen (occasion, date, list, recipient, owners; "Join" and
+     "Cancel"); "Join" calls `POST /api/join` and opens the occasion; a
+     member is taken straight to the occasion; on 404 explain the link is no
+     longer valid; for an owner (preview role or a 409) open
      the list as its owner.
   3. "Shared with me" destination: occasions joined (occasion, date, list,
      recipient, owner), each opening a read-only occasion view: list title,

@@ -110,7 +110,8 @@ on start, so rolling PROD back across this release would take it down.
   tests), `sessions.py`, `deps.py` and `router.py`, included by
   `create_app`. Later features follow the same shape (`server/app/lists/`, …).
   A request-scoped SQLAlchemy session comes from a `db_session` dependency in
-  `server/app/db.py`, using `app.state.session_factory`.
+  `server/app/db.py`, using `app.state.session_factory`: one unit of work per
+  request, committed when the request succeeds, rolled back when it raises.
 - **D10 — Client: go_router and provider, as in TraxJourney.**
   - `go_router` with a redirect guard: a signed-out user is sent to
     `/sign-in?from=<location>` and returned to `<location>` after signing in.
@@ -231,7 +232,10 @@ REVIEW.md defaults apply, with these additions:
   2. `settings.py`: `google_client_ids` (comma-separated, parsed like
      `frontend_origins`).
   3. `db.py`: a `db_session` dependency yielding a session from
-     `request.app.state.session_factory`, committed by the handler.
+     `request.app.state.session_factory`. It commits when the request
+     succeeds and rolls back when it raises, so a write made by a dependency
+     (the session touch in `current_user`) is kept on read-only requests too
+     (review R1-2).
   4. `accounts/models.py`: the three tables of D3, `Mapped` typed, UUID keys
      (`uuid.uuid4` defaults), timestamps with time zone. Import the models in
      `alembic/env.py` so autogenerate sees them; generate one revision and
@@ -264,7 +268,9 @@ REVIEW.md defaults apply, with these additions:
         body with `WWW-Authenticate: Bearer`;
       - an expired session row is refused; touching moves `expires_at` at
         most once per hour (freeze time with a fixed clock injected into
-        `sessions.py`);
+        `sessions.py`); and through the request path: two `GET /api/me`
+        calls more than an hour apart move `expires_at` in the database
+        (review R1-2);
       - sign-out deletes only that session;
       - `DELETE /api/me` removes the user, identities and all sessions; the
         old tokens are refused; signing in again creates a new user id;
@@ -321,6 +327,8 @@ REVIEW.md defaults apply, with these additions:
   VAL seeding exercises a path this change breaks.
 - **Depends on:** —
 
+### Wave 2
+
 #### U3 — Configuration and runbook for Google sign-in
 
 - **Goal:** Every environment knows its Google client IDs, and the owner has
@@ -348,8 +356,6 @@ REVIEW.md defaults apply, with these additions:
 - **Latitude:** decided at routing.
 - **Escalate if:** a file outside Scope is needed (X3).
 - **Depends on:** —
-
-### Wave 2
 
 #### U4 — Client sign-in, session and account screen
 
@@ -413,6 +419,8 @@ REVIEW.md defaults apply, with these additions:
   cannot obtain an ID token on the web with the button flow; the vendored
   package does not match the `google_sign_in` version resolved.
 - **Depends on:** U1 (API), and the design-system plan delivered.
+
+### Wave 3
 
 #### U5 — CI for the vendored Google sign-in package
 
