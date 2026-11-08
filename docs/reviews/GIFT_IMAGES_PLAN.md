@@ -98,3 +98,62 @@ stays.
 - Revisit when: a seed fails on a vanished media file, or seeding becomes scheduled or unattended
 - Override: —
 - Outcome: open (runbook line added in plan: U3 Do 3, rerun the seed if it fails on a vanished file)
+
+## Round 2 — 2026-11-08, unit review of U1 (DELIVERY.md §5 point 3), reviewed at 97e09a7
+
+Envelope answers (orchestrator, standing instruction): (a) upload abuse by a
+signed-in user is out of scope on the same terms as fetch abuse ("revisit
+with abuse"), but in-flight uploads and in-flight URL fetches are each bounded
+by a small counting semaphore answering 503 `image_busy` when full (the fetch
+bound lives in U5's from-url route); (b) the Definition of done's VAL
+measurement records the API's idle RSS in docs/DEPLOYMENT.md.
+
+### R2-1 — A 4096 × 4096 WebP is held about four times over while it decodes
+- Trigger: a signed-in user uploads a large-canvas WebP (a few KB lossless) → libwebp canvases, a bytes copy and the image buffer coexist (≈256 MB) → the API container is OOM-killed
+- Scores: trigger=concrete, impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: open
+
+### R2-2 — Transparency promotion runs on the full-size decode before the reduction
+- Trigger: an RGB PNG with a tRNS chunk at the 4096² cap → full-size RGBA copy → about 112 MB peak
+- Scores: trigger=plausible, impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: VAL's recorded idle RSS plus 112 MB exceeds 192 MB, or an OOM-kill of the API container is logged during an upload
+- Override: —
+- Outcome: open
+
+### R2-3 — An upload holds its database connection for the whole body read and lock wait
+- Trigger: many slow uploads in flight → the pool (5 + 10) is exhausted → other endpoints fail after 30 s
+- Scores: trigger=plausible, impact=degraded-ux, detect=logged, later=cheap, fix=M/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: a QueuePool timeout is logged while uploads or URL fetches are in flight, or the upload and from-url semaphores together approach the pool size
+- Override: —
+- Outcome: open
+
+### R2-4 — Concurrent upload bodies are bounded only by the connection pool
+- Trigger: several 10 MB uploads in flight beside a decode → resident bodies plus the decode peak exceed the container limit
+- Scores: trigger=concrete (triager: was plausible), impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: open
+
+## Round 3 — 2026-11-08, unit review of U2 (DELIVERY.md §5 point 3), reviewed at 383d3b1
+
+Envelope question (bound concurrent fetches) answered by (a) above.
+
+### R3-1 — A TLS error after the headers escapes fetch() as a 500
+- Trigger: an https image server sends a bad TLS record mid-body → raw ssl.SSLError passes the fetcher → 500 instead of url_fetch_failed
+- Scores: trigger=plausible, impact=wrong-visible, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: an unhandled ssl.SSLError (or any non-FetchError exception) from the fetcher appears in the error log for POST /api/images/from-url
+- Override: —
+- Outcome: open
+
+### R3-2 — The 4-thread DNS pool is a shared choke point; cancelled lookups keep their thread
+- Trigger: several fetches to hosts with stalling DNS → threads stay busy → healthy fetches time out
+- Scores: trigger=plausible, impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: the fetch log shows timeouts on normally healthy hosts clustered around a slow-resolving host, or U5's from-url semaphore is sized above the 4 DNS threads
+- Override: —
+- Outcome: open
