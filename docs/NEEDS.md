@@ -117,6 +117,17 @@ Later: priority, quantity (with partial reservations).
   available again; gifts they bought stay bought; their pledges are removed and
   the other participants of those group gifts are notified.
 
+### Deleting an account
+
+An account can be deleted (GDPR). Then:
+
+- the lists they own alone are deleted, with their gifts;
+- as an invitee: gifts they reserved but did not buy become available again;
+  gifts they bought stay bought; their pledges are removed and the other
+  participants of those group gifts are notified;
+- their comments stay, signed "Deleted user": the thread keeps its sense and
+  nothing identifies them.
+
 ### Notifications
 
 Push on mobile, email otherwise:
@@ -155,6 +166,7 @@ Later candidates: group gift activity, occasion reminders.
 - **Offline (mobile):** owners can add and edit gifts offline, synced later;
   invitees can read what they already viewed, and every invitee action needs a
   connection.
+- **Email:** Brevo, as TraxJourney (password reset and notifications).
 - **Hosting:** the server side runs on the owner's existing VPS (OVH, France),
   next to TraxJourney.
 - **Stack (agreed ahead of the needs, see
@@ -172,12 +184,10 @@ Later candidates: group gift activity, occasion reminders.
 
 | Question | Affects |
 |---|---|
-| Who can add co-owners, and can they remove each other? | Roles, access control |
+| Who can add co-owners, and can they remove each other? What happens to a co-owned list when one co-owner deletes their account? | Roles, access control, account deletion |
 | Hidden gifts: at what moment exactly is the occasion's date reached (whose time zone; start or end of the day)? | Reveal timing |
 | Hidden gifts nobody bought: does the author keep them for a later occasion, or do they expire with the occasion? | Hidden gifts lifecycle |
 | Can invitees also add hidden gifts to a "for someone else" list, where nobody is blind until a handover? | Hidden gifts, handover |
 | Offline edits by two co-owners on the same gift: last write wins, or a conflict shown? | Sync design |
-| Account deletion: an owner's lists, an invitee's reservations and comments (GDPR) | Data model, billing (withdrawal) |
-| Email provider for password reset and notifications (Brevo, as TraxJourney?) | Operations, envelope |
 | Comment moderation: can invitees edit or delete comments; can anyone report one? | Comments design |
 | Image limits: size, count per gift, storage per account | VPS disk, backups, premium |
