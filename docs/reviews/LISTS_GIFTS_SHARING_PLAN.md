@@ -118,3 +118,21 @@ the plan.
 - Decision: Fix now (D7)
 - Override: —
 - Outcome: fixed (in plan: cleared on every outcome; navigation by replace; test)
+
+## Round 4 — 2026-11-08, U1 unit review (DELIVERY.md §5 point 3), reviewed at 9fc0080
+
+### R4-2 — The role matrix cannot fail for an endpoint nobody added to it
+- Trigger: a later unit adds an endpoint without a matrix row → every role test passes → a wrong access check ships with a green matrix
+- Scores: trigger=plausible, impact=maintainability, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Guard (D9)
+- Guard: `test_every_route_is_in_the_matrix` in `server/tests/lists/test_roles.py` fails when a route under the guarded prefixes is in neither `ENDPOINTS` nor `COVERED_ELSEWHERE`, or a row matches no route (0ad717d)
+- Override: —
+- Outcome: guard added
+
+### R4-1 — An owner edit racing a delete of the same list answers 500, not 404
+- Trigger: the same owner renames a list or adds a gift on one device while deleting the list on another → StaleDataError or FK IntegrityError → 500
+- Scores: trigger=plausible, impact=wrong-visible, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: a StaleDataError or IntegrityError 500 from a `/api/lists` or `/api/gifts` endpoint appears in VAL or PROD logs, or a later plan adds co-owners or offline sync
+- Override: —
+- Outcome: open
