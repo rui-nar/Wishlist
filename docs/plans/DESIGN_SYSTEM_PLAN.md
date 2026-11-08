@@ -89,7 +89,7 @@ private to the owner).
   data behind it.
 
 - **D4 — Fonts are bundled, never fetched.** Inter (400, 500, 600, 700) and
-  Space Grotesk (600, 700) are static TTF files in `client/assets/fonts/`,
+  Space Grotesk (500, 700) are static TTF files in `client/assets/fonts/`,
   declared in `pubspec.yaml`, with their SIL Open Font License texts
   registered in `LicenseRegistry`. Rules out the `google_fonts` package, which
   downloads fonts at runtime:
@@ -105,6 +105,10 @@ private to the owner).
   lacks (emoji, non-Latin scripts) when user-entered text contains them; that
   is accepted for now (Review envelope) and goes into the privacy policy.
 
+  Space Grotesk publishes no static 600 upstream (Light, Regular, Medium and
+  Bold only), so card titles use Medium (500) rather than a file derived from
+  the variable font (delivery note, U1 attempt 1).
+
   Static files rather than variable fonts, because Flutter does not map
   `fontWeight` onto a variable font's weight axis by itself. The sources and
   sha256 of the files are recorded in `client/assets/fonts/README.md`.
@@ -116,7 +120,7 @@ private to the owner).
   |---|---|
   | `headlineMedium` | 22 / 700 / Space Grotesk |
   | `titleLarge` (app bar) | 19 / 700 / Space Grotesk |
-  | `titleMedium` (card titles) | 16 / 600 / Space Grotesk |
+  | `titleMedium` (card titles) | 16 / 500 / Space Grotesk |
   | `bodyLarge` | 15 / 400 / Inter |
   | `bodyMedium` | 14 / 400 / Inter |
   | `bodySmall` (metadata) | 13 / 400 / Inter |
@@ -270,7 +274,7 @@ None of REVIEW.md F4's: no API, schema, stored-data or export change.
   1. Download static TTFs from upstream:
      - **Inter** 400/500/600/700, from the `rsms/inter` GitHub release
        (v4.x, the `extras/ttf` files);
-     - **Space Grotesk** 600/700, from `floriankarsten/space-grotesk`
+     - **Space Grotesk** 500/700, from `floriankarsten/space-grotesk`
        (`fonts/ttf/static`).
 
      Put them in `client/assets/fonts/` with each family's `OFL.txt`.
