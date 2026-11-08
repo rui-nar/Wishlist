@@ -57,6 +57,49 @@ void main() {
       );
       return '/lists/$list/gifts/$gift/edit';
     },
+    'list_occasions': (server) {
+      server.accounts.publicBaseUrl = 'https://wishlist.example';
+      final list = server.addList('Christmas', recipientName: 'Léa');
+      server.addGift(list, 'Wool socks');
+      server.addOccasion(
+        list,
+        'Christmas 2026',
+        '2026-12-24',
+        token: 'tok',
+        invitees: ['Carol', 'Dan'],
+      );
+      server.addOccasion(list, 'Birthday', '2027-03-02');
+      return '/lists/$list';
+    },
+    'occasion_form': (server) {
+      final list = server.addList('Christmas', recipientName: 'Léa');
+      final occasion = server.addOccasion(list, 'Christmas 2026', '2026-12-24');
+      return '/lists/$list/occasions/$occasion/edit';
+    },
+    'occasion_members': (server) {
+      final list = server.addList('Christmas', recipientName: 'Léa');
+      final occasion = server.addOccasion(
+        list,
+        'Christmas 2026',
+        '2026-12-24',
+        invitees: ['Carol Dupont', 'Dan Smith', 'Eve Martin'],
+      );
+      server.removed[occasion]!.add(server.members[occasion]!.removeLast());
+      return '/lists/$list/occasions/$occasion/members';
+    },
+  };
+
+  // What a screen does once open, before its picture is taken.
+  final after = <String, Future<void> Function(WidgetTester)>{
+    // The occasions, below the gifts.
+    'list_occasions': (tester) async {
+      await tester.scrollUntilVisible(
+        find.text('Birthday'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+    },
   };
 
   group('goldens', skip: _skip, () {
@@ -78,6 +121,7 @@ void main() {
 
           final server = FakeListsServer();
           await startApp(tester, server, setUp(server));
+          await after[screen]?.call(tester);
 
           await expectLater(
             find.byType(WishlistApp),

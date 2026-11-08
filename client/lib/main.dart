@@ -16,6 +16,7 @@ import 'src/auth/start_gate.dart';
 import 'src/auth/token_store.dart';
 import 'src/config.dart';
 import 'src/design/theme.dart';
+import 'src/shared/pending_join.dart';
 
 void main() {
   // /account, not /#/account: the server answers every client path with the
@@ -25,8 +26,12 @@ void main() {
   LicenseRegistry.addLicense(_fontLicenses);
   final api = ApiClient(http.Client(), baseUrl: kApiBaseUrl);
   final auth = AuthController(api: api, store: TokenStore.forPlatform());
+  // From the live address, before the router exists: the path URL strategy
+  // never hands the link's fragment to the router, and the sign-in redirect
+  // would drop it (LISTS_GIFTS_SHARING_PLAN D5, review R3-1).
+  final pendingJoin = PendingJoin.capture(Uri.base, JoinBrowser.forPlatform());
   unawaited(auth.restore());
-  runApp(WishlistApp(api: api, auth: auth));
+  runApp(WishlistApp(api: api, auth: auth, pendingJoin: pendingJoin));
 }
 
 class WishlistApp extends StatefulWidget {
@@ -35,6 +40,7 @@ class WishlistApp extends StatefulWidget {
     required this.api,
     required this.auth,
     this.appVersion = kAppVersion,
+    this.pendingJoin,
   });
 
   // Injectable so tests can give the client a MockClient
@@ -43,11 +49,16 @@ class WishlistApp extends StatefulWidget {
   final AuthController auth;
   final String appVersion;
 
+  /// The occasion link the app was opened with; none when null.
+  final PendingJoin? pendingJoin;
+
   @override
   State<WishlistApp> createState() => _WishlistAppState();
 }
 
 class _WishlistAppState extends State<WishlistApp> {
+  late final PendingJoin _pendingJoin =
+      widget.pendingJoin ?? PendingJoin(MemoryJoinBrowser());
   late final GoRouter _router = buildRouter(
     auth: widget.auth,
     api: widget.api,
@@ -66,6 +77,7 @@ class _WishlistAppState extends State<WishlistApp> {
       providers: [
         Provider<ApiClient>.value(value: widget.api),
         ChangeNotifierProvider<AuthController>.value(value: widget.auth),
+        Provider<PendingJoin>.value(value: _pendingJoin),
       ],
       child: MaterialApp.router(
         onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,

@@ -16,9 +16,14 @@ class UnauthorizedException implements Exception {
 
 /// The server answered with a status other than 2xx and 401.
 class ApiException implements Exception {
-  const ApiException(this.statusCode);
+  const ApiException(this.statusCode, [this.body]);
 
   final int statusCode;
+
+  /// The answer's JSON object, when it is one, for the few errors whose body
+  /// the API documents (a 409 on join names the list to open instead). Read
+  /// for those fields only; never shown to the user.
+  final Map<String, dynamic>? body;
 
   @override
   String toString() => 'ApiException: HTTP $statusCode';
@@ -110,9 +115,19 @@ class ApiClient {
       throw const UnauthorizedException();
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(response.statusCode);
+      throw ApiException(response.statusCode, _errorBody(response));
     }
     return response;
+  }
+
+  /// An error answer's JSON object, or null when it is not one.
+  static Map<String, dynamic>? _errorBody(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      return body is Map<String, dynamic> ? body : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The body as [T]: a JSON object or a JSON array.

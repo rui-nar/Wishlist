@@ -138,7 +138,7 @@ void main() {
       await start(tester, '/', store: MemoryTokenStore(server.addSession()));
 
       expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.text('My lists'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'My lists'), findsOneWidget);
       expect(server.calls, contains('GET /api/lists'));
       await tester.tap(find.byTooltip('Account'));
       await tester.pumpAndSettle();

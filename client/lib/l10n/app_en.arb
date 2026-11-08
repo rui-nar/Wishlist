@@ -347,5 +347,325 @@
   "deleteFailed": "It could not be deleted. Try again.",
   "@deleteFailed": {
     "description": "A message after the server did not delete a list or a gift."
+  },
+  "occasionsTitle": "Occasions",
+  "@occasionsTitle": {
+    "description": "List detail: the heading of the occasions section."
+  },
+  "occasionsIntro": "Share an occasion's link to invite people. Invitees see this list and its gifts.",
+  "@occasionsIntro": {
+    "description": "List detail: under the occasions heading."
+  },
+  "newOccasion": "New occasion",
+  "@newOccasion": {
+    "description": "List detail: the button creating an occasion; the occasion form's title when creating."
+  },
+  "occasionLine": "{date} · {invitees}",
+  "@occasionLine": {
+    "description": "List detail: an occasion's date and invitee count.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "24 Dec 2026"
+      },
+      "invitees": {
+        "type": "String",
+        "example": "2 invitees"
+      }
+    }
+  },
+  "inviteeCount": "{count, plural, =0{No invitees} =1{1 invitee} other{{count} invitees}}",
+  "@inviteeCount": {
+    "description": "List detail: how many people joined an occasion.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "linkActive": "Anyone with the link can join",
+  "@linkActive": {
+    "description": "List detail: the occasion has a link."
+  },
+  "linkNone": "No link: nobody new can join",
+  "@linkNone": {
+    "description": "List detail: the occasion has no link."
+  },
+  "occasionActions": "Occasion actions",
+  "@occasionActions": {
+    "description": "List detail: the tooltip of an occasion's menu."
+  },
+  "createLink": "Create a link",
+  "@createLink": {
+    "description": "List detail: creates an occasion's link."
+  },
+  "regenerateLink": "Replace the link",
+  "@regenerateLink": {
+    "description": "List detail: an occasion's menu item regenerating its link."
+  },
+  "revokeLink": "Revoke the link",
+  "@revokeLink": {
+    "description": "List detail: an occasion's menu item revoking its link."
+  },
+  "copyLink": "Copy link",
+  "@copyLink": {
+    "description": "List detail: copies an occasion's link."
+  },
+  "shareLink": "Share",
+  "@shareLink": {
+    "description": "List detail: shares an occasion's link through the platform's share sheet."
+  },
+  "linkCopied": "Link copied",
+  "@linkCopied": {
+    "description": "A message after an occasion's link was copied."
+  },
+  "seeInvitees": "Invitees",
+  "@seeInvitees": {
+    "description": "List detail: opens an occasion's invitees."
+  },
+  "editOccasion": "Rename or change the date",
+  "@editOccasion": {
+    "description": "List detail: an occasion's menu item opening its form."
+  },
+  "deleteOccasion": "Delete occasion",
+  "@deleteOccasion": {
+    "description": "List detail: an occasion's menu item deleting it."
+  },
+  "regenerateLinkTitle": "Replace the link?",
+  "@regenerateLinkTitle": {
+    "description": "The dialog before regenerating an occasion's link."
+  },
+  "regenerateLinkBody": "The current link stops working. People who already joined keep their access.",
+  "@regenerateLinkBody": {
+    "description": "The dialog before regenerating an occasion's link."
+  },
+  "regenerateLinkConfirm": "Replace",
+  "@regenerateLinkConfirm": {
+    "description": "The dialog's button regenerating an occasion's link."
+  },
+  "revokeLinkTitle": "Revoke the link?",
+  "@revokeLinkTitle": {
+    "description": "The dialog before revoking an occasion's link."
+  },
+  "revokeLinkBody": "Nobody new can join with it. People who already joined keep their access.",
+  "@revokeLinkBody": {
+    "description": "The dialog before revoking an occasion's link."
+  },
+  "revokeLinkConfirm": "Revoke",
+  "@revokeLinkConfirm": {
+    "description": "The dialog's button revoking an occasion's link."
+  },
+  "deleteOccasionTitle": "Delete this occasion?",
+  "@deleteOccasionTitle": {
+    "description": "The dialog before deleting an occasion."
+  },
+  "deleteOccasionBody": "Its invitees lose access to the list through it, and its link stops working. This cannot be undone.",
+  "@deleteOccasionBody": {
+    "description": "The dialog before deleting an occasion."
+  },
+  "occasionNotFound": "This occasion no longer exists.",
+  "@occasionNotFound": {
+    "description": "An owner's screen or message: the occasion was deleted."
+  },
+  "editOccasionTitle": "Edit occasion",
+  "@editOccasionTitle": {
+    "description": "The occasion form's title when editing."
+  },
+  "occasionNameLabel": "Occasion",
+  "@occasionNameLabel": {
+    "description": "The occasion form: the name field."
+  },
+  "occasionNameHint": "Christmas, birthday...",
+  "@occasionNameHint": {
+    "description": "The occasion form: the name field's hint."
+  },
+  "occasionNameRequired": "Enter the occasion",
+  "@occasionNameRequired": {
+    "description": "The occasion form: the name is empty."
+  },
+  "occasionDateLabel": "Date",
+  "@occasionDateLabel": {
+    "description": "The occasion form: the date field."
+  },
+  "occasionDateRequired": "Choose a date",
+  "@occasionDateRequired": {
+    "description": "The occasion form: no date chosen."
+  },
+  "inviteesTitle": "Invitees",
+  "@inviteesTitle": {
+    "description": "The invitees screen's title."
+  },
+  "inviteesEmpty": "Nobody has joined yet. Share the link to invite people.",
+  "@inviteesEmpty": {
+    "description": "The invitees screen: nobody joined."
+  },
+  "removeInvitee": "Remove",
+  "@removeInvitee": {
+    "description": "The invitees screen: removes an invitee; the dialog's button."
+  },
+  "removeInviteeTitle": "Remove {name}?",
+  "@removeInviteeTitle": {
+    "description": "The dialog before removing an invitee.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "removeInviteeBody": "{name} loses access to this occasion at once, and cannot join it again, through any link, until you allow them again.",
+  "@removeInviteeBody": {
+    "description": "The dialog before removing an invitee.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "removedTitle": "Removed",
+  "@removedTitle": {
+    "description": "The invitees screen: the heading of the people removed."
+  },
+  "removedIntro": "They cannot join again, through any link, until you allow them. Allowing them does not add them back: they need a current link.",
+  "@removedIntro": {
+    "description": "The invitees screen: under the heading of the people removed."
+  },
+  "allowAgain": "Allow again",
+  "@allowAgain": {
+    "description": "The invitees screen: allows a removed person again."
+  },
+  "allowedAgain": "{name} can join again with a current link.",
+  "@allowedAgain": {
+    "description": "A message after a removed person was allowed again.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "backToList": "Back to the list",
+  "@backToList": {
+    "description": "The button leaving an occasion that no longer exists, to its list."
+  },
+  "unnamedPerson": "Unnamed person",
+  "@unnamedPerson": {
+    "description": "Stands for a person whose account has no name."
+  },
+  "sharedWithMeTitle": "Shared with me",
+  "@sharedWithMeTitle": {
+    "description": "The title of the occasions shared with the user; the navigation bar's second destination."
+  },
+  "sharedWithMeEmpty": "Nothing is shared with you yet. Open an occasion link someone sent you to join it.",
+  "@sharedWithMeEmpty": {
+    "description": "Shared with me: no occasion joined."
+  },
+  "sharedOccasionLine": "{date} · {list}",
+  "@sharedOccasionLine": {
+    "description": "Shared with me: an occasion's date and its list's title.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "24 Dec 2026"
+      },
+      "list": {
+        "type": "String",
+        "example": "Christmas"
+      }
+    }
+  },
+  "sharedForBy": "For {recipient} · shared by {owners}",
+  "@sharedForBy": {
+    "description": "Shared with me and an occasion: who the gifts are for, and who shared the list.",
+    "placeholders": {
+      "recipient": {
+        "type": "String",
+        "example": "Léa"
+      },
+      "owners": {
+        "type": "String",
+        "example": "Alice Martin"
+      }
+    }
+  },
+  "recipientDoesNotSee": "{name} doesn't see what you do here",
+  "@recipientDoesNotSee": {
+    "description": "An occasion shared with the user: the privacy banner.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "sharedGiftsEmpty": "No gifts on this list yet.",
+  "@sharedGiftsEmpty": {
+    "description": "An occasion shared with the user: its list has no gifts."
+  },
+  "giftDetails": "Details",
+  "@giftDetails": {
+    "description": "An occasion shared with the user: the chip of a gift with details; tapping the gift shows them."
+  },
+  "leaveOccasion": "Leave the occasion",
+  "@leaveOccasion": {
+    "description": "An occasion shared with the user: the menu item leaving it."
+  },
+  "leaveOccasionTitle": "Leave this occasion?",
+  "@leaveOccasionTitle": {
+    "description": "The dialog before leaving an occasion."
+  },
+  "leaveOccasionBody": "You no longer see this list. You can join again with a current link.",
+  "@leaveOccasionBody": {
+    "description": "The dialog before leaving an occasion."
+  },
+  "leaveOccasionConfirm": "Leave",
+  "@leaveOccasionConfirm": {
+    "description": "The dialog's button leaving an occasion."
+  },
+  "leaveFailed": "You could not leave the occasion. Try again.",
+  "@leaveFailed": {
+    "description": "A message after the server did not let the user leave an occasion."
+  },
+  "occasionNoLongerShared": "This occasion is no longer shared with you.",
+  "@occasionNoLongerShared": {
+    "description": "An occasion that was deleted, or that the user left or was removed from."
+  },
+  "backToSharedWithMe": "Back to shared with me",
+  "@backToSharedWithMe": {
+    "description": "The button leaving an occasion no longer shared with the user."
+  },
+  "joinTitle": "Join an occasion",
+  "@joinTitle": {
+    "description": "The join screen's title."
+  },
+  "joinInvited": "You are invited to",
+  "@joinInvited": {
+    "description": "The join screen: above the occasion's name."
+  },
+  "joinListLabel": "List",
+  "@joinListLabel": {
+    "description": "The join screen: the label of the list's title."
+  },
+  "joinRecipientLabel": "For",
+  "@joinRecipientLabel": {
+    "description": "The join screen: the label of who the gifts are for."
+  },
+  "joinOwnersLabel": "Shared by",
+  "@joinOwnersLabel": {
+    "description": "The join screen: the label of the list's owners."
+  },
+  "joinExplanation": "Join to see this list and its gifts.",
+  "@joinExplanation": {
+    "description": "The join screen: what joining does."
+  },
+  "join": "Join",
+  "@join": {
+    "description": "The join screen: the button joining the occasion."
+  },
+  "joinLinkInvalid": "This link is no longer valid. Ask the person who shared it for a new one.",
+  "@joinLinkInvalid": {
+    "description": "The join screen: the link is unknown, was replaced or revoked, or the user may not join."
   }
 }

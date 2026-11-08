@@ -146,6 +146,29 @@ void main() {
     );
   });
 
+  test('an error keeps its JSON object body, for documented fields',
+      () async {
+    Future<ApiException> failure(http.Response response) async {
+      try {
+        await ApiClient(MockClient((request) async => response), baseUrl: '')
+            .postJson('/api/join', {'token': 't'});
+      } on ApiException catch (e) {
+        return e;
+      }
+      throw StateError('no ApiException');
+    }
+
+    final conflict = await failure(http.Response(
+      '{"detail": "You own this list", "list_id": "l1"}',
+      409,
+    ));
+    expect(conflict.statusCode, 409);
+    expect(conflict.body?['list_id'], 'l1');
+    expect((await failure(http.Response('<html>', 502))).body, isNull);
+    expect((await failure(http.Response('[1]', 400))).body, isNull);
+    expect((await failure(http.Response('', 404))).body, isNull);
+  });
+
   test('gives up after 10 seconds', () {
     return withInstantTimers(() async {
       final api = ApiClient(
@@ -181,6 +204,42 @@ void main() {
         (await fetchClientConfig(answering({'google_client_id': ''})))
             .googleClientId,
         isNull,
+      );
+    });
+
+    test('reads the share links base URL; null or empty means none',
+        () async {
+      expect(
+        (await fetchClientConfig(answering({
+          'google_client_id': 'abc',
+          'public_base_url': 'https://wishlist.example',
+        })))
+            .publicBaseUrl,
+        'https://wishlist.example',
+      );
+      for (final none in [null, '']) {
+        expect(
+          (await fetchClientConfig(
+            answering({'google_client_id': 'abc', 'public_base_url': none}),
+          ))
+              .publicBaseUrl,
+          isNull,
+        );
+      }
+      // An older server without the field.
+      expect(
+        (await fetchClientConfig(answering({'google_client_id': 'abc'})))
+            .publicBaseUrl,
+        isNull,
+      );
+    });
+
+    test('a field that is not a string is not a usable answer', () async {
+      await expectLater(
+        fetchClientConfig(
+          answering({'google_client_id': 'abc', 'public_base_url': 1}),
+        ),
+        throwsA(isA<ApiUnreachableException>()),
       );
     });
   });

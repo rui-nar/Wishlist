@@ -151,7 +151,7 @@ void main() {
       expect(find.text('This list no longer exists.'), findsOneWidget);
       await tester.tap(find.text('Back to my lists'));
       await tester.pumpAndSettle();
-      expect(find.text('My lists'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'My lists'), findsOneWidget);
     });
   });
 }
