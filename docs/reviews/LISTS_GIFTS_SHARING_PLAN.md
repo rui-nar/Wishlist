@@ -136,3 +136,19 @@ the plan.
 - Revisit when: a StaleDataError or IntegrityError 500 from a `/api/lists` or `/api/gifts` endpoint appears in VAL or PROD logs, or a later plan adds co-owners or offline sync
 - Override: —
 - Outcome: open
+
+## Round 5 — 2026-11-08, U2 unit review (DELIVERY.md §5 point 3), reviewed at 957ba23
+
+Envelope question: is removing an invitee effective on its own, or must the
+owner also regenerate the link? Answer (orchestrator, standing instruction):
+effective on its own — a removed person cannot rejoin through any link until
+the owner allows them again. Recorded in `docs/NEEDS.md` (Access) and the plan
+(D4, D8, U2, U4); implemented in U2 before integration.
+
+### R5-1 — Owner edits of an occasion racing its deletion answer 500, not 404
+- Trigger: an owner renames an occasion or changes its link on one device while deleting it on another, or an invitee reads an occasion while the owner deletes the list → StaleDataError or NoResultFound → 500
+- Scores: trigger=plausible, impact=wrong-visible, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10) — cross-reference: R4-1 (same mechanism on `/api/lists` and `/api/gifts`)
+- Revisit when: a StaleDataError, NoResultFound or IntegrityError 500 from `/api/occasions/*`, `/api/join/preview` or `/api/join` appears in VAL or PROD logs, or a later plan adds co-owners or offline sync; fix R4-1 and R5-1 together with one mapping of these errors to 404
+- Override: —
+- Outcome: open
