@@ -4,7 +4,8 @@
 # .env.example and filled in, never committed) and backup/ (the two scripts of
 # deploy/backup/). docs/DEPLOYMENT.md creates the directories it mounts:
 #
-#   /opt/wishlist/backups        999:999, mode 700  (the backup service's dumps)
+#   /opt/wishlist/backups        999:10001, mode 750  (the backup service's dumps;
+#                                the app lists them, cannot read them)
 #   /opt/wishlist-media/prod     10001:10001        (the app's uploaded files)
 #
 # `docker compose restart` does not pick up .env changes: the container has to
@@ -29,6 +30,11 @@ services:
     restart: unless-stopped
     # DATABASE_URL, APP_ENV, FRONTEND_ORIGIN and FORWARDED_ALLOW_IPS (plan D10).
     env_file: .env
+    environment:
+      # The media purge dates the oldest kept dump (gift images plan D9, D10).
+      # Set here, not in .env: `environment:` wins over `env_file:`, so no
+      # .env can point the purge elsewhere. Unset (VAL, DEV), nothing is purged.
+      BACKUP_DIR: /app/backups
     ports:
       # Loopback only: Docker's published ports bypass ufw, so a bare
       # `8010:8000` would be on the internet. Caddy reaches it on the host.
@@ -37,6 +43,10 @@ services:
       # The image sets MEDIA_DIR=/app/media and no .env overrides it (D18), so
       # uploads always land here and survive the container.
       - /opt/wishlist-media/prod:/app/media
+      # Read-only, and the directory is 999:10001 mode 750 with each dump 600:
+      # the app (uid and gid 10001) lists the dumps and reads their dates, never
+      # their content (gift images plan D10).
+      - /opt/wishlist/backups:/app/backups:ro
     depends_on:
       # The entrypoint runs `alembic upgrade head` first, which needs the
       # database accepting TCP connections.
