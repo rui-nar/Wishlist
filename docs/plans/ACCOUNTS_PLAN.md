@@ -160,10 +160,12 @@ on start, so rolling PROD back across this release would take it down.
 REVIEW.md defaults apply, with these additions:
 
 - **New external service: Google.** Google's token endpoint and keys
-  (fetched and cached by `google-auth`) are untrusted input (E2): a token
-  is accepted only after full verification. Google being unreachable makes
-  sign-in fail with a 503-class answer; already signed-in users are
-  unaffected (their sessions are ours).
+  (fetched by `google-auth`) are untrusted input (E2): a token is accepted
+  only after full verification. Google being unreachable makes sign-in fail;
+  for now it answers 401 like an invalid token, with the reason logged
+  (review R1-1, deferred; the intended answer is a 503 with a timeout and
+  certificate caching). Already signed-in users are unaffected (their
+  sessions are ours).
 - **New trust boundary: the bearer token.** Anyone holding a token is that
   user until it expires or is revoked. Tokens are stored hashed; they never
   appear in logs, URLs or error bodies.
