@@ -108,6 +108,13 @@ Later: priority, quantity (with partial reservations).
   - An invitee who leaves an occasion is treated like a removed one: their
     reservations not bought are released, what they bought stays bought,
     their pledges are removed.
+  - An occasion has passed from 12:00 UTC on the day after its date: that
+    day has then ended in every time zone, so a reservation never ends early
+    (the side that protects against a double gift).
+  - A bought reservation of someone who left or was removed keeps their name
+    for the other invitees; deleting their account removes the name.
+  - Deleting an occasion keeps the gifts bought in it "taken" (anonymously)
+    until the owner marks them received or deletes them.
 
 ### Hidden gifts
 
