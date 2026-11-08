@@ -102,13 +102,17 @@ void main() {
     'onErrorContainer': 0xFFFEE2E2,
   };
 
+  // Theme, D2 roles, brightness, page background, body text.
   final themes = {
-    'light': (buildLightTheme(), light, Brightness.light, 0xFFF1F5F9),
-    'dark': (buildDarkTheme(), dark, Brightness.dark, 0xFF0F172A),
+    'light':
+        (buildLightTheme(), light, Brightness.light, 0xFFF1F5F9, 0xFF334155),
+    'dark': (buildDarkTheme(), dark, Brightness.dark, 0xFF0F172A, 0xFFCBD5E1),
   };
 
-  for (final MapEntry(key: name, value: (theme, expected, brightness, page))
-      in themes.entries) {
+  for (final MapEntry(
+        key: name,
+        value: (theme, expected, brightness, page, body),
+      ) in themes.entries) {
     group('$name theme', () {
       test('every ColorScheme role has its D2 value', () {
         expect(theme.useMaterial3, isTrue);
@@ -134,6 +138,7 @@ void main() {
               : WishlistColors.dark,
         );
         expect(colors!.pageBackground, Color(page));
+        expect(colors.bodyText, Color(body));
       });
 
       test('titles use Space Grotesk and body text uses Inter', () {
