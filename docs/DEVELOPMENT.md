@@ -88,6 +88,53 @@ uv run --directory server alembic check
 
 The client's checks are `flutter analyze` and `flutter test` in `client/`.
 
+## Golden tests
+
+A golden test renders a widget and compares it pixel by pixel with a
+reference PNG, the golden, committed next to the test. They are tagged
+`golden` and catch visual regressions that a widget test does not see: a
+colour, a spacing, a one-pixel border.
+
+**They render on Linux only** (design-system plan D10). The same Flutter
+version draws text slightly differently on Windows and Linux, so a golden made
+on one fails on the other. CI compares them on Linux as part of `flutter
+test`; on Windows the golden tests are skipped with a reason, so `flutter
+test` on the host still passes.
+
+To regenerate them, with Docker Desktop running:
+
+```powershell
+.\goldens.ps1          # rewrites the PNGs: flutter test --update-goldens --tags golden
+.\goldens.ps1 -Check   # compares against them instead, as CI does
+```
+
+The script runs the tests in a `debian:bookworm-slim` container with Flutter
+at the `Dockerfile`'s `FLUTTER_TAG`. The repository is mounted, so the PNGs
+land in the working tree. The first run clones the SDK and downloads the
+packages into Docker volumes (`wishlist-goldens-*`), which takes a few
+minutes; later runs reuse them. `client/.dart_tool`, `client/build`,
+`client/android` and `client/ios` are hidden behind container-only mounts, so
+the container writes no Linux paths into the Windows tree and the host's
+`flutter test` keeps working without a `flutter pub get`. To start from a
+clean SDK, delete the volumes:
+
+```powershell
+docker volume rm wishlist-goldens-flutter wishlist-goldens-pub-cache wishlist-goldens-dart-tool wishlist-goldens-build
+```
+
+When a golden comparison fails in CI, the `client` job uploads the diff images
+as the `golden-failures` artifact, on the run's summary page. For each failed
+test it holds the master image, the test image and the differences between
+them (`*_masterImage.png`, `*_testImage.png`, `*_isolatedDiff.png`,
+`*_maskedDiff.png`). `.\goldens.ps1 -Check` writes the same files to
+`failures/` next to the test locally; they are not gitignored, so delete them
+once read.
+
+**A golden changes only with a stated reason.** Regenerating hides any
+difference, wanted or not, so a commit that changes a PNG says why in its
+body (for example "the button's corner radius moves from 8 to 12"). An
+unexplained golden change is a review finding.
+
 ## Resetting the database
 
 ```powershell
