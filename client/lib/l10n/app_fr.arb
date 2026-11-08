@@ -19,7 +19,7 @@
   "signOut": "Se déconnecter",
   "deleteAccount": "Supprimer le compte",
   "deleteAccountTitle": "Supprimer votre compte ?",
-  "deleteAccountBody": "Votre compte est supprimé et vous êtes déconnecté sur tous vos appareils. Cette action est définitive.",
+  "deleteAccountBody": "Votre compte et les listes que vous possédez, avec leurs cadeaux et leurs occasions, sont supprimés. Les personnes avec qui vous les avez partagées n'y ont plus accès, et vous êtes déconnecté sur tous vos appareils. Cette action est définitive.",
   "deleteAccountConfirm": "Supprimer",
   "cancel": "Annuler",
   "deleteAccountFailed": "Votre compte n'a pas pu être supprimé. Réessayez.",

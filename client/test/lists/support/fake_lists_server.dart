@@ -53,6 +53,10 @@ class FakeListsServer {
   /// they joined. Alice is not among them: see [joined].
   final members = <String, List<Map<String, String>>>{};
 
+  /// Every invitee ever added, by user id → display name: the server still
+  /// knows someone who left.
+  final names = <String, String>{};
+
   /// Occasion id → the people its owner removed.
   final removed = <String, List<Map<String, String>>>{};
 
@@ -140,6 +144,9 @@ class FakeListsServer {
       for (final invitee in invitees)
         {'user_id': 'user-${_next++}', 'display_name': invitee},
     ];
+    for (final member in members[id]!) {
+      names[member['user_id']!] = member['display_name']!;
+    }
     removed[id] = [];
     return id;
   }
@@ -414,20 +421,20 @@ class FakeListsServer {
     }
     if (request.method == 'DELETE' && segments.length == 5) {
       final userId = segments[4];
+      // An unknown user, as on the server; owners are not invitees either.
+      if (!names.containsKey(userId)) return notFound;
       if (segments[3] == 'members') {
-        final member = members[id]!
-            .where((member) => member['user_id'] == userId)
-            .firstOrNull;
-        if (member != null) {
-          members[id]!.remove(member);
-          removed[id]!.add(member);
+        // Member or not: someone who left a moment ago is kept out all the
+        // same, once.
+        members[id]!.removeWhere((member) => member['user_id'] == userId);
+        if (!removed[id]!.any((member) => member['user_id'] == userId)) {
+          removed[id]!.add({'user_id': userId, 'display_name': names[userId]!});
         }
         return noContent;
       }
       if (segments[3] == 'removals') {
-        final before = removed[id]!.length;
         removed[id]!.removeWhere((member) => member['user_id'] == userId);
-        return removed[id]!.length == before ? notFound : noContent;
+        return noContent;
       }
     }
     return notFound;

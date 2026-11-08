@@ -98,9 +98,9 @@
   "@deleteAccountTitle": {
     "description": "The title of the dialog confirming an account deletion."
   },
-  "deleteAccountBody": "Your account is deleted and you are signed out on every device. This cannot be undone.",
+  "deleteAccountBody": "Your account and the lists you own, with their gifts and occasions, are deleted. Everyone you shared them with loses access, and you are signed out on every device. This cannot be undone.",
   "@deleteAccountBody": {
-    "description": "The dialog confirming an account deletion: what deleting does."
+    "description": "The dialog confirming an account deletion: what goes with the account (owned lists, their gifts and occasions), who loses access, and that it cannot be undone."
   },
   "deleteAccountConfirm": "Delete",
   "@deleteAccountConfirm": {

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishlist/src/auth/account_screen.dart';
 import 'package:wishlist/src/auth/auth_controller.dart';
@@ -40,6 +41,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Delete your account?'), findsOneWidget);
+    expect(
+      find.text(
+        'Your account and the lists you own, with their gifts and '
+        'occasions, are deleted. Everyone you shared them with loses '
+        'access, and you are signed out on every device. This cannot be '
+        'undone.',
+      ),
+      findsOneWidget,
+    );
     expect(server.calls, isNot(contains('DELETE /api/me')));
 
     await tester.tap(find.text('Cancel'));
@@ -49,6 +59,27 @@ void main() {
     expect(server.calls, isNot(contains('DELETE /api/me')));
     expect(auth.isSignedIn, isTrue);
     expect(find.byType(AccountScreen), findsOneWidget);
+  });
+
+  testWidgets('the confirmation is in French on a French device',
+      (tester) async {
+    tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+    addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+    await pumpAccount(tester);
+
+    await tester.tap(find.text('Supprimer le compte'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Supprimer votre compte ?'), findsOneWidget);
+    expect(
+      find.text(
+        "Votre compte et les listes que vous possédez, avec leurs cadeaux et "
+        "leurs occasions, sont supprimés. Les personnes avec qui vous les "
+        "avez partagées n'y ont plus accès, et vous êtes déconnecté sur tous "
+        "vos appareils. Cette action est définitive.",
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('confirming deletes the account and signs out', (tester) async {
