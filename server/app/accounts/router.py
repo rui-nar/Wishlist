@@ -11,6 +11,7 @@ from app.accounts.google import GoogleIdentity, InvalidGoogleToken
 from app.accounts.models import User, UserIdentity
 from app.accounts.schemas import GoogleSignIn, SignedIn, UserOut
 from app.db import DbSession
+from app.lists.deletion import delete_lists_owned_only_by
 
 router = APIRouter(prefix="/api", tags=["accounts"])
 
@@ -53,6 +54,9 @@ def me(user: CurrentUser) -> UserOut:
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 def delete_me(user: CurrentUser, db: DbSession) -> Response:
+    # The lists only this user owns go first, in the same transaction (lists
+    # plan D9); a list with another owner stays.
+    delete_lists_owned_only_by(db, user.id)
     # The foreign keys cascade to the user's identities and sessions (D8): every
     # token of the account is refused from the next request on.
     db.execute(delete(User).where(User.id == user.id))
