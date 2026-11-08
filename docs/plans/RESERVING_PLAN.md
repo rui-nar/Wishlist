@@ -158,12 +158,16 @@ data model chosen here must not need rewriting when they arrive.
 
   Response models, fields listed explicitly:
   - `OccasionClaims`: `passed` (bool, D8), `gifts`: list of `GiftClaimOut`,
-    one per gift of the list that has a live claim (D8), oldest gift first;
-    a gift absent from it is free.
+    one per gift of the list that has a live claim (D8), oldest gift first,
+    plus, once the occasion has passed, the caller's own unbought claims of
+    this occasion (review R3-1), so they can still mark them bought; a gift
+    absent from it is free.
   - `GiftClaimOut`: `gift_id`; `state`: `reserved` | `group` | `taken`;
     `bought` (bool, always false for `taken`); `participants`: list of
     `{display_name, mine, pledge_amount, pledge_currency}`, by `joined_at`
-    then name, always empty for `taken`.
+    then name, always empty for `taken`; `expired` (bool): true only for
+    the caller's own unbought claim of a passed occasion, in the read above
+    (review R3-1).
   - `taken` means "held by a claim of another occasion that has not passed,
     or bought in any other occasion, or bought in a deleted occasion": no
     name, no occasion id, no date, no bought flag.
