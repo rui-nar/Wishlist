@@ -6,6 +6,7 @@ see answers the API's usual 404, the same as a random id.
 """
 
 import logging
+import threading
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -21,6 +22,7 @@ from app.lists.models import Gift
 from app.media.images import (
     MAX_BYTES,
     VARIANTS,
+    ImageBusy,
     ImageRejected,
     ImageTooLarge,
     image_path,
@@ -38,17 +40,31 @@ router = APIRouter(prefix="/api", tags=["media"])
 # shared caches.
 _CACHE_CONTROL = "private, max-age=31536000, immutable"
 
+# Uploads in flight, from reading the body to the stored image (review R2-4):
+# one decoding and one waiting for the decode lock, each holding up to
+# MAX_BYTES of body, so concurrent uploads cannot pile bodies up in memory
+# next to the decode. One more answers image_busy at once, unread.
+MAX_UPLOADS_IN_FLIGHT = 2
+UPLOAD_SLOTS = threading.BoundedSemaphore(MAX_UPLOADS_IN_FLIGHT)
+
 
 @router.post("/images", status_code=status.HTTP_201_CREATED)
 async def upload_image(request: Request, user: CurrentUser, db: DbSession) -> ImageOut:
     """The request body is the image's bytes, whatever its Content-Type."""
     try:
-        data = await _read_body(request)
-        # Decoding is CPU-bound and may wait for the decode lock: off the
-        # event loop.
-        image = await run_in_threadpool(
-            ingest, db, request.app.state.settings.media_dir, user, data
-        )
+        # Taken before the body is read, never waited for: the event loop
+        # must not block.
+        if not UPLOAD_SLOTS.acquire(blocking=False):
+            raise ImageBusy()
+        try:
+            data = await _read_body(request)
+            # Decoding is CPU-bound and may wait for the decode lock: off the
+            # event loop.
+            image = await run_in_threadpool(
+                ingest, db, request.app.state.settings.media_dir, user, data
+            )
+        finally:
+            UPLOAD_SLOTS.release()
     except ImageRejected as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.code) from None
     return _image_out(image)

@@ -38,6 +38,11 @@ MAX_JPEG_PIXELS = 100_000_000
 MAX_BUFFERED_JPEG_COEFFICIENTS = 8_000_000 * 3
 # Every other format is decoded whole: 64 MB for an RGBA image this size.
 MAX_OTHER_PIXELS = 4096 * 4096
+# Pillow's WebP decoder holds the canvas, a copy of the file and a copy of
+# the frame next to the decoded image, several times the pixels (review
+# R2-1): measured on Linux, a WebP at this cap raises the peak by about 71 MB
+# (opaque) and 89 MB (transparent), as a 4096 x 4096 PNG does.
+MAX_WEBP_PIXELS = 2048 * 2048
 FULL_MAX_SIDE = 1600
 THUMB_SIDE = 256
 WEBP_QUALITY = 80
@@ -64,6 +69,8 @@ _PROGRESSIVE_SOF_MARKERS = frozenset({0xC2, 0xC6, 0xCA, 0xCE})
 _SOS = 0xDA
 # Markers with no length field: TEM, RST0-7, SOI.
 _STANDALONE_MARKERS = frozenset({0x01, *range(0xD0, 0xD9)})
+# A lossy WebP frame starts with it, after its 3-byte frame tag.
+_VP8_START_CODE = bytes.fromhex("9d012a")
 
 
 class ImageRejected(Exception):
@@ -110,8 +117,7 @@ def process(data: bytes) -> Processed:
     if not DECODE_LOCK.acquire(timeout=LOCK_WAIT_SECONDS):
         raise ImageBusy()
     try:
-        with PILImage.open(io.BytesIO(data), formats=FORMATS) as source:
-            return _process(source, data)
+        return _processed(data)
     except ImageRejected:
         raise
     # A malformed or hostile file: what a decoder raises on bad input.
@@ -121,32 +127,55 @@ def process(data: bytes) -> Processed:
         DECODE_LOCK.release()
 
 
-def _process(source: PILImage.Image, data: bytes) -> Processed:
-    width, height = source.size
-    if source.format in ("JPEG", "MPO"):
-        components, buffered = _jpeg_frame(data)
-        if width * height > MAX_JPEG_PIXELS or (
-            buffered and width * height * components > MAX_BUFFERED_JPEG_COEFFICIENTS
-        ):
-            raise ImageTooManyPixels()
-        if max(width, height) > FULL_MAX_SIDE:
-            # The smallest scale (1/2, 1/4, 1/8) still at least FULL_MAX_SIDE
-            # on the longest side.
-            source.draft(None, _fitted(width, height, FULL_MAX_SIDE))
-    elif width * height > MAX_OTHER_PIXELS:
-        raise ImageTooManyPixels()
+def _decoded(data: bytes) -> tuple[PILImage.Image, dict]:
+    """The image decoded and box-reduced, and the original's metadata.
 
-    # Decodes; a GIF or an animated WebP decodes its first frame only.
-    source.load()
-    info = dict(source.info)
-    # Reduce first, then everything else on the reduced image (review R1-4).
-    # Each full-size image is released as soon as the next one exists.
-    image = _working_mode(source)
-    if image is not source:
+    Reduce first, then everything else on the reduced image (review R1-4).
+    The returned image owns its pixels: the opened file, with whatever its
+    decoder holds, is released when this returns.
+    """
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        # Pillow's WebP decoder allocates the whole canvas when the file is
+        # opened, so the size is checked before (review R2-1).
+        width, height = _webp_canvas(data)
+        if width * height > MAX_WEBP_PIXELS:
+            raise ImageTooManyPixels()
+    with PILImage.open(io.BytesIO(data), formats=FORMATS) as source:
+        width, height = source.size
+        if source.format in ("JPEG", "MPO"):
+            components, buffered = _jpeg_frame(data)
+            if width * height > MAX_JPEG_PIXELS or (
+                buffered
+                and width * height * components > MAX_BUFFERED_JPEG_COEFFICIENTS
+            ):
+                raise ImageTooManyPixels()
+            if max(width, height) > FULL_MAX_SIDE:
+                # The smallest scale (1/2, 1/4, 1/8) still at least
+                # FULL_MAX_SIDE on the longest side.
+                source.draft(None, _fitted(width, height, FULL_MAX_SIDE))
+        elif width * height > MAX_OTHER_PIXELS:
+            raise ImageTooManyPixels()
+
+        # Decodes; a GIF or an animated WebP decodes its first frame only.
+        source.load()
+        info = dict(source.info)
+        # Each full-size image is released as soon as the next one exists.
+        image = _working_mode(source)
+        if image is not source:
+            source.close()
+        image = _box_reduced(image, FULL_MAX_SIDE)
+        if image is source:
+            # Under 2 x FULL_MAX_SIDE: copied out, so the file and its decoder
+            # (a WebP's canvas and its copy of the file) can go.
+            image = source.copy()
         source.close()
-    image = _box_reduced(image, FULL_MAX_SIDE)
-    if image is not source:
-        source.close()
+    return image, info
+
+
+def _processed(data: bytes) -> Processed:
+    # Each step rebinds `image`, so no caller keeps an earlier, larger one
+    # alive through the encodes.
+    image, info = _decoded(data)
     image = _resized(image, FULL_MAX_SIDE)
     # The orientation and the profile are in the original's metadata.
     image.info = info
@@ -160,6 +189,30 @@ def _process(source: PILImage.Image, data: bytes) -> Processed:
     return Processed(
         full=_webp(image), thumb=_webp(thumb), width=image.width, height=image.height
     )
+
+
+def _webp_canvas(data: bytes) -> tuple[int, int]:
+    """The canvas size a WebP file declares, from its first chunk."""
+    chunk, payload = data[12:16], data[20:30]
+    if len(payload) < 10:
+        raise ImageUnsupported()
+    if chunk == b"VP8X":
+        # Extended: 24-bit canvas width and height, minus one.
+        return (
+            1 + int.from_bytes(payload[4:7], "little"),
+            1 + int.from_bytes(payload[7:10], "little"),
+        )
+    if chunk == b"VP8 " and payload[3:6] == _VP8_START_CODE:
+        # Lossy: 14-bit width and height after the frame tag and start code.
+        return (
+            int.from_bytes(payload[6:8], "little") & 0x3FFF,
+            int.from_bytes(payload[8:10], "little") & 0x3FFF,
+        )
+    if chunk == b"VP8L" and payload[0] == 0x2F:
+        # Lossless: 14-bit width and height, minus one, after the signature.
+        bits = int.from_bytes(payload[1:5], "little")
+        return 1 + (bits & 0x3FFF), 1 + ((bits >> 14) & 0x3FFF)
+    raise ImageUnsupported()
 
 
 def _jpeg_frame(data: bytes) -> tuple[int, bool]:

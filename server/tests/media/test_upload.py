@@ -11,7 +11,7 @@ import pytest
 from PIL import Image
 from sqlalchemy import text
 
-from app.media import images
+from app.media import images, router
 
 PNG_HEADER_ONLY = b"\x89PNG\r\n\x1a\n"
 
@@ -303,3 +303,55 @@ def test_a_busy_decoder_answers_503_after_the_wait(client, ada, engine, monkeypa
     assert response.status_code == 503
     assert response.json() == {"detail": "image_busy"}
     assert image_rows(engine) == []
+
+
+def test_uploads_beyond_the_in_flight_cap_are_busy_unread(
+    client, ada, engine, monkeypatch
+):
+    """Review R2-4: with every upload slot taken, an upload answers at once,
+    its body unread; once a slot is free, uploads work again."""
+    reads = []
+    read_body = router._read_body
+
+    async def spy(request):
+        reads.append(request)
+        return await read_body(request)
+
+    monkeypatch.setattr(router, "_read_body", spy)
+    data = encoded(picture(), "PNG")
+    for _ in range(router.MAX_UPLOADS_IN_FLIGHT):
+        assert router.UPLOAD_SLOTS.acquire(blocking=False)
+    try:
+        response = client.post("/api/images", content=data, headers=ada.headers)
+    finally:
+        for _ in range(router.MAX_UPLOADS_IN_FLIGHT):
+            router.UPLOAD_SLOTS.release()
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "image_busy"}
+    assert reads == []
+    assert image_rows(engine) == []
+
+    response = client.post("/api/images", content=data, headers=ada.headers)
+
+    assert response.status_code == 201
+    assert len(reads) == 1
+
+
+@pytest.mark.parametrize(
+    "data",
+    [b"not an image", bytes(images.MAX_BYTES + 1)],
+    ids=["refused", "too-large"],
+)
+def test_every_upload_gives_its_slot_back(client, ada, data):
+    response = client.post("/api/images", content=data, headers=ada.headers)
+    assert response.status_code in (413, 422)
+
+    taken = [
+        router.UPLOAD_SLOTS.acquire(blocking=False)
+        for _ in range(router.MAX_UPLOADS_IN_FLIGHT)
+    ]
+    for got in taken:
+        if got:
+            router.UPLOAD_SLOTS.release()
+    assert all(taken)

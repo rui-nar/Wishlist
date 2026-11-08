@@ -291,6 +291,54 @@ def test_the_strip_reduction_equals_a_whole_reduction():
     assert reduced.tobytes() == source.convert("RGBa").reduce(2).tobytes()
 
 
+def webp_header(chunk: bytes, payload: bytes) -> bytes:
+    """A WebP whose first chunk is this, then junk: decoding it fails."""
+    body = b"WEBP" + chunk + struct.pack("<I", len(payload) + 64) + payload
+    return b"RIFF" + struct.pack("<I", len(body) + 64) + body + b"junk" * 16
+
+
+def vp8x(width: int, height: int) -> bytes:
+    # Flags and reserved bytes, then the canvas size minus one, 24 bits each.
+    size = (width - 1).to_bytes(3, "little") + (height - 1).to_bytes(3, "little")
+    return webp_header(b"VP8X", bytes(4) + size)
+
+
+def vp8(width: int, height: int) -> bytes:
+    # A frame tag, the start code, then 14-bit width and height.
+    start_code = bytes.fromhex("9d012a")
+    return webp_header(
+        b"VP8 ", bytes(3) + start_code + struct.pack("<HH", width, height)
+    )
+
+
+def vp8l(width: int, height: int) -> bytes:
+    # The signature byte, then width and height minus one, 14 bits each.
+    bits = (width - 1) | (height - 1) << 14
+    return webp_header(b"VP8L", bytes([0x2F]) + struct.pack("<I", bits) + bytes(1))
+
+
+@pytest.mark.parametrize("header", [vp8x, vp8, vp8l], ids=["vp8x", "vp8", "vp8l"])
+def test_a_large_webp_is_refused_from_its_header(header):
+    # Junk after the header: decoding would fail as unsupported, not refused.
+    with pytest.raises(ImageTooManyPixels):
+        process(header(16000, 16000))
+    with pytest.raises(ImageTooManyPixels):
+        process(header(2049, 2048))
+    with pytest.raises(ImageUnsupported):
+        process(header(2048, 2048))
+
+
+def test_a_webp_at_its_cap_is_accepted():
+    result = process(encoded(gradient("RGB", (2048, 2048)), "WEBP"))
+
+    assert (result.width, result.height) == (1600, 1600)
+
+
+def test_a_webp_with_an_unknown_first_chunk_is_unsupported():
+    with pytest.raises(ImageUnsupported):
+        process(webp_header(b"ALPH", bytes(10)))
+
+
 def test_too_large_bytes_are_refused():
     with pytest.raises(images.ImageTooLarge):
         process(b"\x00" * (images.MAX_BYTES + 1))
@@ -322,32 +370,52 @@ MEMORY_SCRIPT = textwrap.dedent(
 )
 
 
-@pytest.mark.skipif(
+linux_only = pytest.mark.skipif(
     not Path("/proc/self/clear_refs").exists(), reason="needs Linux's /proc"
 )
-@pytest.mark.parametrize(
-    ("mode", "params"),
-    [("RGB", {"icc_profile": SRGB_PROFILE}), ("RGBA", {})],
-    ids=["rgb-icc", "rgba"],
-)
-def test_peak_memory_of_a_4096_png_stays_under_100mb(tmp_path, mode, params):
-    """Review R1-4. Peak RSS, not tracemalloc: Pillow allocates pixels outside
-    Python's allocator. Read from /proc, not ru_maxrss, which a child process
-    inherits from its parent across exec: this test process, holding a large
-    image, would set the child's baseline above its real peak. In a
-    subprocess, so nothing else this process did counts."""
-    path = tmp_path / "large.png"
-    path.write_bytes(encoded(gradient(mode, (4096, 4096)), "PNG", **params))
-    assert path.stat().st_size <= images.MAX_BYTES
 
+
+def peak_rise(tmp_path: Path, data: bytes) -> int:
+    """How far processing `data` raises peak RSS, in kB.
+
+    Peak RSS, not tracemalloc: Pillow allocates pixels outside Python's
+    allocator. Read from /proc, not ru_maxrss, which a child process inherits
+    from its parent across exec: this test process, holding a large image,
+    would set the child's baseline above its real peak. In a subprocess, so
+    nothing else this process did counts.
+    """
+    assert len(data) <= images.MAX_BYTES
+    path = tmp_path / "image"
+    path.write_bytes(data)
     run = subprocess.run(
         [sys.executable, "-c", MEMORY_SCRIPT, str(path)],
         cwd=SERVER_DIR,
         capture_output=True,
         text=True,
     )
-
     assert run.returncode == 0, run.stderr
-    rise = int(run.stdout)  # kB
+    return int(run.stdout)
+
+
+@linux_only
+@pytest.mark.parametrize(
+    ("mode", "params"),
+    [("RGB", {"icc_profile": SRGB_PROFILE}), ("RGBA", {})],
+    ids=["rgb-icc", "rgba"],
+)
+def test_peak_memory_of_a_4096_png_stays_under_100mb(tmp_path, mode, params):
+    """Review R1-4."""
+    rise = peak_rise(tmp_path, encoded(gradient(mode, (4096, 4096)), "PNG", **params))
+
     # The decode alone is 64 MB: a smaller rise means the measure is broken.
     assert 60 * 1024 < rise < 100 * 1024, f"peak rose by {rise} kB"
+
+
+@linux_only
+@pytest.mark.parametrize("mode", ["RGB", "RGBA"])
+def test_peak_memory_of_a_webp_at_its_cap_stays_under_100mb(tmp_path, mode):
+    """Review R2-1: Pillow's WebP decoder holds several copies of the pixels."""
+    rise = peak_rise(tmp_path, encoded(gradient(mode, (2048, 2048)), "WEBP"))
+
+    # The decoded frame alone is 16 MB.
+    assert 16 * 1024 < rise < 100 * 1024, f"peak rose by {rise} kB"
