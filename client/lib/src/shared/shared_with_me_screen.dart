@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import '../lists/common.dart';
 import 'shared_repository.dart';
 
@@ -52,31 +53,33 @@ class _SharedWithMeScreenState extends State<SharedWithMeScreen>
         ],
       ),
       bottomNavigationBar: widget.bottomNavigationBar,
-      body: SafeArea(
-        child: FutureBuilder<List<SharedOccasion>>(
-          future: _occasions,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return LoadFailure(error: snapshot.error, onRetry: reload);
-            }
-            final occasions = snapshot.data;
-            if (occasions == null) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (occasions.isEmpty) return const _Empty();
-            return ListView(
-              padding: const EdgeInsets.all(Spacing.s16),
-              children: [
-                for (final (index, occasion) in occasions.indexed) ...[
-                  if (index > 0) const SizedBox(height: Spacing.s12),
-                  _OccasionCard(
-                    occasion: occasion,
-                    onTap: () => context.push('/shared/${occasion.id}'),
-                  ),
+      body: PageFrame(
+        child: SafeArea(
+          child: FutureBuilder<List<SharedOccasion>>(
+            future: _occasions,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return LoadFailure(error: snapshot.error, onRetry: reload);
+              }
+              final occasions = snapshot.data;
+              if (occasions == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (occasions.isEmpty) return const _Empty();
+              return ListView(
+                padding: PageFrame.paddingOf(context, ContentWidths.reading),
+                children: [
+                  for (final (index, occasion) in occasions.indexed) ...[
+                    if (index > 0) const SizedBox(height: Spacing.s12),
+                    _OccasionCard(
+                      occasion: occasion,
+                      onTap: () => context.push('/shared/${occasion.id}'),
+                    ),
+                  ],
                 ],
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -90,7 +93,7 @@ class _Empty extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(Spacing.s16),
+      padding: PageFrame.paddingOf(context, ContentWidths.reading),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(Spacing.s24),

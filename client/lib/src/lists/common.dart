@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import '../error_line.dart';
 import 'lists_repository.dart';
 
@@ -42,7 +43,7 @@ String formatOccasionDate(BuildContext context, DateTime date) =>
 
 /// A failed load, in a card: why, and a button to try again, or to go back
 /// to My lists (or [backLocation]) when what was asked for no longer exists
-/// ([notFound]).
+/// ([notFound]). Inside a [PageFrame], at [maxWidth].
 class LoadFailure extends StatelessWidget {
   const LoadFailure({
     super.key,
@@ -51,6 +52,7 @@ class LoadFailure extends StatelessWidget {
     this.notFound,
     this.backLocation = '/',
     this.backLabel,
+    this.maxWidth = ContentWidths.reading,
   });
 
   final Object? error;
@@ -64,6 +66,9 @@ class LoadFailure extends StatelessWidget {
   final String backLocation;
   final String? backLabel;
 
+  /// The page's content width, so the card lines up with what it replaces.
+  final double maxWidth;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -71,7 +76,7 @@ class LoadFailure extends StatelessWidget {
     return Align(
       alignment: Alignment.topCenter,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(Spacing.s16),
+        padding: PageFrame.paddingOf(context, maxWidth),
         child: Card(
           child: Padding(
             padding: const EdgeInsets.all(Spacing.s16),

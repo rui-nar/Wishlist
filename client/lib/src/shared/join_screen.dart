@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import '../error_line.dart';
 import '../lists/common.dart';
 import 'pending_join.dart';
@@ -117,26 +118,28 @@ class _JoinScreenState extends State<JoinScreen> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.joinTitle)),
-      body: SafeArea(
-        child: switch (_stage) {
-          _Stage.loading => const Center(child: CircularProgressIndicator()),
-          _Stage.confirm || _Stage.joining => _Confirmation(
-              preview: _preview!,
-              joining: _stage == _Stage.joining,
-              onJoin: _join,
-              onCancel: _cancel,
-            ),
-          _Stage.invalid => _Message(
-              message: l10n.joinLinkInvalid,
-              button: l10n.backToMyLists,
-              onPressed: () => _leaveFor('/'),
-            ),
-          _Stage.failed => _Message(
-              message: failureMessage(l10n, _error),
-              button: l10n.retry,
-              onPressed: _preview == null ? _loadPreview : _join,
-            ),
-        },
+      body: PageFrame(
+        child: SafeArea(
+          child: switch (_stage) {
+            _Stage.loading => const Center(child: CircularProgressIndicator()),
+            _Stage.confirm || _Stage.joining => _Confirmation(
+                preview: _preview!,
+                joining: _stage == _Stage.joining,
+                onJoin: _join,
+                onCancel: _cancel,
+              ),
+            _Stage.invalid => _Message(
+                message: l10n.joinLinkInvalid,
+                button: l10n.backToMyLists,
+                onPressed: () => _leaveFor('/'),
+              ),
+            _Stage.failed => _Message(
+                message: failureMessage(l10n, _error),
+                button: l10n.retry,
+                onPressed: _preview == null ? _loadPreview : _join,
+              ),
+          },
+        ),
       ),
     );
   }
@@ -163,7 +166,7 @@ class _Confirmation extends StatelessWidget {
     return Align(
       alignment: Alignment.topCenter,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(Spacing.s16),
+        padding: PageFrame.paddingOf(context, ContentWidths.reading),
         child: Card(
           child: Padding(
             padding: const EdgeInsets.all(Spacing.s24),
@@ -263,7 +266,7 @@ class _Message extends StatelessWidget {
     return Align(
       alignment: Alignment.topCenter,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(Spacing.s16),
+        padding: PageFrame.paddingOf(context, ContentWidths.reading),
         child: Card(
           child: Padding(
             padding: const EdgeInsets.all(Spacing.s16),

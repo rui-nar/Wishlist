@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import '../design/widgets/gift_card.dart';
 import '../design/widgets/privacy_banner.dart';
 import '../design/widgets/status_chip.dart';
@@ -105,19 +106,21 @@ class _OccasionScreenState extends State<OccasionScreen>
                 ),
             ],
           ),
-          body: SafeArea(
-            child: snapshot.hasError
-                ? LoadFailure(
-                    error: snapshot.error,
-                    onRetry: reload,
-                    notFound: l10n.occasionNoLongerShared,
-                    backLocation: '/shared',
-                    backLabel: l10n.backToSharedWithMe,
-                  )
-                : occasion == null
-                    // Loading, or an owner on their way to the list.
-                    ? const Center(child: CircularProgressIndicator())
-                    : _content(context, occasion),
+          body: PageFrame(
+            child: SafeArea(
+              child: snapshot.hasError
+                  ? LoadFailure(
+                      error: snapshot.error,
+                      onRetry: reload,
+                      notFound: l10n.occasionNoLongerShared,
+                      backLocation: '/shared',
+                      backLabel: l10n.backToSharedWithMe,
+                    )
+                  : occasion == null
+                      // Loading, or an owner on their way to the list.
+                      ? const Center(child: CircularProgressIndicator())
+                      : _content(context, occasion),
+            ),
           ),
         );
       },
@@ -134,7 +137,7 @@ class _OccasionScreenState extends State<OccasionScreen>
       color: theme.colorScheme.onSurfaceVariant,
     );
     return ListView(
-      padding: const EdgeInsets.all(Spacing.s16),
+      padding: PageFrame.paddingOf(context, ContentWidths.reading),
       children: [
         Text(occasion.name, style: theme.textTheme.headlineMedium),
         const SizedBox(height: Spacing.s4),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import 'common.dart';
 import 'lists_repository.dart';
 
@@ -99,25 +100,27 @@ class _OccasionMembersScreenState extends State<OccasionMembersScreen> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.inviteesTitle)),
-      body: SafeArea(
-        child: FutureBuilder<List<Member>>(
-          future: _members,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return LoadFailure(
-                error: snapshot.error,
-                onRetry: _reload,
-                notFound: l10n.occasionNotFound,
-                backLocation: '/lists/${widget.listId}',
-                backLabel: l10n.backToList,
-              );
-            }
-            final members = snapshot.data;
-            if (members == null) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            return _content(context, members);
-          },
+      body: PageFrame(
+        child: SafeArea(
+          child: FutureBuilder<List<Member>>(
+            future: _members,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return LoadFailure(
+                  error: snapshot.error,
+                  onRetry: _reload,
+                  notFound: l10n.occasionNotFound,
+                  backLocation: '/lists/${widget.listId}',
+                  backLabel: l10n.backToList,
+                );
+              }
+              final members = snapshot.data;
+              if (members == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return _content(context, members);
+            },
+          ),
         ),
       ),
     );
@@ -132,7 +135,7 @@ class _OccasionMembersScreenState extends State<OccasionMembersScreen> {
       color: theme.colorScheme.onSurfaceVariant,
     );
     return ListView(
-      padding: const EdgeInsets.all(Spacing.s16),
+      padding: PageFrame.paddingOf(context, ContentWidths.reading),
       children: [
         if (joined.isEmpty)
           Card(

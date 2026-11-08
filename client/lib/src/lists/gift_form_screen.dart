@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
 import '../design/tokens.dart';
+import '../design/widgets/page_frame.dart';
 import 'common.dart';
 import 'currencies.dart';
 import 'gift_links.dart';
@@ -175,25 +176,28 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(_adding ? l10n.addGift : l10n.editGift)),
-      body: SafeArea(
-        child: _adding
-            ? _buildForm(context)
-            : FutureBuilder<Gift>(
-                future: _gift,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return LoadFailure(
-                      error: snapshot.error,
-                      onRetry: _load,
-                      notFound: l10n.giftNotFound,
-                    );
-                  }
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  return _buildForm(context);
-                },
-              ),
+      body: PageFrame(
+        child: SafeArea(
+          child: _adding
+              ? _buildForm(context)
+              : FutureBuilder<Gift>(
+                  future: _gift,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return LoadFailure(
+                        error: snapshot.error,
+                        onRetry: _load,
+                        maxWidth: ContentWidths.form,
+                        notFound: l10n.giftNotFound,
+                      );
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    return _buildForm(context);
+                  },
+                ),
+        ),
       ),
     );
   }
@@ -204,7 +208,7 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
     return Form(
       key: _form,
       child: ListView(
-        padding: const EdgeInsets.all(Spacing.s16),
+        padding: PageFrame.paddingOf(context, ContentWidths.form),
         children: [
           Card(
             child: Padding(
