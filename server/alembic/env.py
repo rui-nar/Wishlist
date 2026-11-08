@@ -3,6 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 
 import app.accounts.models  # noqa: F401
+import app.lists.models  # noqa: F401
 from app.db import Base, create_db_engine
 from app.settings import Settings
 
