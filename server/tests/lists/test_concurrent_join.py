@@ -4,10 +4,10 @@ effective, and no answer is a 500.
 """
 
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from locks import wait_until_blocked_on_a_lock
 from sqlalchemy import text
 
 TIMEOUT_SECONDS = 10
@@ -161,20 +161,3 @@ def test_a_join_waiting_on_the_occasions_deletion_is_a_404(
 
     assert response.status_code == 404
     assert rows("occasion_members") == 0
-
-
-def wait_until_blocked_on_a_lock(engine) -> None:
-    deadline = time.monotonic() + TIMEOUT_SECONDS
-    with engine.connect() as observer:
-        while time.monotonic() < deadline:
-            waiting = observer.scalar(
-                text(
-                    "SELECT count(*) FROM pg_stat_activity"
-                    " WHERE datname = current_database() AND wait_event_type = 'Lock'"
-                )
-            )
-            observer.rollback()
-            if waiting:
-                return
-            time.sleep(0.02)
-    raise AssertionError("the join never waited on the other transaction")

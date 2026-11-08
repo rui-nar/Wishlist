@@ -1,0 +1,322 @@
+"""The claims endpoints: an occasion's activity, reserving, releasing and
+marking bought (reserving plan D6).
+
+Every route resolves its occasion through `giving_occasion`, so a recipient
+gets the random-id 404 for every route and every state of their gifts (D4).
+Writes follow one lock order (D7): the occasion `FOR SHARE`, the gift
+`FOR KEY SHARE`, then the claim; they write `gift_claims` and
+`claim_participants` only, never a row an owner reads (D3).
+
+A 409 is returned, not raised, so it keeps the `code` its body needs. The
+only write it can commit is the purge of an expired claim, which changes
+nothing anyone sees (D8).
+"""
+
+import uuid
+from collections import defaultdict
+from collections.abc import Sequence
+from datetime import datetime
+
+from fastapi import APIRouter, Request, Response, status
+from fastapi.responses import JSONResponse
+from sqlalchemy import exists, select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
+
+from app.accounts.deps import CurrentUser
+from app.accounts.models import User
+from app.db import DbSession
+from app.lists.access import giving_occasion, not_found
+from app.lists.models import Gift, Occasion
+from app.reserving.models import RESERVATION, ClaimParticipant, GiftClaim
+from app.reserving.rules import has_passed, is_live, purge_expired, remove_participant
+from app.reserving.schemas import (
+    BOUGHT,
+    GROUP,
+    PASSED,
+    RESERVED,
+    TAKEN,
+    ClaimConflict,
+    ConflictCode,
+    GiftClaimOut,
+    OccasionClaims,
+    ParticipantOut,
+)
+
+router = APIRouter(prefix="/api", tags=["reserving"])
+
+_CONFLICTS: dict[str, str] = {
+    TAKEN: "Someone else is giving this gift",
+    BOUGHT: "This gift is bought, which is final",
+    PASSED: "This occasion has passed",
+}
+_CONFLICT_RESPONSE = {status.HTTP_409_CONFLICT: {"model": ClaimConflict}}
+
+
+@router.get("/occasions/{occasion_id}/claims")
+def occasion_claims(
+    occasion_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
+) -> OccasionClaims:
+    occasion = giving_occasion(db, user, occasion_id)
+    now = request.app.state.clock()
+    # Live claims only: one of a passed occasion that was not bought is gone,
+    # for its own invitees too (D8).
+    claims = db.scalars(
+        select(GiftClaim)
+        .join(Gift, Gift.id == GiftClaim.gift_id)
+        .where(Gift.list_id == occasion.list_id, is_live(now))
+        .order_by(Gift.created_at, Gift.id)
+    ).all()
+    participants = _participants(
+        db,
+        [claim.gift_id for claim in claims if claim.occasion_id == occasion.id],
+        user,
+    )
+    return OccasionClaims(
+        passed=has_passed(occasion.date, now),
+        gifts=[_claim_out(claim, occasion.id, participants) for claim in claims],
+    )
+
+
+@router.post(
+    "/occasions/{occasion_id}/gifts/{gift_id}/reservation",
+    response_model=GiftClaimOut,
+    responses=_CONFLICT_RESPONSE,
+)
+def reserve(
+    occasion_id: uuid.UUID,
+    gift_id: uuid.UUID,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> GiftClaimOut | JSONResponse:
+    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    now = request.app.state.clock()
+    if has_passed(occasion.date, now):
+        return _conflict(PASSED)
+    created, held = _take(db, gift_id, occasion.id, user, now, bought_at=None)
+    # Mine already: a double tap, answered as the first (D6). Mine in another
+    # occasion, or a group gift I am in, is taken all the same.
+    if not created and not (
+        held is not None
+        and held.kind == RESERVATION
+        and _is_mine(db, held, occasion.id, user)
+    ):
+        return _conflict(TAKEN)
+    return _gift_claim_out(db, gift_id, occasion.id, user)
+
+
+@router.delete(
+    "/occasions/{occasion_id}/gifts/{gift_id}/reservation",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=_CONFLICT_RESPONSE,
+)
+def release(
+    occasion_id: uuid.UUID,
+    gift_id: uuid.UUID,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> Response:
+    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    if has_passed(occasion.date, request.app.state.clock()):
+        return _conflict(PASSED)
+    claim = _locked_claim(db, gift_id)
+    # Holding none is the outcome asked for: nothing to do (D6).
+    if (
+        claim is not None
+        and claim.kind == RESERVATION
+        and _is_mine(db, claim, occasion.id, user)
+    ):
+        if claim.bought_at is not None:
+            return _conflict(BOUGHT)
+        remove_participant(db, gift_id, user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/occasions/{occasion_id}/gifts/{gift_id}/bought",
+    response_model=GiftClaimOut,
+    responses=_CONFLICT_RESPONSE,
+)
+def mark_bought(
+    occasion_id: uuid.UUID,
+    gift_id: uuid.UUID,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> GiftClaimOut | JSONResponse:
+    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    now = request.app.state.clock()
+    if has_passed(occasion.date, now):
+        # The one write a passed occasion allows: recording a gift handed
+        # over on the day, while the giver's claim still exists (D8, review
+        # round 1). Nothing is created.
+        claim = _locked_claim(db, gift_id)
+        if claim is None or not _is_mine(db, claim, occasion.id, user):
+            return _conflict(PASSED)
+    else:
+        # A free gift is reserved and bought at once.
+        created, claim = _take(db, gift_id, occasion.id, user, now, bought_at=now)
+        if created:
+            return _gift_claim_out(db, gift_id, occasion.id, user)
+        # My reservation, or a group gift I am in, here.
+        if claim is None or not _is_mine(db, claim, occasion.id, user):
+            return _conflict(TAKEN)
+    # Bought is final: marking it again changes nothing.
+    if claim.bought_at is None:
+        claim.bought_at = now
+        db.flush()
+    return _gift_claim_out(db, gift_id, occasion.id, user)
+
+
+def _conflict(code: ConflictCode) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": _CONFLICTS[code], "code": code},
+    )
+
+
+def _giving_gift(
+    db: Session, user: User, occasion_id: uuid.UUID, gift_id: uuid.UUID
+) -> Occasion:
+    """The occasion, if the user gives in it and the gift is on its list;
+    otherwise 404 (D6).
+
+    The gift is locked `FOR KEY SHARE` (D7 step 2): its deletion at the same
+    moment either committed before (404) or waits for this request, while an
+    owner's edit of it is not blocked. Only its list id is read, so the gift
+    row is never in the session to be written back (D3).
+    """
+    occasion = giving_occasion(db, user, occasion_id)
+    list_id = db.scalar(
+        select(Gift.list_id)
+        .where(Gift.id == gift_id)
+        .with_for_update(read=True, key_share=True)
+    )
+    if list_id != occasion.list_id:
+        raise not_found()
+    return occasion
+
+
+def _take(
+    db: Session,
+    gift_id: uuid.UUID,
+    occasion_id: uuid.UUID,
+    user: User,
+    now: datetime,
+    bought_at: datetime | None,
+) -> tuple[bool, GiftClaim | None]:
+    """Reserves the gift for the user in the occasion, bought at once when
+    `bought_at` is given (D7 step 3).
+
+    Answers (True, None) when it did. Otherwise the gift is held: (False, the
+    claim holding it, locked `FOR UPDATE`). The primary key decides between
+    givers claiming it at the same moment. A claim released between the
+    insert and the lock is tried once more; (False, None) is a gift held
+    again by then, which the caller answers as taken.
+    """
+    for _ in range(2):
+        purge_expired(db, gift_id, now)
+        created = db.scalar(
+            insert(GiftClaim)
+            .values(
+                gift_id=gift_id,
+                occasion_id=occasion_id,
+                kind=RESERVATION,
+                bought_at=bought_at,
+            )
+            .on_conflict_do_nothing(index_elements=[GiftClaim.gift_id])
+            .returning(GiftClaim.gift_id)
+        )
+        if created is not None:
+            db.execute(
+                insert(ClaimParticipant).values(gift_id=gift_id, user_id=user.id)
+            )
+            return True, None
+        held = _locked_claim(db, gift_id)
+        if held is not None:
+            return False, held
+    return False, None
+
+
+def _locked_claim(db: Session, gift_id: uuid.UUID) -> GiftClaim | None:
+    """The gift's claim, live or not, locked until the request commits
+    (D7 step 4): changes to one claim take turns."""
+    return db.scalar(
+        select(GiftClaim)
+        .where(GiftClaim.gift_id == gift_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
+def _is_mine(db: Session, claim: GiftClaim, occasion_id: uuid.UUID, user: User) -> bool:
+    """The user is in the claim, and the claim is of this occasion."""
+    return claim.occasion_id == occasion_id and bool(
+        db.scalar(
+            select(
+                exists().where(
+                    ClaimParticipant.gift_id == claim.gift_id,
+                    ClaimParticipant.user_id == user.id,
+                )
+            )
+        )
+    )
+
+
+def _participants(
+    db: Session, gift_ids: Sequence[uuid.UUID], user: User
+) -> dict[uuid.UUID, list[ParticipantOut]]:
+    """Each claim's participants, by when they joined, then by name. A
+    participant whose account was deleted is no longer there (D10)."""
+    found: dict[uuid.UUID, list[ParticipantOut]] = defaultdict(list)
+    if not gift_ids:
+        return found
+    rows = db.execute(
+        select(ClaimParticipant, User.display_name)
+        .join(User, User.id == ClaimParticipant.user_id)
+        .where(ClaimParticipant.gift_id.in_(gift_ids))
+        .order_by(ClaimParticipant.joined_at, User.display_name, User.id)
+    )
+    for participant, name in rows:
+        found[participant.gift_id].append(
+            ParticipantOut(
+                display_name=name,
+                mine=participant.user_id == user.id,
+                pledge_amount=participant.pledge_amount,
+                pledge_currency=participant.pledge_currency,
+            )
+        )
+    return found
+
+
+def _claim_out(
+    claim: GiftClaim,
+    occasion_id: uuid.UUID,
+    participants: dict[uuid.UUID, list[ParticipantOut]],
+) -> GiftClaimOut:
+    if claim.occasion_id != occasion_id:
+        # Held from another occasion, or bought in a deleted one: neither who
+        # nor where nor whether it was bought (D6).
+        return GiftClaimOut(
+            gift_id=claim.gift_id, state=TAKEN, bought=False, participants=[]
+        )
+    return GiftClaimOut(
+        gift_id=claim.gift_id,
+        state=RESERVED if claim.kind == RESERVATION else GROUP,
+        bought=claim.bought_at is not None,
+        participants=participants.get(claim.gift_id, []),
+    )
+
+
+def _gift_claim_out(
+    db: Session, gift_id: uuid.UUID, occasion_id: uuid.UUID, user: User
+) -> GiftClaimOut:
+    """The gift's claim as a giver of the occasion sees it after a write."""
+    claim = db.scalars(
+        select(GiftClaim)
+        .where(GiftClaim.gift_id == gift_id)
+        .execution_options(populate_existing=True)
+    ).one()
+    return _claim_out(claim, occasion_id, _participants(db, [gift_id], user))
