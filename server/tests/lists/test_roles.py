@@ -4,7 +4,7 @@ One scenario: a "for me" list and a "for someone else" list, each with its
 owner and a gift, and a stranger who owns neither. Every endpoint is called by
 every actor on every list, and checked for:
 
-- access: what each relation to the list gets (`EXPECTED`);
+- access: what each relation to the list gets (`expected`);
 - content: no response carries a `join_token` key or an id the caller may not
   see (`Scenario.hidden_from`);
 - probing: whatever a non-owner gets for a real id, they get for a random one;
@@ -14,7 +14,8 @@ Later plans extend the scenario rather than writing their own: U2 adds an
 occasion and an invitee per list (new actors, new relations in `relation`, the
 occasion ids in `Scenario.lists`) and its endpoints to `ENDPOINTS`; a plan that
 adds invitee activity adds it to the scenario and asserts that the recipient
-sees none of it. A new endpoint without a row here fails review.
+sees none of it. A new route under `GUARDED_PREFIXES` without a row in
+`ENDPOINTS` or `COVERED_ELSEWHERE` fails `test_every_route_is_in_the_matrix`.
 """
 
 import uuid
@@ -97,7 +98,7 @@ class Endpoint:
     # Formatted with the ids of the list it is called on.
     path: str
     body: dict[str, Any] | None
-    # The status for an owner; everyone else is refused (EXPECTED).
+    # The status for an owner; everyone else is refused (`expected`).
     success: int
 
     def __str__(self) -> str:
@@ -113,6 +114,17 @@ ENDPOINTS = [
     Endpoint("PATCH", "/api/gifts/{gift_id}", {"title": "Renamed"}, 200),
     Endpoint("DELETE", "/api/gifts/{gift_id}", None, 204),
 ]
+
+# The API paths whose routes must all appear in this module. U2 adds
+# /api/occasions, /api/join and /api/shared.
+GUARDED_PREFIXES = ("/api/lists", "/api/gifts")
+
+# Routes under those prefixes that name no object of a list, so they cannot
+# take the scenario's ids; each is covered by its own test below.
+COVERED_ELSEWHERE = {
+    ("GET", "/api/lists"),  # test_my_lists_by_role
+    ("POST", "/api/lists"),  # test_creating_a_list_by_role
+}
 
 
 def expected(endpoint: Endpoint, relation: str) -> int:
@@ -209,3 +221,34 @@ def test_creating_a_list_by_role(client, scenario, actor):
     assert response.status_code == (401 if actor == SIGNED_OUT else 201)
     assert_reveals_nothing(response.json(), scenario.hidden_from(actor))
     assert owners_view(client, scenario) == before
+
+
+def test_every_route_is_in_the_matrix(client):
+    """No route under GUARDED_PREFIXES escapes this module, and no row names a
+    route that no longer exists (guard for review R4-2).
+
+    The routes are read from the OpenAPI document: FastAPI keeps included
+    routers nested in `app.routes` behind private classes. An API route is
+    never registered with `include_in_schema=False`, which would hide it here.
+    """
+    paths = client.app.openapi()["paths"]
+    routes = {
+        (method.upper(), path)
+        for path, operations in paths.items()
+        if path.startswith(GUARDED_PREFIXES)
+        for method in operations
+    }
+    in_matrix = {(endpoint.method, endpoint.path) for endpoint in ENDPOINTS}
+
+    # One assertion, so a failure shows every gap at once.
+    assert {
+        "routes in neither ENDPOINTS nor COVERED_ELSEWHERE": (
+            routes - in_matrix - COVERED_ELSEWHERE
+        ),
+        "ENDPOINTS rows that match no route": in_matrix - routes,
+        "COVERED_ELSEWHERE rows that match no route": COVERED_ELSEWHERE - routes,
+    } == {
+        "routes in neither ENDPOINTS nor COVERED_ELSEWHERE": set(),
+        "ENDPOINTS rows that match no route": set(),
+        "COVERED_ELSEWHERE rows that match no route": set(),
+    }
