@@ -2,7 +2,8 @@
 
 One scenario: a "for me" list and a "for someone else" list, each with its
 owner, a gift and two occasions shared by link, an invitee who joined the
-first occasion and another who joined the second; and a stranger who has
+first occasion and another who joined the second; someone who joined the
+first occasion of both lists and was removed from them; and a stranger who has
 nothing to do with either. Every endpoint is called by every actor on every
 list, and checked for:
 
@@ -38,6 +39,7 @@ ME_INVITEE = "invitee of the first occasion of the list for me"
 ME_INVITEE_ELSEWHERE = "invitee of the second occasion of the list for me"
 OTHER_INVITEE = "invitee of the first occasion of the list for someone else"
 OTHER_INVITEE_ELSEWHERE = "invitee of the second occasion of the list for someone else"
+REMOVED_INVITEE = "removed from the first occasion of both lists"
 STRANGER = "stranger"
 ACTORS = [
     ME_OWNER,
@@ -46,6 +48,7 @@ ACTORS = [
     ME_INVITEE_ELSEWHERE,
     OTHER_INVITEE,
     OTHER_INVITEE_ELSEWHERE,
+    REMOVED_INVITEE,
     STRANGER,
     SIGNED_OUT,
 ]
@@ -72,6 +75,7 @@ INVITEES = {
 OWNER = "owner"
 INVITEE = "invitee of the occasion"
 INVITEE_ELSEWHERE = "invitee of another occasion of the list"
+REMOVED = "removed from the occasion"
 UNRELATED = "unrelated"
 
 
@@ -79,8 +83,8 @@ UNRELATED = "unrelated"
 class Scenario:
     accounts: dict[str, Any]
     # Per list: the ids of what it holds, by name ("list_id", "gift_id",
-    # "occasion_id", "other_occasion_id", and "user_id", the invitee of the
-    # first occasion).
+    # "occasion_id", "other_occasion_id", "user_id", the invitee of the first
+    # occasion, and "removed_id", the person removed from it).
     lists: dict[str, dict[str, str]]
     # Per list: each occasion's join token, by the name of its id.
     tokens: dict[str, dict[str, str]]
@@ -97,15 +101,18 @@ class Scenario:
             return INVITEE
         if INVITEES[list_key][SECOND] == actor:
             return INVITEE_ELSEWHERE
+        if actor == REMOVED_INVITEE:
+            return REMOVED
         return UNRELATED
 
     def hidden_from(self, actor: str) -> set[str]:
         """Every id and token of the scenario that the actor may not see.
 
-        An owner sees everything of their list, its invitees' ids included.
-        An invitee sees their occasion and the list's gifts; not the list's
-        id, its other occasion or any token. Nobody sees another user's id
-        unless they own a list that user joined.
+        An owner sees everything of their list, the ids of its invitees and
+        of the people removed from it included. An invitee sees their
+        occasion and the list's gifts; not the list's id, its other occasion
+        or any token. A removed person sees nothing of the list. Nobody sees
+        another user's id unless they own a list that user joined.
         """
         everything = {account.id for account in self.accounts.values()}
         visible = set()
@@ -172,6 +179,17 @@ def scenario(client, make_account) -> Scenario:
             ids[occasion] = created["id"]
             tokens[list_key][occasion] = token
         ids["user_id"] = accounts[INVITEES[list_key][FIRST]].id
+        removed = accounts[REMOVED_INVITEE]
+        client.post(
+            "/api/join",
+            json={"token": tokens[list_key][FIRST]},
+            headers=removed.headers,
+        )
+        removal = client.delete(
+            f"/api/occasions/{ids[FIRST]}/members/{removed.id}", headers=headers
+        )
+        assert removal.status_code == 204, removal.text
+        ids["removed_id"] = removed.id
         lists[list_key] = ids
     return Scenario(accounts=accounts, lists=lists, tokens=tokens)
 
@@ -186,6 +204,9 @@ class Endpoint:
     # path; everyone else is refused (`expected`).
     success: int
     invitee: int = 404
+    # The route as the API declares it, when `path` names its parameters
+    # differently (two routes name a different user `{user_id}`).
+    route: str | None = None
 
     def __str__(self) -> str:
         return f"{self.method} {self.path}"
@@ -212,6 +233,13 @@ ENDPOINTS = [
     Endpoint("DELETE", "/api/occasions/{occasion_id}/link", None, 204),
     Endpoint("GET", "/api/occasions/{occasion_id}/members", None, 200),
     Endpoint("DELETE", "/api/occasions/{occasion_id}/members/{user_id}", None, 204),
+    Endpoint(
+        "DELETE",
+        "/api/occasions/{occasion_id}/removals/{removed_id}",
+        None,
+        204,
+        route="/api/occasions/{occasion_id}/removals/{user_id}",
+    ),
     # Only an invitee has a membership to leave.
     Endpoint("DELETE", "/api/occasions/{occasion_id}/membership", None, 404, 204),
 ]
@@ -241,6 +269,7 @@ def expected(endpoint: Endpoint, relation: str) -> int:
         OWNER: endpoint.success,
         INVITEE: endpoint.invitee,
         INVITEE_ELSEWHERE: 404,
+        REMOVED: 404,
         UNRELATED: 404,
         SIGNED_OUT: 401,
     }[relation]
@@ -277,14 +306,18 @@ def assert_reveals_nothing(body: Any, hidden: set[str], owner: bool = False) -> 
 
 
 def owners_view(client, scenario: Scenario) -> dict[str, Any]:
-    """Both lists as their owners see them: their gifts, and their occasions
-    with links and member counts."""
-    return {
-        list_key: client.get(
-            f"/api/lists/{ids['list_id']}", headers=scenario.headers(LISTS[list_key][0])
+    """Both lists as their owners see them: their gifts, their occasions with
+    links and member counts, and who joined or was removed from the first."""
+    view = {}
+    for list_key, ids in scenario.lists.items():
+        headers = scenario.headers(LISTS[list_key][0])
+        view[list_key] = client.get(
+            f"/api/lists/{ids['list_id']}", headers=headers
         ).json()
-        for list_key, ids in scenario.lists.items()
-    }
+        view[list_key, FIRST] = client.get(
+            f"/api/occasions/{ids[FIRST]}/members", headers=headers
+        ).json()
+    return view
 
 
 @pytest.mark.parametrize("actor", ACTORS)
@@ -374,6 +407,11 @@ def test_join_preview_by_role(client, scenario, list_key, actor):
     if relation == SIGNED_OUT:
         assert response.status_code == 401
         return
+    if relation == REMOVED:
+        # Removed: the link is as good as unknown to them (D4).
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Not found"}
+        return
     assert response.status_code == 200
     preview = response.json()
     # Only the ids the caller may already see: the list to an owner, the
@@ -403,6 +441,11 @@ def test_join_by_role(client, scenario, rows, list_key, actor):
         assert response.status_code == 401
         return
     members = rows("occasion_members", "occasion_id", ids[FIRST])
+    if relation == REMOVED:
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Not found"}
+        assert members == 1
+        return
     if relation == OWNER:
         # An owner, for a "for me" list the recipient, never becomes an
         # invitee of their own list: the client opens the list instead (D6).
@@ -436,7 +479,9 @@ def test_every_route_is_in_the_matrix(client):
         if path.startswith(GUARDED_PREFIXES)
         for method in operations
     }
-    in_matrix = {(endpoint.method, endpoint.path) for endpoint in ENDPOINTS}
+    in_matrix = {
+        (endpoint.method, endpoint.route or endpoint.path) for endpoint in ENDPOINTS
+    }
 
     # One assertion, so a failure shows every gap at once.
     assert {

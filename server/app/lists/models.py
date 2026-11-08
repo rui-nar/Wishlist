@@ -144,3 +144,25 @@ class OccasionMember(Base):
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class OccasionRemoval(Base):
+    """Someone an owner removed from an occasion (D4).
+
+    A removal is effective on its own: while the row exists, no link, current
+    or old, lets them join again. Allowing them again deletes it; leaving on
+    one's own never writes one.
+    """
+
+    __tablename__ = "occasion_removals"
+
+    occasion_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("occasions.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Indexed on its own: account deletion cascades through it.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    removed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

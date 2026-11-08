@@ -1,8 +1,8 @@
 """occasions and members
 
-Occasions a list is shared for, their join tokens, and the invitees who joined
-them (lists plan D4, D5). New tables only, so the previous release keeps
-working against it (DevOps plan D15).
+Occasions a list is shared for, their join tokens, the invitees who joined
+them and the people their owners removed (lists plan D4, D5). New tables
+only, so the previous release keeps working against it (DevOps plan D15).
 
 Revision ID: efc657e64bf8
 Revises: c2b4aa686920
@@ -80,9 +80,43 @@ def upgrade() -> None:
         ["user_id"],
         unique=False,
     )
+    op.create_table(
+        "occasion_removals",
+        sa.Column("occasion_id", sa.Uuid(), nullable=False),
+        sa.Column("user_id", sa.Uuid(), nullable=False),
+        sa.Column(
+            "removed_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["occasion_id"],
+            ["occasions.id"],
+            name=op.f("fk_occasion_removals_occasion_id_occasions"),
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["users.id"],
+            name=op.f("fk_occasion_removals_user_id_users"),
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint(
+            "occasion_id", "user_id", name=op.f("pk_occasion_removals")
+        ),
+    )
+    op.create_index(
+        op.f("ix_occasion_removals_user_id"),
+        "occasion_removals",
+        ["user_id"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
+    op.drop_index(op.f("ix_occasion_removals_user_id"), table_name="occasion_removals")
+    op.drop_table("occasion_removals")
     op.drop_index(op.f("ix_occasion_members_user_id"), table_name="occasion_members")
     op.drop_table("occasion_members")
     op.drop_index(op.f("ix_occasions_list_id"), table_name="occasions")

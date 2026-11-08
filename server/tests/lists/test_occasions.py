@@ -397,8 +397,8 @@ def test_members_names_are_shown_to_owners_only(client, ada, bea, make_account, 
     ]
 
     assert to_owner.json() == [
-        {"user_id": bea.id, "display_name": "Bea"},
-        {"user_id": cid.id, "display_name": "Cid"},
+        {"user_id": bea.id, "display_name": "Bea", "removed": False},
+        {"user_id": cid.id, "display_name": "Cid", "removed": False},
     ]
     for response in seen_by_bea:
         assert response.status_code == 200
@@ -423,36 +423,99 @@ def test_shared_with_me_is_sorted_by_date(client, ada, bea):
 # Removing and leaving
 
 
-def test_a_removed_invitee_loses_access_and_rejoins_only_with_a_current_link(
-    client, ada, bea, shared
+def remove(client, owner, occasion_id, account):
+    return client.delete(
+        f"/api/occasions/{occasion_id}/members/{account.id}", headers=owner.headers
+    )
+
+
+def allow_again(client, owner, occasion_id, account):
+    return client.delete(
+        f"/api/occasions/{occasion_id}/removals/{account.id}", headers=owner.headers
+    )
+
+
+def can_read(client, account, occasion_id):
+    response = client.get(f"/api/occasions/{occasion_id}", headers=account.headers)
+    return response.status_code == 200
+
+
+def test_a_removed_invitee_loses_access_and_is_listed_as_removed(
+    client, ada, bea, rows, shared
 ):
     occasion = shared["occasion_id"]
 
-    removed = client.delete(
-        f"/api/occasions/{occasion}/members/{bea.id}", headers=ada.headers
-    )
+    removed = remove(client, ada, occasion, bea)
 
     assert removed.status_code == 204
-    assert (
-        client.get(f"/api/occasions/{occasion}", headers=bea.headers).status_code == 404
-    )
+    assert not can_read(client, bea, occasion)
     assert client.get("/api/shared", headers=bea.headers).json() == []
-    assert preview(client, bea, shared["token"]).json()["role"] == "none"
-    # Removed again: there is nobody to remove.
-    again = client.delete(
-        f"/api/occasions/{occasion}/members/{bea.id}", headers=ada.headers
-    )
-    assert again.status_code == 404
-    # The owner retires the link the invitee knew: it no longer lets them in.
+    assert rows("occasion_removals", "user_id", bea.id) == 1
+    members = client.get(f"/api/occasions/{occasion}/members", headers=ada.headers)
+    assert members.json() == [
+        {"user_id": bea.id, "display_name": "Bea", "removed": True}
+    ]
+    detail = client.get(f"/api/lists/{shared['list_id']}", headers=ada.headers).json()
+    assert detail["occasions"][0]["member_count"] == 0
+    # Removed again: they are no longer a member.
+    assert remove(client, ada, occasion, bea).status_code == 404
+
+
+def test_a_removed_invitee_cannot_come_back_through_any_link(
+    client, ada, bea, rows, shared
+):
+    occasion = shared["occasion_id"]
+    remove(client, ada, occasion, bea)
+
+    old_token = shared["token"]
     new_token = create_link(client, ada, occasion)
+
+    # Not with the link they knew, nor with a regenerated one: the answer is
+    # the one for an unknown token.
+    for token in (old_token, new_token):
+        assert preview(client, bea, token).json() == {"detail": "Not found"}
+        refused = join(client, bea, token)
+        assert (refused.status_code, refused.json()) == (404, {"detail": "Not found"})
+    assert rows("occasion_members") == 0
+    assert not can_read(client, bea, occasion)
+
+
+def test_allowed_again_they_rejoin_with_a_current_link_only(
+    client, ada, bea, rows, shared
+):
+    occasion = shared["occasion_id"]
+    remove(client, ada, occasion, bea)
+    new_token = create_link(client, ada, occasion)
+
+    allowed = allow_again(client, ada, occasion, bea)
+
+    assert allowed.status_code == 204
+    assert rows("occasion_removals") == 0
+    # Allowing does not rejoin them (D8).
+    assert rows("occasion_members") == 0
+    assert not can_read(client, bea, occasion)
+    members = client.get(f"/api/occasions/{occasion}/members", headers=ada.headers)
+    assert members.json() == []
+    # The link they knew was regenerated away; the current one works.
     assert join(client, bea, shared["token"]).status_code == 404
-    assert (
-        client.get(f"/api/occasions/{occasion}", headers=bea.headers).status_code == 404
-    )
+    assert preview(client, bea, new_token).json()["role"] == "none"
     assert join(client, bea, new_token).status_code == 200
-    assert (
-        client.get(f"/api/occasions/{occasion}", headers=bea.headers).status_code == 200
-    )
+    assert can_read(client, bea, occasion)
+
+
+def test_allowing_someone_who_was_not_removed(client, ada, bea, shared):
+    response = allow_again(client, ada, shared["occasion_id"], bea)
+
+    assert response.status_code == 404
+
+
+def test_a_removal_holds_for_its_occasion_only(client, ada, bea, shared):
+    other = create_occasion(client, ada, shared["list_id"])
+    other_token = create_link(client, ada, other["id"])
+    remove(client, ada, shared["occasion_id"], bea)
+
+    assert join(client, bea, other_token).status_code == 200
+    assert can_read(client, bea, other["id"])
 
 
 def test_removing_someone_who_is_not_a_member(client, ada, make_account, shared):
@@ -478,3 +541,15 @@ def test_an_invitee_who_leaves_loses_access(client, bea, rows, shared):
     again = client.delete(f"/api/occasions/{occasion}/membership", headers=bea.headers)
     assert again.status_code == 404
     assert client.get("/api/shared", headers=bea.headers).json() == []
+    # Leaving is not a removal: nothing keeps them out.
+    assert rows("occasion_removals") == 0
+
+
+def test_an_invitee_who_left_rejoins_with_a_current_link(client, bea, shared):
+    occasion = shared["occasion_id"]
+    client.delete(f"/api/occasions/{occasion}/membership", headers=bea.headers)
+
+    rejoined = join(client, bea, shared["token"])
+
+    assert rejoined.status_code == 200
+    assert can_read(client, bea, occasion)

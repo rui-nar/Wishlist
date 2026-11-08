@@ -38,6 +38,7 @@ from app.lists.models import (
     ListOwner,
     Occasion,
     OccasionMember,
+    OccasionRemoval,
 )
 from app.lists.schemas import (
     GiftCreate,
@@ -139,7 +140,8 @@ def update_list(
 @router.delete("/lists/{list_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_list(list_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
     found = owned_list(db, user, list_id)
-    # The foreign keys cascade to its owners, gifts, occasions and members.
+    # The foreign keys cascade to its owners, gifts, occasions, members and
+    # removals.
     db.execute(delete(List).where(List.id == found.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -238,7 +240,7 @@ def delete_occasion(
     occasion_id: uuid.UUID, user: CurrentUser, db: DbSession
 ) -> Response:
     occasion = owned_occasion(db, user, occasion_id)
-    # The foreign key cascades to its members.
+    # The foreign keys cascade to its members and removals.
     db.execute(delete(Occasion).where(Occasion.id == occasion.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -268,13 +270,27 @@ def list_members(
     occasion_id: uuid.UUID, user: CurrentUser, db: DbSession
 ) -> list[MemberOut]:
     occasion = owned_occasion(db, user, occasion_id)
-    rows = db.execute(
+    joined = db.execute(
         select(User.id, User.display_name)
         .join(OccasionMember, OccasionMember.user_id == User.id)
         .where(OccasionMember.occasion_id == occasion.id)
         .order_by(OccasionMember.joined_at, User.id)
     )
-    return [MemberOut(user_id=member, display_name=name) for member, name in rows]
+    removed = db.execute(
+        select(User.id, User.display_name)
+        .join(OccasionRemoval, OccasionRemoval.user_id == User.id)
+        .where(OccasionRemoval.occasion_id == occasion.id)
+        .order_by(OccasionRemoval.removed_at, User.id)
+    )
+    # Members first, in the order they joined; then the removed people, so
+    # the owner can allow one again.
+    return [
+        MemberOut(user_id=member, display_name=name, removed=False)
+        for member, name in joined
+    ] + [
+        MemberOut(user_id=member, display_name=name, removed=True)
+        for member, name in removed
+    ]
 
 
 @router.delete(
@@ -285,7 +301,40 @@ def remove_member(
     occasion_id: uuid.UUID, user_id: uuid.UUID, user: CurrentUser, db: DbSession
 ) -> Response:
     occasion = owned_occasion(db, user, occasion_id)
+    # Exclusive until this request commits: a join of the same occasion waits
+    # (its share lock), then finds the removal and answers 404. Without it, a
+    # join that checked for a removal just before this one committed would
+    # make the removed person a member again.
+    db.execute(select(Occasion.id).where(Occasion.id == occasion.id).with_for_update())
     _delete_membership(db, occasion.id, user_id)
+    # Effective on its own: no link, current or old, lets them back until an
+    # owner allows them again (D4).
+    db.execute(
+        insert(OccasionRemoval)
+        .values(occasion_id=occasion.id, user_id=user_id)
+        .on_conflict_do_nothing()
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/occasions/{occasion_id}/removals/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def allow_again(
+    occasion_id: uuid.UUID, user_id: uuid.UUID, user: CurrentUser, db: DbSession
+) -> Response:
+    occasion = owned_occasion(db, user, occasion_id)
+    deleted = db.execute(
+        delete(OccasionRemoval).where(
+            OccasionRemoval.occasion_id == occasion.id,
+            OccasionRemoval.user_id == user_id,
+        )
+    )
+    # Not removed, or allowed again at the same moment. Allowing does not
+    # rejoin: they need a current link.
+    if deleted.rowcount == 0:
+        raise not_found()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -326,6 +375,8 @@ def preview_join(body: JoinRequest, user: CurrentUser, db: DbSession) -> JoinPre
     if owns_list(db, user, found.id):
         # The client opens the list instead of offering to join (D6).
         return JoinPreview(**common, role="owner", list_id=found.id, occasion_id=None)
+    if _removed(db, occasion.id, user.id):
+        raise not_found()
     if db.get(OccasionMember, (occasion.id, user.id)) is not None:
         return JoinPreview(
             **common, role="member", list_id=None, occasion_id=occasion.id
@@ -335,9 +386,10 @@ def preview_join(body: JoinRequest, user: CurrentUser, db: DbSession) -> JoinPre
 
 @router.post("/join", response_model=Joined)
 def join(body: JoinRequest, user: CurrentUser, db: DbSession) -> Joined | JSONResponse:
-    # Locked until this request commits, so an occasion deleted, or its link
-    # revoked or regenerated, at the same moment either waits for the join or
-    # turns it into a 404: never a 500 on a member of a deleted occasion.
+    # Locked until this request commits, so an occasion deleted, its link
+    # revoked or regenerated, or this user removed, at the same moment either
+    # waits for the join or turns it into a 404: never a 500 on a member of a
+    # deleted occasion, nor a removed person who is a member again.
     occasion = _occasion_by_token(db, body.token, lock=True)
     if owns_list(db, user, occasion.list_id):
         # An owner, recipient or not, never becomes an invitee of their own
@@ -346,6 +398,10 @@ def join(body: JoinRequest, user: CurrentUser, db: DbSession) -> Joined | JSONRe
             status_code=status.HTTP_409_CONFLICT,
             content={"detail": "You own this list", "list_id": str(occasion.list_id)},
         )
+    # Removed by an owner: the same answer as an unknown token, whatever the
+    # link (D4).
+    if _removed(db, occasion.id, user.id):
+        raise not_found()
     # Joining twice is not an error and leaves one row.
     db.execute(
         insert(OccasionMember)
@@ -478,6 +534,10 @@ def _occasion_by_token(db: Session, token: str, lock: bool = False) -> Occasion:
     if occasion is None:
         raise not_found()
     return occasion
+
+
+def _removed(db: Session, occasion_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    return db.get(OccasionRemoval, (occasion_id, user_id)) is not None
 
 
 def _delete_membership(db: Session, occasion_id: uuid.UUID, user_id: uuid.UUID) -> None:

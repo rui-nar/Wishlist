@@ -215,8 +215,12 @@ class OwnerOccasionView(OccasionOut):
 
 
 class MemberOut(BaseModel):
+    """Someone who joined an occasion, or whom its owner removed from it."""
+
     user_id: uuid.UUID
     display_name: str
+    # Removed by an owner: no link lets them back until they are allowed again.
+    removed: bool
 
 
 class SharedGiftOut(BaseModel):

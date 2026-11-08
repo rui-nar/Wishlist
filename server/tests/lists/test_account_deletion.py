@@ -105,3 +105,36 @@ def test_deleting_an_owners_account_deletes_their_occasions_and_invitees(
     assert rows("occasions") == 0
     assert rows("occasion_members") == 0
     assert client.get("/api/shared", headers=invitee.headers).json() == []
+
+
+def test_deleting_a_removed_persons_account_deletes_their_removals(
+    client, make_account, rows
+):
+    owner = make_account("Ada")
+    leaving = make_account("Bea")
+    occasion = share(client, owner, add_list(client, owner, "Ada's"), leaving)
+    client.delete(
+        f"/api/occasions/{occasion}/members/{leaving.id}", headers=owner.headers
+    )
+    assert rows("occasion_removals") == 1
+
+    client.delete("/api/me", headers=leaving.headers)
+
+    assert rows("occasion_removals") == 0
+    members = client.get(f"/api/occasions/{occasion}/members", headers=owner.headers)
+    assert members.json() == []
+
+
+def test_deleting_an_owners_account_deletes_the_removals_on_their_lists(
+    client, make_account, rows
+):
+    leaving = make_account("Ada")
+    removed = make_account("Bea")
+    occasion = share(client, leaving, add_list(client, leaving, "Ada's"), removed)
+    client.delete(
+        f"/api/occasions/{occasion}/members/{removed.id}", headers=leaving.headers
+    )
+
+    client.delete("/api/me", headers=leaving.headers)
+
+    assert rows("occasion_removals") == 0
