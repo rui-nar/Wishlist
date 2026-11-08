@@ -21,8 +21,10 @@ say "TraxJourney patch": that is where it was written.
 
 In TraxJourney's history the patch is the second commit that touched this
 folder, after the verbatim upstream copy. Here the first commit is a verbatim
-copy of TraxJourney's patched folder, and the second adapts only this README.
-To see the patch itself, diff this folder against upstream 1.1.3.
+copy of TraxJourney's patched folder; the later ones change only Wishlist
+files: this README, `analysis_options.yaml` (the client's lints do not apply
+to upstream's code) and `.gitignore` (what a test run writes here). To see the
+patch itself, diff this folder against upstream 1.1.3.
 
 Reported upstream as flutter/flutter#194640.
 
