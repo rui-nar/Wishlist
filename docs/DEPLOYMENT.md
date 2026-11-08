@@ -851,10 +851,11 @@ Step 4 starts the `backup` service, which dumps at once and replaces today's
 copy it under another name before step 4:
 `sudo cp -p backups/wishlist_<YYYY-MM-DD>.dump backups/kept_<YYYY-MM-DD>.dump`.
 
-The running image must not be older than the dump's Alembic revision, or the
-app stops at start with "Can't locate revision" (R2-2, see
-[Rollback](#rollback)). Restoring an older dump with the current image is
-fine: the migrations bring it forward.
+If the running image is older than the dump's Alembic revision, the app starts
+without migrating and logs the `app.migrate` warning (see
+[Rollback](#rollback), with the same limit for images older than
+`app.migrate`). Restoring an older dump with the current image is fine: the
+migrations bring it forward.
 
 ## Seeding VAL from PROD
 
@@ -862,9 +863,11 @@ fine: the migrations bring it forward.
 newest dump and hard-links PROD's media files into VAL's directory (D9, D18).
 It is also the regular proof that PROD's dumps restore.
 
-**Before running it:** VAL's image must not be older than PROD's database
-revision. Otherwise VAL's app stops at start with "Can't locate revision" and
-VAL stays down (review finding R2-2, deferred). Deploy VAL's image first: the
+**VAL's image may be older than PROD's database.** VAL's app then starts
+without migrating and logs the `app.migrate` warning described in
+[Rollback](#rollback); it serves PROD's data on the newer schema (D15). The
+next `validation` build that contains the release PROD runs migrates it as
+usual. To validate on the same schema as PROD, deploy VAL's image first: the
 `validation` tag must contain the release PROD runs.
 
 **[dev]**
@@ -874,9 +877,14 @@ git fetch origin --tags --force
 git merge-base --is-ancestor <release> validation && echo "VAL is at or after <release>"
 ```
 
-If nothing is printed, move the `validation` tag forward
+If nothing is printed and you want VAL on PROD's schema, move the `validation`
+tag forward
 (`git tag -f validation origin/master; git push origin validation --force`)
 and wait for the webhook's `SUCCESS` in `deploy.log` first.
+
+An image older than `app.migrate` (built before the accounts plan) still stops
+at start with "Can't locate revision" against a newer database, and VAL stays
+down: with such an image on VAL, deploy VAL's image first.
 
 **[VPS]** Run it as the deploy user, never as root:
 
@@ -965,22 +973,45 @@ PROD runs `:latest`, which only ever moves forward. Going back means pointing
 the host's compose file at the previous release's tag, by hand: `deploy.ps1`
 only deploys the newest release.
 
-**Safe in principle one version back (D15).** Every migration keeps the
-previous release working (expand now, contract in a later release), so the
-previous image can run on the newer schema without `alembic downgrade`. A
-release that cannot follow this says so in its plan and here.
+**Safe one version back (D15), across a migration too.** Every migration
+keeps the previous release working (expand now, contract in a later release),
+so the previous image can run on the newer schema without `alembic downgrade`.
+A release that cannot follow this says so in its plan and here; do not roll
+back across it.
 
-**Not yet safe across a migration (R2-2, deferred).** The previous image's
-entrypoint runs `alembic upgrade head`, and a database already at a revision
-that image does not know stops it with "Can't locate revision": the app
-restarts in a loop. Until R2-2 is fixed, roll back only across a release that
-added no migration:
+The image's entrypoint runs `python -m app.migrate` (accounts plan D13). When
+the database is at a revision the image does not know, which is what a
+rollback across a migration leaves, it does not migrate and logs one line:
+
+```text
+WARNING [app.migrate] database at revision …, unknown to this image (head …): starting without migrating; see docs/DEPLOYMENT.md Rollback
+```
+
+The first revision is the database's, the second the newest one the image
+has. The app then starts and serves on the newer schema; the database is left
+as it is, nothing is downgraded. This line is expected after a rollback, or on
+VAL after [seeding](#seeding-val-from-prod) from a PROD that runs a newer
+release. The next forward release knows the database's revision again and
+migrates as usual. Seen at any other time, it means the host runs an older
+image than intended: compare `/api/version` with the release you deployed.
+
+**Not to an image older than `app.migrate`.** Images built before the
+accounts plan run `alembic upgrade head`, which stops with "Can't locate
+revision" against a database migrated by a newer release: the app restarts in
+a loop. Check that the release you go back to has it:
+
+```powershell
+git cat-file -e <previous-release>:server/app/migrate.py   # prints nothing when it has it
+```
+
+If it prints an error, roll back to it only across releases that added no
+migration:
 
 ```powershell
 git diff --name-only <previous-release> <release> -- server/alembic/versions   # must print nothing
 ```
 
-If it prints a file, do not roll back: fix forward with a new release.
+If that prints a file, do not roll back: fix forward with a new release.
 
 **[VPS]**
 
@@ -1005,8 +1036,8 @@ Do this as part of deploying the fixed release, not earlier: `:latest` is
 still the bad release until the fix is built.
 
 VAL follows the `validation` tag. To take it back, move the tag to an older
-commit; the same R2-2 limit applies, and [seeding](#seeding-val-from-prod)
-resets it anyway.
+commit; the same limits apply (D15, and an image without `app.migrate`), and
+[seeding](#seeding-val-from-prod) resets it anyway.
 
 ## Postgres major upgrade
 
@@ -1177,9 +1208,10 @@ Each item of the plan's Definition of done, and where it is checked:
       `FORWARDED_ALLOW_IPS` matters), into Docker's json-file logs (3 × 10 MB
       per container). Personal data: retention and purpose need a decision
       before real users.
-- [ ] **R2-2, rollback and seeding across a migration** (deferred review
-      finding): see [Rollback](#rollback) and [Seeding VAL](#seeding-val-from-prod).
-      Revisit before the first migration after the baseline reaches PROD.
+- [x] **R2-2, rollback and seeding across a migration**: fixed by
+      `app.migrate` (accounts plan D13); see [Rollback](#rollback) and
+      [Seeding VAL](#seeding-val-from-prod). Images older than it still
+      cannot start against a newer database.
 - [ ] **R2-5, media purge vs. dump retention** (deferred): the purge rule must
       be stated relative to the oldest kept dump when the gifts feature
       implements it.

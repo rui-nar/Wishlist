@@ -1,9 +1,13 @@
 #!/bin/sh
 set -e
 # Migrations run on every start, before the app serves anything, so a release
-# never runs against a schema older than its code. They keep the previous
-# release working (plan D15), so a rollback needs no downgrade.
-alembic upgrade head
+# never runs against a schema older than its code. A database at a revision
+# this image does not know is ahead of it (a rollback, or VAL seeded from a
+# newer PROD): app.migrate logs a warning and starts without migrating (accounts
+# plan D13). That is safe because every migration keeps the previous release
+# working (DevOps plan D15), so a rollback needs no downgrade. Any other
+# failure stops the start, as `set -e` does here.
+python -m app.migrate
 # --timeout-keep-alive must exceed Caddy's upstream idle timeout (2 min by
 # default). uvicorn's default of 5 s makes it the side that closes a pooled
 # connection first, and when Caddy reuses that connection at the same instant
