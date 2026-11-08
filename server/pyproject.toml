@@ -7,10 +7,14 @@ requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.1",
     "fastapi>=0.162.2",
+    # Verifies Google ID tokens; requests is its HTTP transport, which fetches
+    # Google's signing certificates.
+    "google-auth>=2.62.1",
     # Majors capped: psycopg 3 and SQLAlchemy 2 are the stack (plan D1); a new
     # major is a decision, not a Dependabot bump.
     "psycopg[binary]>=3.3.8,<4",
     "pydantic-settings>=2.16.2",
+    "requests>=2.34.2",
     "sqlalchemy>=2.1.8,<3",
     "uvicorn>=0.54.0",
 ]
