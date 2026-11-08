@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Uploaded files (plan D18). The image sets /app/media, where the VPS mounts
     # the directory; locally it is relative to the working directory.
     media_dir: Path = Path("media")
+    # Where the nightly dumps are, listed (never read) by the media purge to
+    # date the oldest kept dump (gift images plan D9, D10). Unset, the purge
+    # does not run: nothing is ever deleted (DEV, VAL).
+    backup_dir: Path | None = None
     # Comma-separated Google OAuth client IDs whose ID tokens sign-in accepts
     # (accounts plan D2). The first is the web client's, which the web build
     # uses and Android passes as its server client ID; /api/config hands it to

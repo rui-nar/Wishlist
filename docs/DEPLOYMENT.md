@@ -1004,7 +1004,11 @@ In one `du` run, a file hard-linked into both (by seeding) is counted once.
 This replaces PROD's database with a dump's content. Everything written since
 that dump is lost. PROD is down from step 1 to step 4. Media need no step:
 files are never modified and purged after the oldest kept dump, so every file
-a dump on the host references is still there ([Media](#media)).
+a dump on the host references is still there ([Media](#media)). That holds
+after rolling back to `before-restore.dump` too: the purge also goes by each
+file's modification time, which every run sets while a row references the
+file, so a record the rollback brings back cannot make it go early. Never
+set those times to an earlier date by hand.
 
 **[VPS]**
 
