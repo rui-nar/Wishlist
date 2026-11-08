@@ -54,3 +54,33 @@ standing instruction:
    `FOR KEY SHARE` anyway. Decision (orchestrator): accept the
    millisecond wait as noise, like an owner deleting a gift being reserved;
    no schema change. D7 amended. The read-lock change (2) is ee275d8.
+
+## Round 3 — 2026-11-08, unit review of U4 (DELIVERY.md §5 point 3), reviewed at fcb1133
+
+Envelope answer (orchestrator, standing instruction): the D8 exception stays;
+`OccasionClaims` is extended so a giver sees their own unbought claims of a
+passed occasion (as reserved or group with `mine`, flagged expired, never
+counted as taken elsewhere), and the client offers Mark as bought on them when
+the occasion has passed. The recipient-blindness tests (U7) must keep passing.
+
+### R3-1 — Marking one's own claim bought after the date is unreachable from the client
+- Trigger: an invitee who handed a reserved gift over opens the occasion after 12:00 UTC the next day → their claim is not in the read and no action is offered → the gift is free elsewhere and can be bought twice
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=M/shared, confidence=verified
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: open
+
+### R3-2 — Leaving the screen during a write shows a failure for a write that succeeded
+- Trigger: back pressed while a reserve is in flight → the reload runs on an unmounted state and throws → generic failure snackbar
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified (triager: was inferred)
+- Decision: Defer (D10)
+- Revisit when: a giver reports an error after a write that went through, or any change to `_act` or `_reloadClaims` (then capture l10n before the await). R3-3's fix changes `_act`, so it is fixed with it.
+- Override: —
+- Outcome: open
+
+### R3-3 — Nothing shows an action in flight, and taps are swallowed silently
+- Trigger: a slow write → the user taps again → nothing happens, no feedback
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: open
