@@ -56,7 +56,12 @@ chosen here must not need rewriting when they arrive.
   `name` (1–100), `date` (a calendar date, no time; the exact moment it is
   "reached" is an open question for hidden gifts, not needed yet),
   `join_token` (nullable, unique), `created_at`. `occasion_members`:
-  (`occasion_id`, `user_id`), FKs cascade, `joined_at`. Invitees belong to an
+  (`occasion_id`, `user_id`), FKs cascade, `joined_at`. `occasion_removals`:
+  (`occasion_id`, `user_id`), FKs cascade, `removed_at`: an owner's removal
+  is effective on its own, so a removed person cannot rejoin through any link
+  until the owner allows them again (`docs/NEEDS.md`, Access; answer to the
+  U2 unit review's envelope question, under the owner's standing instruction
+  of 2026-11-08). Invitees belong to an
   occasion, not to the list (`docs/NEEDS.md`).
 - **D5 — Joining by link.** The owner creates an occasion's link: a random
   token (`secrets.token_urlsafe(16)`), stored as is so the owner can copy the
@@ -115,8 +120,9 @@ chosen here must not need rewriting when they arrive.
   | `DELETE /api/occasions/{id}` | owner | delete, with its memberships |
   | `POST /api/occasions/{id}/link` | owner | create or regenerate the link |
   | `DELETE /api/occasions/{id}/link` | owner | revoke the link |
-  | `GET /api/occasions/{id}/members` | owner | who joined (display names) |
-  | `DELETE /api/occasions/{id}/members/{user_id}` | owner | remove an invitee |
+  | `GET /api/occasions/{id}/members` | owner | who joined, and who was removed (display names, `removed` flag) |
+  | `DELETE /api/occasions/{id}/members/{user_id}` | owner | remove an invitee: deletes the membership and records a removal |
+  | `DELETE /api/occasions/{id}/removals/{user_id}` | owner | allow a removed person again (they still need a link to rejoin) |
   | `POST /api/join/preview` `{"token"}` | anyone signed in | occasion name and date, list title, recipient, owners' names, and `role` (`owner`, `member` or `none`), with `list_id` for an owner and `occasion_id` for a member; 404 for an unknown or revoked token |
   | `POST /api/join` `{"token"}` | anyone signed in | join → `{"occasion_id"}`; 404 for an unknown or revoked token; 409 `{"list_id"}` for an owner |
   | `GET /api/shared` | invitee | occasions I joined: occasion name and date, list title, recipient, owner names |
@@ -308,6 +314,10 @@ REVIEW.md defaults apply, with these additions:
      - the token is accepted only in the body: `POST /api/join/<token>` is
        404; a token longer than 64 characters → 422;
      - an unknown, regenerated-away or revoked token → 404;
+     - a removed invitee gets 404 on preview and join with the old and with
+       a regenerated link, until the owner allows them again; then a current
+       link works and an old one does not; an invitee who left rejoins with a
+       current link; account deletion removes removal rows;
      - a removed invitee gets 404 afterwards and can rejoin only with a
        current link;
      - an invitee who leaves gets 404 afterwards;
@@ -375,7 +385,9 @@ REVIEW.md defaults apply, with these additions:
   1. In list detail, an Occasions section: create (name, date picker),
      each occasion with its date, member count and actions: copy link,
      share link (`share_plus`), regenerate (with a warning that the old link
-     stops working), revoke, see members and remove one (confirmation),
+     stops working), revoke, see members and remove one (confirmation, saying
+     they cannot come back until allowed again), see removed people and allow
+     one again,
      rename, delete.
   2. `/join` reads the token from the URL fragment (D5): signed-out users
      go through sign-in and come back (the accounts plan's `from=/join`, the

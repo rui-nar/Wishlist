@@ -113,9 +113,13 @@ Later: priority, quantity (with partial reservations).
   others join.
 - **Revoking the link** stops new people from joining; invitees who already
   joined keep access.
-- **Removing an invitee:** their reserved-but-not-bought gifts become
-  available again; gifts they bought stay bought; their pledges are removed and
-  the other participants of those group gifts are notified.
+- **Removing an invitee:** they lose access at once and cannot rejoin the
+  occasion through any link, current or old, until the owner allows them
+  again; allowing them again does not rejoin them, they need a link. Their
+  reserved-but-not-bought gifts become available again; gifts they bought
+  stay bought; their pledges are removed and the other participants of those
+  group gifts are notified. An invitee who leaves on their own can rejoin with
+  a current link.
 
 ### Deleting an account
 
