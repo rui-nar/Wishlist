@@ -4,7 +4,10 @@ Who may call what is `test_roles.py`'s business; these tests check what the
 endpoints do for the callers who may.
 """
 
+import uuid
+
 import pytest
+from sqlalchemy import text
 
 FOR_ME = {"title": "Birthday", "recipient_kind": "self"}
 FOR_LEO = {
@@ -457,8 +460,9 @@ def test_a_removed_invitee_loses_access_and_is_listed_as_removed(
     ]
     detail = client.get(f"/api/lists/{shared['list_id']}", headers=ada.headers).json()
     assert detail["occasions"][0]["member_count"] == 0
-    # Removed again: they are no longer a member.
-    assert remove(client, ada, occasion, bea).status_code == 404
+    # Removed again: nothing changes, and it is not an error.
+    assert remove(client, ada, occasion, bea).status_code == 204
+    assert rows("occasion_removals", "user_id", bea.id) == 1
 
 
 def test_a_removed_invitee_cannot_come_back_through_any_link(
@@ -503,10 +507,23 @@ def test_allowed_again_they_rejoin_with_a_current_link_only(
     assert can_read(client, bea, occasion)
 
 
-def test_allowing_someone_who_was_not_removed(client, ada, bea, shared):
+def test_allowing_someone_who_was_not_removed(client, ada, bea, rows, shared):
     response = allow_again(client, ada, shared["occasion_id"], bea)
 
-    assert response.status_code == 404
+    # Nothing kept them out, and nothing does now.
+    assert response.status_code == 204
+    assert rows("occasion_members") == 1
+    assert rows("occasion_removals") == 0
+
+
+def test_allowing_again_twice(client, ada, bea, rows, shared):
+    occasion = shared["occasion_id"]
+    remove(client, ada, occasion, bea)
+
+    assert allow_again(client, ada, occasion, bea).status_code == 204
+    assert allow_again(client, ada, occasion, bea).status_code == 204
+    assert rows("occasion_removals") == 0
+    assert join(client, bea, shared["token"]).status_code == 200
 
 
 def test_a_removal_holds_for_its_occasion_only(client, ada, bea, shared):
@@ -518,14 +535,73 @@ def test_a_removal_holds_for_its_occasion_only(client, ada, bea, shared):
     assert can_read(client, bea, other["id"])
 
 
-def test_removing_someone_who_is_not_a_member(client, ada, make_account, shared):
+def test_removing_someone_who_is_not_a_member(
+    client, ada, bea, make_account, rows, shared
+):
+    # Someone who never joined is kept out too, and the members stay.
     cid = make_account("Cid")
 
+    response = remove(client, ada, shared["occasion_id"], cid)
+
+    assert response.status_code == 204
+    assert rows("occasion_removals", "user_id", cid.id) == 1
+    assert rows("occasion_members", "user_id", bea.id) == 1
+    assert join(client, cid, shared["token"]).status_code == 404
+
+
+def test_removing_someone_who_had_already_left(client, ada, bea, rows, shared):
+    occasion = shared["occasion_id"]
+    left = client.delete(f"/api/occasions/{occasion}/membership", headers=bea.headers)
+    assert left.status_code == 204
+
+    removed = remove(client, ada, occasion, bea)
+
+    # The removal is recorded all the same: the current link no longer lets
+    # them back (NEEDS "Access").
+    assert removed.status_code == 204
+    assert rows("occasion_removals", "user_id", bea.id) == 1
+    assert preview(client, bea, shared["token"]).status_code == 404
+    assert join(client, bea, shared["token"]).status_code == 404
+    assert rows("occasion_members") == 0
+    members = client.get(f"/api/occasions/{occasion}/members", headers=ada.headers)
+    assert members.json() == [
+        {"user_id": bea.id, "display_name": "Bea", "removed": True}
+    ]
+    # Until allowed again.
+    assert allow_again(client, ada, occasion, bea).status_code == 204
+    assert join(client, bea, shared["token"]).status_code == 200
+
+
+@pytest.mark.parametrize("path", ["members", "removals"])
+def test_removing_or_allowing_an_unknown_user(client, ada, rows, shared, path):
     response = client.delete(
-        f"/api/occasions/{shared['occasion_id']}/members/{cid.id}", headers=ada.headers
+        f"/api/occasions/{shared['occasion_id']}/{path}/{uuid.uuid4()}",
+        headers=ada.headers,
     )
 
-    assert response.status_code == 404
+    assert (response.status_code, response.json()) == (404, {"detail": "Not found"})
+    assert rows("occasion_removals") == 0
+    assert rows("occasion_members") == 1
+
+
+def test_an_owner_cannot_be_removed(client, ada, make_account, engine, rows, shared):
+    # Neither the caller nor a co-owner: owners are never invitees (D6). The
+    # answer is the one for an unknown user.
+    co_owner = make_account("Cid")
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO list_owners (list_id, user_id) VALUES (:list, :user)"),
+            {"list": shared["list_id"], "user": co_owner.id},
+        )
+
+    for owner in (ada, co_owner):
+        response = remove(client, ada, shared["occasion_id"], owner)
+        assert (response.status_code, response.json()) == (
+            404,
+            {"detail": "Not found"},
+        )
+    assert rows("occasion_removals") == 0
+    assert can_read(client, co_owner, shared["occasion_id"])
 
 
 def test_an_invitee_who_leaves_loses_access(client, bea, rows, shared):

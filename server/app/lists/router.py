@@ -306,9 +306,23 @@ def remove_member(
     # join that checked for a removal just before this one committed would
     # make the removed person a member again.
     db.execute(select(Occasion.id).where(Occasion.id == occasion.id).with_for_update())
-    _delete_membership(db, occasion.id, user_id)
+    # Locked so that an account deleted at the same moment either waits for
+    # the removal or is not found here, never a 500 on a removal of no one.
+    removed = db.get(User, user_id, with_for_update={"read": True, "key_share": True})
+    # Owners are never invitees (D6), so there is no one to remove: the same
+    # answer as an unknown user.
+    if removed is None or owns_list(db, removed, occasion.list_id):
+        raise not_found()
+    # Whether or not they are still a member: someone who left a moment ago is
+    # kept out all the same.
+    db.execute(
+        delete(OccasionMember).where(
+            OccasionMember.occasion_id == occasion.id,
+            OccasionMember.user_id == user_id,
+        )
+    )
     # Effective on its own: no link, current or old, lets them back until an
-    # owner allows them again (D4).
+    # owner allows them again (D4). Removing twice leaves one row.
     db.execute(
         insert(OccasionRemoval)
         .values(occasion_id=occasion.id, user_id=user_id)
@@ -325,16 +339,17 @@ def allow_again(
     occasion_id: uuid.UUID, user_id: uuid.UUID, user: CurrentUser, db: DbSession
 ) -> Response:
     occasion = owned_occasion(db, user, occasion_id)
-    deleted = db.execute(
+    if db.get(User, user_id) is None:
+        raise not_found()
+    # Not removed, or allowed again at the same moment, is the same outcome:
+    # nothing keeps them out. Allowing does not rejoin: they need a current
+    # link.
+    db.execute(
         delete(OccasionRemoval).where(
             OccasionRemoval.occasion_id == occasion.id,
             OccasionRemoval.user_id == user_id,
         )
     )
-    # Not removed, or allowed again at the same moment. Allowing does not
-    # rejoin: they need a current link.
-    if deleted.rowcount == 0:
-        raise not_found()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
