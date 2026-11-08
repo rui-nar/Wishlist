@@ -113,18 +113,21 @@ non-white background with a modern abstract motif.
   footer with the version link (`/about`). Copy, EN and FR in the ARB files:
   - headline: "Wish lists for every occasion" / "Des listes d'envies pour
     chaque occasion";
-  - purpose: "Keep the things you'd love to receive, share them with family
-    and friends for each occasion, and let them coordinate without spoiling
-    the surprise." / FR equivalent;
+  - purpose: "Keep the things you'd love to receive in one place, and share
+    them with family and friends for each occasion." / "Rassemblez les choses
+    que vous aimeriez recevoir et partagez-les avec votre famille et vos amis
+    pour chaque occasion.";
   - "Lists for everything you wish for": permanent lists, for you or for
     someone else (a child);
   - "Shared for each occasion": Christmas, a birthday… invite people with a
     link;
-  - "The surprise stays a surprise": what invitees do on your list stays
-    hidden from you.
-  The copy states the product's purpose (NEEDS.md, Problem) and claims
-  nothing the first release does not do: reserving is described as invitees
-  coordinating, not as a feature list.
+  - "You stay in control" / "Vous gardez la main": "Stop a link from working
+    or remove someone from an occasion at any time." / "Désactivez un lien ou
+    retirez quelqu'un d'une occasion à tout moment."
+  The copy claims only what the deployed build does (review R2-1): nothing
+  about invitees coordinating or the surprise until reserving ships, and the
+  plan that delivers reserving updates the purpose sentence and the third card
+  (review R3-2).
 - **D9 — Every screen.** All screens put their body in a `PageFrame` with
   the width of D2; the sign-in screen and the welcome page use the bold
   backdrop, the others the subtle one. App bars keep the full window width.
