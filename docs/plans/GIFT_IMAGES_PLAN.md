@@ -82,7 +82,14 @@ every choice below is taken with its reason and the alternative it rules out.
 - **D2 — Tables.** One migration:
   - `images`: `id` (UUID, random; also the file name), `uploaded_by` (FK
     `users`, `ON DELETE SET NULL`, nullable, indexed), `width`, `height` (of
-    the full version), `created_at`.
+    the full version), `created_at`, `attached_at` (timestamptz, nullable;
+    set when the image is first attached to a gift and never cleared). Review
+    R1-6: an image is **pending** while `attached_at` is null (readable by its
+    uploader, attachable for 24 h, its row deleted at 48 h), and **detached**
+    once `attached_at` is set and no gift points at it (replaced, removed, its
+    gift deleted): a detached image is never readable and never attachable
+    again. Without the column the two would be told apart by age alone, and
+    every later rule (reads, attach, purge) would guess.
   - `gifts.image_id`: nullable FK `images.id` with the default `NO ACTION`
     (the database refuses to delete an image row a gift still points at),
     unique (one gift per image, one image per gift).
@@ -114,9 +121,28 @@ every choice below is taken with its reason and the alternative it rules out.
     the smallest scale still at least 1600 px on the longest side; other
     formats up to 4096 × 4096 (16.8 MP). Above: 422
     `image_too_many_pixels`, without decoding.
-  - Orientation from EXIF applied (`ImageOps.exif_transpose`); an embedded ICC
-    profile converted to sRGB (`ImageCms`); then nothing of the original's
+  - Progressive JPEGs (review R1-3): `draft()` does not bound their memory,
+    since libjpeg keeps the whole image's DCT coefficients while it reads the
+    scans. The JPEG's frame marker is read before decoding; a progressive
+    frame (SOF2, and the arithmetic-coded SOF10) is capped at **8 MP**
+    (8 000 000 pixels), which keeps the coefficient buffer under about 48 MB
+    (3 components × 2 bytes per pixel, even without chroma subsampling).
+    Above: 422 `image_too_many_pixels`, without decoding. Baseline JPEGs keep
+    the 100 MP cap. Rules out the 4096 × 4096 cap of other formats for them
+    (up to about 100 MB of coefficients).
+  - Order of work (review R1-4): reduce first, then everything else on the
+    reduced image. A JPEG is decoded through `draft()`; any image whose
+    longest side is still above 1600 px is then reduced (`reduce()` /
+    `thumbnail()`) to at most 1600 px, and the full-size decode is released;
+    only then is the orientation from EXIF applied in place
+    (`ImageOps.exif_transpose(..., in_place=True)`) and an embedded ICC
+    profile converted to sRGB (`ImageCms`). Then nothing of the original's
     metadata is written: no EXIF (GPS included), XMP, ICC or comments.
+  - A profile that `ImageCms` cannot use (review R1-2, guard): the sRGB
+    conversion is wrapped; any `ImageCms` error (`PyCMSError`, or an
+    `OSError`/`ValueError` from the profile) logs a warning
+    `image icc: failed size=<profile bytes>` (no image data, no profile
+    content) and answers 422 `image_unsupported`.
   - Output: **WebP**, quality 80: the full version with its longest side at
     most 1600 px (never upscaled), alpha kept; a **thumbnail** cropped to the
     centre square, 256 × 256 (the gift card shows 64 px squares, up to 4×
@@ -124,7 +150,12 @@ every choice below is taken with its reason and the alternative it rules out.
     pictures, larger files); browsers and Flutter decode WebP on all three
     platforms.
   - Memory: the app is limited to 256 MB (PROD) and 192 MB (VAL). The caps
-    above bound one decode to about 64 MB; a process-wide lock lets **one
+    above bound one decode to about 64 MB (a 4096 × 4096 RGBA PNG; a
+    progressive JPEG's coefficients stay under 48 MB). Reducing first
+    (R1-4) bounds the peak of one image at about **80 MB**: the full decode
+    plus its ≤ 1600 px reduction (≤ 10 MB) while the reduction runs; the
+    transpose, the ICC conversion and both encodes then work on the reduced
+    image only (well under 40 MB together). A process-wide lock lets **one
     image** be decoded at a time, and a request that waits more than 30 s gets
     503 `image_busy`. The decode runs off the event loop. Rules out raising
     the container limits blind; Definition of done measures it on VAL.
@@ -189,7 +220,10 @@ every choice below is taken with its reason and the alternative it rules out.
     to a gift shown in that occasion (today, a gift of the occasion's list).
 
   Anything else is 404 with the API's usual body, the same as a random id.
-  An image no longer attached (replaced, removed) is 404 on both routes.
+  An image no longer attached (replaced, removed, its gift deleted) is
+  detached (`attached_at` set, no gift; D2, review R1-6) and 404 on both
+  routes, to its uploader as well: the pending rule applies only while
+  `attached_at` is null.
   Invitees go through the occasion, as every invitee read does today, so
   hidden gifts (scoped to an occasion) will reuse the occasion view's rule
   instead of a second, list-wide definition of what an invitee sees. Rules
@@ -214,31 +248,59 @@ every choice below is taken with its reason and the alternative it rules out.
 - **D9 — References go with the database; files go late.** Replacing or
   removing a gift's image changes `gifts.image_id`; deleting a gift, a list or
   an account deletes the gift row by cascade. None of these touches a file or
-  an `images` row. A periodic job then:
-  1. deletes `images` rows no gift points at and created more than **48 h**
-     ago (a pending image can be attached for **24 h**, `image_expired`
-     after, so the job never races an attach);
+  an `images` row; the image becomes detached (D2). A replace or a remove also
+  upserts `media_orphans(name, first_seen_at = now)` for the detached image
+  in the same transaction (review R1-1); a detach by cascade relies on the
+  row-deletion stamp of step 1 below. A periodic job then:
+  1. notes the stems that have an `images` row at the start of the run, then
+     deletes `images` rows no gift points at (review R1-6):
+     - **detached** (`attached_at` set): deleted at once, and
+       `media_orphans(name, first_seen_at = now)` upserted for the stem in
+       the same transaction (review R1-1: the clock starts when the row goes,
+       whatever an older record said); the files then wait for the horizon
+       (step 3);
+     - **never attached** (`attached_at` null) and created more than
+       **48 h** ago (a pending image can be attached for **24 h**,
+       `image_expired` after, so the job never races an attach): deleted,
+       with the same upsert. Its files are **not** deleted with the row: they
+       wait for the horizon like any other orphan (envelope answer 1, as
+       revised). A row pending in an older dump may be attached in a newer
+       one: restoring the older dump and rolling back to
+       `before-restore.dump` brings the row back attached, and its files
+       must still be there;
   2. for each file stem under `gifts/`: if an `images` row has that id, the
      file is live and any `media_orphans` row for it is deleted (a restored
      dump can bring a row back); otherwise it is an orphan, recorded with
-     `first_seen_at = now` if not yet recorded;
+     `first_seen_at = now` if not yet recorded, and **reset** to `now` if the
+     stem had a row at the start of the run (review R1-1);
   3. deletes an orphan's two files, then its record, when
      **`first_seen_at` is earlier than the horizon**;
   4. deletes orphan records whose files are gone, and temporary files older
      than a day; any other name is left alone.
+
+  Any later path that deletes an `images` row stamps the stem the same way
+  (upsert, `first_seen_at = now`). Review R1-1's case: a restore of an older
+  dump brings back row A, a later dump keeps A, then a rollback to
+  `before-restore.dump` brings back A's old orphan record; without the
+  stamp, the purge of A's row would leave that old `first_seen_at` in place
+  and the files A's kept dump points at could go before the horizon passes
+  that dump.
 
   **The horizon** is the snapshot time of the oldest kept dump, bounded from
   below: the earliest, over every `*.dump` file in the backup directory, of
   its modification time and (when the name has one) the date in its name at
   00:00 UTC, minus one day for the dump's own duration. With no backup
   directory configured, an unreadable one, or no dump in it, there is no
-  horizon and **nothing is purged** (DEV, VAL; a misconfigured PROD only
-  grows).
+  horizon and **nothing is purged**, step 1 included (DEV, VAL; a
+  misconfigured PROD only grows).
 
   Why it is safe: a dump can point at a file only through an `images` row.
-  A file is purged only if no row has existed for it since `first_seen_at`,
+  A file is purged only if no row has existed for it since `first_seen_at`
+  (every deletion of a row and every run that saw the row stamps it with
+  `now`, so a restored record cannot carry an older clock past a live row),
   and that is earlier than the snapshot of every kept dump, so no kept dump
-  has the row. The rule counts dumps, not days: after a backup outage, the
+  has the row. This holds for every image, never-attached pending ones
+  included (envelope answer 1, as revised): there is no exception. The rule counts dumps, not days: after a backup outage, the
   30 kept dumps reach back further and the horizon moves back with them. This
   closes R2-5. Manual copies with another name in the directory
   (`kept_<date>.dump`, `before-restore.dump`) count too, while they are
@@ -274,10 +336,11 @@ every choice below is taken with its reason and the alternative it rules out.
 
   A pending image is `{"id", "width", "height", "url", "thumb_url"}`.
   `GiftOut` and `SharedGiftOut` gain `image`: the same object, or `null`.
-  Attaching requires an image the caller uploaded, not attached to any gift,
-  and less than 24 h old; anything else is 422 `image_not_attachable`, the
-  same answer whatever the reason, so another user's image id cannot be
-  probed.
+  Attaching requires an image the caller uploaded, never attached
+  (`attached_at` null, review R1-6), and less than 24 h old; it sets
+  `attached_at`. Anything else is 422 `image_not_attachable` (a detached image
+  included), the same answer whatever the reason, so another user's image id
+  cannot be probed.
 
   Errors carry a stable code for the client's messages: `{"detail": "<code>"}`
   with 413 `image_too_large`; 422 `image_unsupported`,
@@ -348,7 +411,11 @@ REVIEW.md defaults apply, with these additions:
   hostile: polyglots, decompression bombs, malformed headers, huge
   dimensions, animated files, metadata with personal data. Only Pillow's
   JPEG, PNG, WebP and GIF decoders may run; dimensions are checked before
-  decoding; output is re-encoded from pixels only.
+  decoding; output is re-encoded from pixels only. One more parser is
+  accepted on untrusted input (envelope answer 2): **lcms2**, bundled with
+  Pillow and kept current by Dependabot, reads embedded ICC profiles for
+  D4's sRGB conversion, which stays; a profile it rejects is a 422 (D4,
+  review R1-2).
 - **Memory.** One API process within 256 MB (PROD) / 192 MB (VAL): concurrent
   uploads are a normal case (E1) and must not get the container OOM-killed;
   they queue on D4's lock or get 503.
@@ -359,7 +426,12 @@ REVIEW.md defaults apply, with these additions:
   rule is not touched, and nothing here records or shows invitee activity.
 - **Retention.** An image leaves the disk only after the oldest kept dump no
   longer references it (D9): for a deleted account, as long as its rows stay
-  in the dumps. This matches the dumps themselves.
+  in the dumps. This matches the dumps themselves. Never-attached pending
+  images are not exempt (envelope answer 1, as revised): their row goes at
+  48 h, their files wait for the horizon like any other orphan, since a
+  restore then a rollback can bring the row back attached. The cost, pending
+  uploads kept on disk until the horizon, is accepted; storage per account
+  stays an open decision.
 - **Concurrency.** The purge runs concurrently with requests: an attach, a
   replace or a restore at the same moment must never get a live file deleted
   (D9's 24 h / 48 h split and its "row exists" check).
@@ -431,18 +503,22 @@ REVIEW.md defaults apply, with these additions:
   `server/tests/lists/test_gifts.py`; for the migration,
   `server/alembic/versions/efc657e64bf8_occasions_and_members.py`.
 - **Do:**
-  1. Add `pillow` (a floor, like the others). Models `Image`, `MediaOrphan`
-     and `Gift.image_id` (D2); one revision; read it.
+  1. Add `pillow` (a floor, like the others). Models `Image` (with
+     `attached_at`, review R1-6), `MediaOrphan` and `Gift.image_id` (D2); one
+     revision; read it.
   2. `images.py`: constants (D4), `process(data) -> (full_webp, thumb_webp,
-     width, height)` raising typed errors for each D11 code; the one-at-a-time
+     width, height)` raising typed errors for each D11 code, in D4's order
+     (reduce first, then transpose in place, then ICC; review R1-4), with the
+     JPEG frame-marker check for progressive files (review R1-3) and the
+     guarded ICC conversion and its warning (review R1-2); the one-at-a-time
      lock with its 30 s wait; `store(media_dir, image_id, full, thumb)` with
      temporary names and rename; `ingest(db, media_dir, user, data) -> Image`.
   3. `POST /api/images`: an async handler that reads the stream up to 10 MB
      + 1 (413 before reading when `Content-Length` says more), then runs
      `ingest` off the event loop; 201 with the pending image of D11 (`url`
      and `thumb_url` under `/api/images/`).
-  4. `GET /api/images/{image_id}/{variant}`: the uploader of a pending image,
-     or an owner of the list of the gift it is attached to (`owns_list`);
+  4. `GET /api/images/{image_id}/{variant}`: the uploader of a pending image
+     (`attached_at` null; a detached image is 404, review R1-6), or an owner of the list of the gift it is attached to (`owns_list`);
      otherwise 404 with `not_found()`. Headers of D8. A row whose file is
      missing: 404 and a warning log (guard).
   5. Error bodies `{"detail": "<code>"}`.
@@ -455,10 +531,21 @@ REVIEW.md defaults apply, with these additions:
   `icc_profile` in `Image.open(...).info`; a transparent PNG keeps alpha;
   a 300 × 200 image is not upscaled; text, SVG and a HEIC header → 422
   `image_unsupported`; a hand-built PNG whose header declares 20000 × 20000
-  → 422 `image_too_many_pixels` without decoding; a 10 MB + 1 body → 413,
+  → 422 `image_too_many_pixels` without decoding; a hand-built progressive
+  JPEG (SOF2) header declaring 20000 × 20000, and one just over 8 MP, → 422
+  `image_too_many_pixels` without decoding, while a progressive JPEG under
+  8 MP is accepted (review R1-3); a PNG with a malformed ICC profile → 422
+  `image_unsupported` and one warning `image icc: failed size=<n>` with no
+  image data (review R1-2, `caplog`); a 4096 × 4096 PNG with an ICC profile,
+  processed in a subprocess, raises its peak RSS (`ru_maxrss`) over its
+  post-import baseline by less than 100 MB (review R1-4; RSS, not
+  `tracemalloc`, because Pillow allocates pixel buffers outside Python's
+  allocator; skipped where `resource` is missing); a 10 MB + 1 body → 413,
   with and without `Content-Length`; the lock held by another thread → 503
   `image_busy` after the wait (wait shortened in the test); another user and
-  a random id → the same 404; signed out → 401; response headers of D8;
+  a random id → the same 404; an image with `attached_at` set and no gift →
+  the same 404 for its uploader (review R1-6); signed out → 401; response
+  headers of D8;
   `test_migrations.py` still passes (upgrade, downgrade).
 - **Out of scope:** attaching to gifts, invitee routes, URL fetching, the
   purge, client.
@@ -532,7 +619,10 @@ REVIEW.md defaults apply, with these additions:
      `install -d`, Backups "Access" (the app lists dates, cannot read), Media
      (random names per D3, the purge rule of D9 stated against the oldest kept
      dump, manual copies count, off-host copies do not, the log line of D10,
-     VAL never purged), the daily check (grep the purge line), "Later
+     VAL never purged), one line in VAL's seeding steps: if
+     `seed-from-prod.sh` fails on a vanished media file (the daily purge ran
+     during its copy), rerun it (review R1-10), the daily check (grep the
+     purge line), "Later
      releases" (on an existing host, `sudo chgrp 10001 /opt/wishlist/backups
      && sudo chmod 750 /opt/wishlist/backups` before deploying this release),
      Open items (R2-5 checked, pointing at D9).
@@ -562,7 +652,10 @@ REVIEW.md defaults apply, with these additions:
 - **Do:**
   1. `ApiClient`: `postBytes(path, bytes, {contentType})` → JSON object, and
      `getBytes(path)` → `Uint8List`, through `_send` with a per-call timeout
-     (60 s upload, 30 s download); same error types.
+     (60 s upload, 30 s download); same error types. The JSON post gains an
+     optional per-call `timeout` (default unchanged, 10 s), for
+     `POST /api/images/from-url`, which may take the fetch's 20 s plus D4's
+     30 s lock wait and processing (review R1-5).
   2. `ApiImage(api, path)`: `ImageProvider` keyed by path, decoding the
      bytes of `getBytes`.
   3. `GiftCard`: an `onImageTap` callback (44 px hit area kept), and the
@@ -572,7 +665,9 @@ REVIEW.md defaults apply, with these additions:
   5. `DESIGN.md`: the viewer in the custom widgets table; the card's image
      tap and fallback.
 - **Acceptance:** `flutter analyze`; `flutter test`; tests: `postBytes` sends
-  the bytes, content type and bearer token; error codes surface as
+  the bytes, content type and bearer token; a JSON post given a 60 s
+  `timeout` does not time out on a response delayed past 10 s, and one
+  without keeps 10 s (fake async, review R1-5); error codes surface as
   `ApiException` with the body; `getBytes` returns the bytes; `ApiImage` with
   equal paths are equal and a 404 resolves to an error; `GiftCard` with a
   failing provider shows the placeholder, `onImageTap` fires; the viewer
@@ -595,14 +690,18 @@ REVIEW.md defaults apply, with these additions:
 - **Scope:** `server/app/lists/**`, `server/app/media/**` (not
   `purge.py`), `server/app/main.py` (`app.state.url_fetcher`),
   `server/pyproject.toml`, `server/uv.lock` (httpx to runtime),
-  `server/tests/lists/**`, `server/tests/media/**`, `server/tests/conftest.py`
-  (the fake fetcher, if shared).
+  `server/tests/lists/**` (including `test_roles.py`'s
+  `assert_reveals_nothing`, review R1-7), `server/tests/media/**`,
+  `server/tests/conftest.py` (the fake fetcher, if shared).
 - **Context:** D1, D6, D7, D11, D12; Conventions. Example to follow:
   `server/app/lists/router.py` (`_gift_out`, `_shared_gift_out`,
   `get_occasion`) and `server/tests/lists/test_roles.py`.
 - **Do:**
   1. `GiftCreate`/`GiftUpdate.image_id` and the attach rule of D11 (lock the
-     image row; `image_not_attachable`, `image_expired`).
+     image row; `image_not_attachable`, `image_expired`; attaching sets
+     `attached_at`, review R1-6); a replace or a remove upserts the detached
+     image's `media_orphans` record with `first_seen_at = now` in the same
+     transaction (D9, review R1-1).
   2. `image` on `GiftOut` (owner paths) and `SharedGiftOut` (the occasion's
      paths), wherever those models are built.
   3. `GET /api/occasions/{occasion_id}/images/{image_id}/{variant}` per D7,
@@ -615,12 +714,18 @@ REVIEW.md defaults apply, with these additions:
      occasion route also invitee 200; everyone else 404, identical to random
      ids); `POST /api/images` and `/from-url` in `COVERED_ELSEWHERE` with
      by-role tests; the JSON scan skipped for non-JSON bodies only; the
-     other list's image ids in `hidden_from`.
+     other list's image ids in `hidden_from`; `assert_reveals_nothing` also
+     fails when a hidden id appears inside a string value
+     (`assert not any(h in value for h in hidden)`), since image ids travel
+     inside `url` and `thumb_url` paths (review R1-7, guard).
 - **Acceptance:** `ruff check`; `alembic upgrade head` then `alembic check`
   (no new revision); `pytest` passes, including: add a gift with an image;
-  replace (the old image's routes → 404); remove with `null`; omit
+  replace (the old image's routes → 404, for its uploader too, and its
+  orphan record stamped now); remove with `null`; omit
   `image_id` → unchanged; attach another user's pending image, an attached
-  one, a random id → the same 422 `image_not_attachable`; a pending image
+  one, a detached one (review R1-6), a random id → the same 422
+  `image_not_attachable`; `assert_reveals_nothing` fails on a body whose
+  string value contains a hidden id (review R1-7); a pending image
   older than 24 h → 422 `image_expired`; the invitee model's paths are the
   occasion's and work for its invitee, not for an invitee of another
   occasion of the list, a removed invitee or a stranger; deleting the gift,
@@ -648,13 +753,15 @@ REVIEW.md defaults apply, with these additions:
 - **Do:**
   1. `GiftImage` (`id`, `width`, `height`, `url`, `thumbUrl`) on `Gift` and
      `SharedGift`, null when absent; `PendingImage`; `uploadImage(bytes)`,
-     `imageFromUrl(url)` on `ListsRepository`; `GiftDraft` gains the image
+     `imageFromUrl(url)` on `ListsRepository` (`imageFromUrl` posts with
+     U4's per-call 60 s timeout, review R1-5); `GiftDraft` gains the image
      change (unchanged, attach id, remove), serialised per D11.
   2. List detail and occasion view: `ApiImage(thumbUrl)` on each card,
      `onImageTap` → viewer with the full `url`.
   3. The fake server serves images and the new endpoints.
 - **Acceptance:** `flutter analyze`; `flutter test`; tests: parsing with and
-  without `image`; the draft sends no `image_id` when unchanged, `null` on
+  without `image`; `imageFromUrl` succeeds on a response delayed past 10 s
+  (review R1-5); the draft sends no `image_id` when unchanged, `null` on
   remove, the id on attach; the image paths used are the ones from the
   response; tapping a thumbnail opens the viewer, tapping the card elsewhere
   keeps its old behaviour; goldens of list detail and occasion view with an
@@ -729,7 +836,11 @@ REVIEW.md defaults apply, with these additions:
   1. `horizon(backup_dir) -> datetime | None` per D9.
   2. `purge(db, media_dir, backup_dir, now) -> counts`, steps 1–4 of D9, each
      file deleted only after re-checking in the same transaction that no row
-     exists.
+     exists; detached rows released at once, never-attached ones after 48 h
+     (review R1-6), files of both left to the horizon;
+     every row deletion upserts the stem's orphan record with `now`, and
+     step 2 resets `first_seen_at` for stems that had a row at the start of
+     the run (review R1-1).
   3. The thread of D10, started only when `backup_dir` is set, stopped by an
      event at shutdown; the log line.
 - **Acceptance:** `ruff check`; `pytest` passes, including `test_purge.py`
@@ -740,8 +851,20 @@ REVIEW.md defaults apply, with these additions:
   without `-p` (new mtime, old date in the name) protects by its name's
   date; no backup directory, an unreadable one, an empty one → nothing
   deleted and a `skipped` line; a row brought back (restore) clears the orphan
-  record and keeps the file; unreferenced rows older than 48 h released,
-  younger kept, referenced kept; temporary files older than a day removed,
+  record and keeps the file; review R1-1's sequence: a detached row A and an
+  orphan record for A with an old `first_seen_at` (a rollback's), the run
+  deletes A's row → the record's `first_seen_at` is the run's `now` and A's
+  files survive until the horizon passes it; a stem with a row at the start
+  of a run whose row goes during it gets `first_seen_at = now`; a detached
+  row is released at the next run whatever its age and its files kept until
+  the horizon passes; a never-attached row older than 48 h is deleted, its
+  orphan record stamped with the run's `now` and its files kept until the
+  horizon passes it, younger kept (review R1-6, envelope answer 1 as
+  revised); the restore-then-rollback sequence: image X pending in an older
+  dump's state, the run deletes X's row → X's files survive; X's row then
+  brought back attached (the rollback) → the next run clears X's orphan
+  record and keeps the files;
+  referenced kept; temporary files older than a day removed,
   unknown names untouched; orphan records of missing files dropped; the
   thread starts only with `backup_dir` and stops within 2 s of the client's
   exit.
