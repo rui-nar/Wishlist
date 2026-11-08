@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../api/api_client.dart';
+import '../api/config.dart';
 import '../design/tokens.dart';
 import '../design/widgets/gift_card.dart';
 import '../design/widgets/status_chip.dart';
 import 'common.dart';
-import 'gift_links.dart';
+import 'gift_link_action.dart';
 import 'lists_repository.dart';
+import 'occasions_section.dart';
 import 'price.dart';
+import 'share_link.dart';
 
 enum _ListAction { rename, delete }
 
-/// The smallest hit area of a control (DESIGN_SYSTEM_PLAN D6).
-const double _minHitArea = 44;
-
-/// A list the user owns: who it is for and its gifts, oldest first, each
-/// opening its edit form. The menu renames or deletes the list.
+/// A list the user owns: who it is for, its gifts, oldest first, each
+/// opening its edit form, and its occasions with their links. The menu
+/// renames or deletes the list.
 class ListDetailScreen extends StatefulWidget {
   const ListDetailScreen({super.key, required this.listId});
 
@@ -32,12 +35,29 @@ class _ListDetailScreenState extends State<ListDetailScreen>
   late Future<ListDetail> _list;
   bool _deleting = false;
 
+  /// Where share links start, once `/api/config` answered: the server's
+  /// public base URL, or the web client's origin (D5). Null until then.
+  String? _linkBase;
+
   String get _location => '/lists/${widget.listId}';
 
   @override
   void initState() {
     super.initState();
     _list = _repository.list(widget.listId);
+    fetchClientConfig(context.read<ApiClient>()).then(
+      (config) => _setLinkBase(config.publicBaseUrl),
+      // The web client's own origin still makes a working link.
+      onError: (Object _) => _setLinkBase(null),
+    );
+  }
+
+  void _setLinkBase(String? publicBaseUrl) {
+    final base = shareLinkBase(
+      publicBaseUrl: publicBaseUrl,
+      webOrigin: currentWebOrigin,
+    );
+    if (mounted) setState(() => _linkBase = base);
   }
 
   @override
@@ -78,14 +98,6 @@ class _ListDetailScreenState extends State<ListDetailScreen>
     }
     // Back to My lists, which the list's route is under.
     if (mounted) context.pop();
-  }
-
-  Future<void> _openLink(String link) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final failed = AppLocalizations.of(context).linkOpenFailed;
-    if (!await openGiftLink(link)) {
-      messenger.showSnackBar(SnackBar(content: Text(failed)));
-    }
   }
 
   @override
@@ -181,42 +193,17 @@ class _ListDetailScreenState extends State<ListDetailScreen>
                   icon: Icons.link,
                 ),
             ],
-            action: _linkAction(l10n, gift.links),
+            action: giftLinkAction(gift.links),
             onTap: () => context.push('$_location/gifts/${gift.id}/edit'),
           ),
         ],
-      ],
-    );
-  }
-
-  /// A button opening the gift's link; a menu of them when there are
-  /// several. Each is itself at least 44 px, on every platform: desktop
-  /// densities shrink icon buttons below that (DESIGN_SYSTEM_PLAN review
-  /// R3-1).
-  Widget? _linkAction(AppLocalizations l10n, List<String> links) {
-    if (links.isEmpty) return null;
-    final style = IconButton.styleFrom(
-      minimumSize: const Size.square(_minHitArea),
-    );
-    if (links.length == 1) {
-      return IconButton(
-        style: style,
-        icon: const Icon(Icons.open_in_new),
-        tooltip: l10n.openLink,
-        onPressed: () => _openLink(links.single),
-      );
-    }
-    return PopupMenuButton<String>(
-      style: style,
-      icon: const Icon(Icons.open_in_new),
-      tooltip: l10n.openLinks,
-      onSelected: _openLink,
-      itemBuilder: (context) => [
-        for (final link in links)
-          PopupMenuItem(
-            value: link,
-            child: Text(link, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
+        const SizedBox(height: Spacing.s32),
+        OccasionsSection(
+          listId: list.id,
+          occasions: list.occasions,
+          linkBase: _linkBase,
+          onChanged: reload,
+        ),
       ],
     );
   }

@@ -17,7 +17,7 @@ void main() {
     server.hold = Completer();
     await startApp(tester, server, '/', settle: false);
 
-    expect(find.text('My lists'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, 'My lists'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     server.hold!.complete();

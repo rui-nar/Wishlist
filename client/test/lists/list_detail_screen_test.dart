@@ -97,7 +97,7 @@ void main() {
     expect(find.text('Try again'), findsNothing);
     await tester.tap(find.text('Back to my lists'));
     await tester.pumpAndSettle();
-    expect(find.text('My lists'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, 'My lists'), findsOneWidget);
   });
 
   testWidgets('one link opens in the external browser', (tester) async {
@@ -196,7 +196,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(server.lists.containsKey(listId), isFalse);
-      expect(find.text('My lists'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'My lists'), findsOneWidget);
       expect(find.text('Birthday'), findsOneWidget);
       expect(find.text('Christmas'), findsNothing);
     });

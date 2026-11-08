@@ -30,9 +30,12 @@ const kAlice = {
 /// The server's account endpoints (ACCOUNTS_PLAN D7) and `/api/version`, in
 /// memory. [status] forces an answer for `'<METHOD> <path>'`.
 class FakeServer {
-  FakeServer({this.googleClientId = 'test-client-id'});
+  FakeServer({this.googleClientId = 'test-client-id', this.publicBaseUrl});
 
   String? googleClientId;
+
+  /// Where share links start; none by default, as in DEV.
+  String? publicBaseUrl;
 
   /// Session token → user.
   final sessions = <String, Map<String, String>>{};
@@ -66,7 +69,10 @@ class FakeServer {
     final unauthorized = http.Response('{"detail":"Not authenticated"}', 401);
     switch (call) {
       case 'GET /api/config':
-        return json({'google_client_id': googleClientId});
+        return json({
+          'google_client_id': googleClientId,
+          'public_base_url': publicBaseUrl,
+        });
       case 'GET /api/version':
         return json({'version': 'v1.2.0', 'env': 'validation'});
       case 'POST /api/auth/google':

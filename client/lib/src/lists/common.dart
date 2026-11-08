@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
@@ -26,14 +27,30 @@ String recipientLine(
 ) =>
     kind == RecipientKind.self ? l10n.listForMe : l10n.listForName(recipientName!);
 
+/// A person's display name, which Google may leave empty.
+String personName(AppLocalizations l10n, String name) =>
+    name.trim().isEmpty ? l10n.unnamedPerson : name;
+
+/// Several people's names, in one line.
+String peopleNames(AppLocalizations l10n, List<String> names) =>
+    names.map((name) => personName(l10n, name)).join(', ');
+
+/// An occasion's calendar day in the viewer's locale: `24 Dec 2026` in
+/// British English, `24 déc. 2026` in French.
+String formatOccasionDate(BuildContext context, DateTime date) =>
+    DateFormat.yMMMd(Localizations.localeOf(context).toString()).format(date);
+
 /// A failed load, in a card: why, and a button to try again, or to go back
-/// to My lists when what was asked for no longer exists ([notFound]).
+/// to My lists (or [backLocation]) when what was asked for no longer exists
+/// ([notFound]).
 class LoadFailure extends StatelessWidget {
   const LoadFailure({
     super.key,
     required this.error,
     required this.onRetry,
     this.notFound,
+    this.backLocation = '/',
+    this.backLabel,
   });
 
   final Object? error;
@@ -41,6 +58,11 @@ class LoadFailure extends StatelessWidget {
 
   /// Shown instead of the server's error when [error] is a 404.
   final String? notFound;
+
+  /// Where the button goes after a 404, and what it says; "Back to my
+  /// lists" when [backLabel] is null.
+  final String backLocation;
+  final String? backLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -61,8 +83,8 @@ class LoadFailure extends StatelessWidget {
                 const SizedBox(height: Spacing.s16),
                 gone
                     ? OutlinedButton(
-                        onPressed: () => context.go('/'),
-                        child: Text(l10n.backToMyLists),
+                        onPressed: () => context.go(backLocation),
+                        child: Text(backLabel ?? l10n.backToMyLists),
                       )
                     : OutlinedButton(
                         onPressed: onRetry,
@@ -82,6 +104,21 @@ Future<bool> confirmDelete(
   BuildContext context, {
   required String title,
   required String body,
+}) =>
+    confirmAction(
+      context,
+      title: title,
+      body: body,
+      action: AppLocalizations.of(context).delete,
+    );
+
+/// Asks before an action that cannot be undone, named [action] on its
+/// button, in the error colour; true to go ahead.
+Future<bool> confirmAction(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String action,
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
@@ -100,7 +137,7 @@ Future<bool> confirmDelete(
             style: TextButton.styleFrom(
               foregroundColor: Theme.of(context).colorScheme.error,
             ),
-            child: Text(l10n.delete),
+            child: Text(action),
           ),
         ],
       );

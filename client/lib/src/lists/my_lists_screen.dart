@@ -10,7 +10,10 @@ import 'lists_repository.dart';
 /// one (LISTS_GIFTS_SHARING_PLAN D11). The app bar's button opens the
 /// account screen.
 class MyListsScreen extends StatefulWidget {
-  const MyListsScreen({super.key});
+  const MyListsScreen({super.key, this.bottomNavigationBar});
+
+  /// Home's navigation bar.
+  final Widget? bottomNavigationBar;
 
   @override
   State<MyListsScreen> createState() => _MyListsScreenState();
@@ -48,6 +51,7 @@ class _MyListsScreenState extends State<MyListsScreen>
           ),
         ],
       ),
+      bottomNavigationBar: widget.bottomNavigationBar,
       body: SafeArea(
         child: FutureBuilder<List<ListSummary>>(
           future: _lists,

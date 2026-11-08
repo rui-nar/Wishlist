@@ -114,6 +114,7 @@ void main() {
         {..._gift, 'id': 'g2', 'links': [], 'price_amount': null,
           'price_currency': null},
       ],
+      'occasions': [],
     };
 
     final list = await repository().list('l1');
@@ -181,6 +182,59 @@ void main() {
 
     expect(seen.single.url.path, '/api/lists/a%2F..%2Fb%3Fx%3D1%23y');
     expect(seen.single.url.query, isEmpty);
+  });
+
+  test('occasion calls: their paths, bodies and answers', () async {
+    const occasion = {
+      'id': 'o1',
+      'list_id': 'l1',
+      'name': 'Christmas 2026',
+      'date': '2026-12-24',
+      'join_token': 'tok',
+      'member_count': 2,
+    };
+    code = 201;
+    answer = occasion;
+    final created = await repository().createOccasion(
+      'l1',
+      name: 'Christmas 2026',
+      date: DateTime(2026, 12, 24),
+    );
+    code = 200;
+    await repository().updateOccasion(
+      'o1',
+      name: 'Noël',
+      date: DateTime(2026, 1, 5),
+    );
+    await repository().createLink('o1');
+    answer = [
+      {'user_id': 'u1', 'display_name': 'Carol', 'removed': false},
+      {'user_id': 'u2', 'display_name': 'Dan', 'removed': true},
+    ];
+    final members = await repository().members('o1');
+    code = 204;
+    await repository().revokeLink('o1');
+    await repository().removeMember('o1', 'u1');
+    await repository().allowAgain('o1', 'u2');
+    await repository().deleteOccasion('o1');
+
+    expect(sent(0), 'POST /api/lists/l1/occasions');
+    expect(body(0), {'name': 'Christmas 2026', 'date': '2026-12-24'});
+    expect(created.date, DateTime(2026, 12, 24));
+    expect(created.joinToken, 'tok');
+    expect(created.memberCount, 2);
+    expect(sent(1), 'PATCH /api/occasions/o1');
+    expect(body(1), {'name': 'Noël', 'date': '2026-01-05'});
+    expect(sent(2), 'POST /api/occasions/o1/link');
+    expect(sent(3), 'GET /api/occasions/o1/members');
+    expect(members.map((m) => (m.displayName, m.removed)), [
+      ('Carol', false),
+      ('Dan', true),
+    ]);
+    expect(sent(4), 'DELETE /api/occasions/o1/link');
+    expect(sent(5), 'DELETE /api/occasions/o1/members/u1');
+    expect(sent(6), 'DELETE /api/occasions/o1/removals/u2');
+    expect(sent(7), 'DELETE /api/occasions/o1');
   });
 
   test('a list that is gone or not mine is a 404', () async {

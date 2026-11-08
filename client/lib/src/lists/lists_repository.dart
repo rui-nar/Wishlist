@@ -47,7 +47,8 @@ class ListSummary {
   final int giftCount;
 }
 
-/// A list with its gifts, oldest first, as `GET /api/lists/{id}` gives it.
+/// A list with its gifts, oldest first, and its occasions, by date, as
+/// `GET /api/lists/{id}` gives it.
 class ListDetail {
   const ListDetail({
     required this.id,
@@ -55,6 +56,7 @@ class ListDetail {
     required this.recipientKind,
     required this.recipientName,
     required this.gifts,
+    this.occasions = const [],
   });
 
   factory ListDetail.fromJson(Map<String, dynamic> json) => ListDetail(
@@ -66,6 +68,10 @@ class ListDetail {
           for (final gift in json['gifts'] as List<dynamic>)
             Gift.fromJson(gift as Map<String, dynamic>),
         ],
+        occasions: [
+          for (final occasion in json['occasions'] as List<dynamic>)
+            Occasion.fromJson(occasion as Map<String, dynamic>),
+        ],
       );
 
   final String id;
@@ -73,7 +79,76 @@ class ListDetail {
   final RecipientKind recipientKind;
   final String? recipientName;
   final List<Gift> gifts;
+  final List<Occasion> occasions;
 }
+
+/// An occasion as its list's owners see it (D4, D8).
+class Occasion {
+  const Occasion({
+    required this.id,
+    required this.listId,
+    required this.name,
+    required this.date,
+    required this.joinToken,
+    required this.memberCount,
+  });
+
+  factory Occasion.fromJson(Map<String, dynamic> json) => Occasion(
+        id: json['id'] as String,
+        listId: json['list_id'] as String,
+        name: json['name'] as String,
+        date: parseDate(json['date'] as String),
+        joinToken: json['join_token'] as String?,
+        memberCount: json['member_count'] as int,
+      );
+
+  final String id;
+  final String listId;
+  final String name;
+
+  /// A calendar day, at midnight; no time (D4).
+  final DateTime date;
+
+  /// What the occasion's link carries; null when it has no link.
+  final String? joinToken;
+
+  /// The invitees who joined, removed people not counted.
+  final int memberCount;
+}
+
+/// Someone who joined an occasion, or whom an owner removed from it.
+class Member {
+  const Member({
+    required this.userId,
+    required this.displayName,
+    required this.removed,
+  });
+
+  factory Member.fromJson(Map<String, dynamic> json) => Member(
+        userId: json['user_id'] as String,
+        displayName: json['display_name'] as String,
+        removed: json['removed'] as bool,
+      );
+
+  final String userId;
+  final String displayName;
+
+  /// Removed by an owner: no link lets them back until they are allowed
+  /// again.
+  final bool removed;
+}
+
+/// A JSON calendar day (`2026-12-24`) as a [DateTime] at midnight.
+DateTime parseDate(String value) {
+  final date = DateTime.parse(value);
+  return DateTime(date.year, date.month, date.day);
+}
+
+/// [date]'s calendar day as JSON (`2026-12-24`).
+String formatJsonDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
 
 /// What a gift says (D3). Also the body of an add or an edit.
 class GiftDraft {
@@ -135,8 +210,9 @@ class Gift extends GiftDraft {
   final String listId;
 }
 
-/// The list and gift calls. Errors are [ApiClient]'s: a list or gift that is
-/// gone, or not the user's, is an [ApiException] with status 404 (D7).
+/// The list, gift and occasion calls of a list's owner. Errors are
+/// [ApiClient]'s: a list, gift or occasion that is gone, or not the user's,
+/// is an [ApiException] with status 404 (D7).
 class ListsRepository {
   ListsRepository(this._api);
 
@@ -199,6 +275,64 @@ class ListsRepository {
 
   Future<void> deleteGift(String giftId) =>
       _api.delete('/api/gifts/${_segment(giftId)}');
+
+  /// Creates an occasion of the list, without a link yet (D5).
+  Future<Occasion> createOccasion(
+    String listId, {
+    required String name,
+    required DateTime date,
+  }) async =>
+      Occasion.fromJson(
+        await _api.postJson('/api/lists/${_segment(listId)}/occasions', {
+          'name': name,
+          'date': formatJsonDate(date),
+        }),
+      );
+
+  Future<Occasion> updateOccasion(
+    String occasionId, {
+    required String name,
+    required DateTime date,
+  }) async =>
+      Occasion.fromJson(
+        await _api.patchJson('/api/occasions/${_segment(occasionId)}', {
+          'name': name,
+          'date': formatJsonDate(date),
+        }),
+      );
+
+  /// Deletes the occasion with its memberships.
+  Future<void> deleteOccasion(String occasionId) =>
+      _api.delete('/api/occasions/${_segment(occasionId)}');
+
+  /// Creates the occasion's link, or replaces it: the previous link stops
+  /// working, invitees who joined keep their access (D5).
+  Future<Occasion> createLink(String occasionId) async => Occasion.fromJson(
+        await _api.postJson('/api/occasions/${_segment(occasionId)}/link', {}),
+      );
+
+  /// Revokes the occasion's link: nobody new can join with it.
+  Future<void> revokeLink(String occasionId) =>
+      _api.delete('/api/occasions/${_segment(occasionId)}/link');
+
+  /// Who joined, in the order they joined, then the people removed.
+  Future<List<Member>> members(String occasionId) async => [
+        for (final member in await _api.getJsonList(
+          '/api/occasions/${_segment(occasionId)}/members',
+        ))
+          Member.fromJson(member as Map<String, dynamic>),
+      ];
+
+  /// Removes an invitee: they lose access at once and no link lets them back
+  /// until they are allowed again (D4).
+  Future<void> removeMember(String occasionId, String userId) => _api.delete(
+        '/api/occasions/${_segment(occasionId)}/members/${_segment(userId)}',
+      );
+
+  /// Allows a removed person again; they still need a link to rejoin.
+  Future<void> allowAgain(String occasionId, String userId) => _api.delete(
+        '/api/occasions/${_segment(occasionId)}/removals/${_segment(userId)}',
+      );
 
   /// Ids come from the location bar too: encoded, so one cannot add a path
   /// or a query to the call.
