@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:url_launcher_platform_interface/link.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
@@ -32,8 +33,9 @@ const kAliceName = 'Alice Martin';
 
 /// Lists, gifts, occasions and joining for the signed-in user, Alice
 /// (LISTS_GIFTS_SHARING_PLAN D8). Any other call goes to [accounts].
-/// [status] forces an answer for `'<METHOD> <path>'`; while [hold] is set,
-/// these calls wait for it.
+/// [status] forces an answer for `'<METHOD> <path>'`, with the error code in
+/// [details] as its body when there is one; while [hold] is set, these calls
+/// wait for it.
 ///
 /// [lists] are Alice's own. [otherLists] belong to someone else, named in
 /// [otherOwners]: Alice sees their occasions only as a member ([joined]).
@@ -75,6 +77,10 @@ class FakeListsServer {
   final aliceRemoved = <String>{};
 
   final status = <String, int>{};
+
+  /// `'<METHOD> <path>'` → the `detail` code of the answer [status] forces
+  /// (GIFT_IMAGES D11).
+  final details = <String, String>{};
 
   /// Image id → its `{id, width, height}`: pending ones (uploaded, not yet
   /// attached) and attached ones. The paths are made when it is shown, as
@@ -288,7 +294,12 @@ class FakeListsServer {
     }
     await hold?.future;
     final forced = status[call];
-    if (forced != null) return http.Response('', forced);
+    if (forced != null) {
+      final detail = details[call];
+      return detail == null
+          ? http.Response('', forced)
+          : http.Response(jsonEncode({'detail': detail}), forced);
+    }
     final auth = request.headers['Authorization'] ?? '';
     if (!accounts.sessions.containsKey(auth.replaceFirst('Bearer ', ''))) {
       return http.Response('{"detail":"Not authenticated"}', 401);
@@ -586,6 +597,34 @@ FakeUrlLauncher installFakeUrlLauncher() {
   final fake = FakeUrlLauncher();
   UrlLauncherPlatform.instance = fake;
   addTearDown(() => UrlLauncherPlatform.instance = previous);
+  return fake;
+}
+
+/// image_picker's platform side: hands over [picked] (null: the user
+/// cancelled), and records how it was asked.
+class FakeImagePicker extends Fake
+    with MockPlatformInterfaceMixin
+    implements ImagePickerPlatform {
+  Uint8List? picked;
+  final requests = <(ImageSource, ImagePickerOptions)>[];
+
+  @override
+  Future<XFile?> getImageFromSource({
+    required ImageSource source,
+    ImagePickerOptions options = const ImagePickerOptions(),
+  }) async {
+    requests.add((source, options));
+    final bytes = picked;
+    return bytes == null ? null : XFile.fromData(bytes, mimeType: 'image/png');
+  }
+}
+
+/// Installs a fresh [FakeImagePicker] for the test, picking [picked].
+FakeImagePicker installFakeImagePicker([Uint8List? picked]) {
+  final previous = ImagePickerPlatform.instance;
+  final fake = FakeImagePicker()..picked = picked;
+  ImagePickerPlatform.instance = fake;
+  addTearDown(() => ImagePickerPlatform.instance = previous);
   return fake;
 }
 

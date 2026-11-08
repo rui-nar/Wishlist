@@ -69,6 +69,24 @@ void main() {
       );
       return '/lists/$list/gifts/$gift/edit';
     },
+    'gift_form_image': (server) {
+      final list = server.addList('Christmas', recipientName: 'Léa');
+      final gift = server.addGift(
+        list,
+        'Noise-cancelling headphones',
+        priceAmount: '149.00',
+        priceCurrency: 'EUR',
+        image: true,
+      );
+      return '/lists/$list/gifts/$gift/edit';
+    },
+    // An image URL the server could not download (D14).
+    'gift_form_image_error': (server) {
+      final list = server.addList('Christmas', recipientName: 'Léa');
+      server.status['POST /api/images/from-url'] = 422;
+      server.details['POST /api/images/from-url'] = 'url_fetch_failed';
+      return '/lists/$list/gifts/new';
+    },
     'list_occasions': (server) {
       server.accounts.publicBaseUrl = 'https://wishlist.example';
       final list = server.addList('Christmas', recipientName: 'Léa');
@@ -104,6 +122,17 @@ void main() {
   // What a screen does once open, before its picture is taken.
   final after = <String, Future<void> Function(WidgetTester)>{
     'list_detail_image': loadImages,
+    'gift_form_image': loadImages,
+    'gift_form_image_error': (tester) async {
+      await tester.tap(find.text('Image URL'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        fieldLabelled('Image address'),
+        'https://shop.example/h.png',
+      );
+      await tester.tap(find.text('Use this image'));
+      await tester.pumpAndSettle();
+    },
     // The occasions, below the gifts.
     'list_occasions': (tester) async {
       await tester.scrollUntilVisible(

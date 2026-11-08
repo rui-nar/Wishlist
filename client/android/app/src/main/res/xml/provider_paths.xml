@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The FileProvider pasteboard needs (AndroidManifest.xml): the app's cache
+     directory only, where the plugin writes, not the external storage its
+     README suggests. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="pasteboard" path="." />
+</paths>

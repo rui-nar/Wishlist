@@ -723,5 +723,89 @@
   "imageViewerClose": "Close",
   "@imageViewerClose": {
     "description": "The full-screen image viewer: the tooltip of the button that closes it."
+  },
+  "giftImageLabel": "Image",
+  "@giftImageLabel": {
+    "description": "The gift form: the heading of the image section, above the title."
+  },
+  "giftImagePreview": "The gift's image",
+  "@giftImagePreview": {
+    "description": "The gift form: what screen readers say for the image preview."
+  },
+  "imageChoose": "Choose image",
+  "@imageChoose": {
+    "description": "The gift form: the button that opens the device's photos to pick the gift's image."
+  },
+  "imageFromUrl": "Image URL",
+  "@imageFromUrl": {
+    "description": "The gift form: the button that asks for the web address of an image."
+  },
+  "imagePaste": "Paste image",
+  "@imagePaste": {
+    "description": "The gift form: the button that takes the image copied to the clipboard."
+  },
+  "imageRemove": "Remove image",
+  "@imageRemove": {
+    "description": "The gift form: the button that removes the gift's image."
+  },
+  "imageUploading": "Adding the image...",
+  "@imageUploading": {
+    "description": "The gift form: what screen readers say while an image is being sent to the server."
+  },
+  "imageUrlTitle": "Image from the web",
+  "@imageUrlTitle": {
+    "description": "The image address dialog: its title."
+  },
+  "imageUrlLabel": "Image address",
+  "@imageUrlLabel": {
+    "description": "The image address dialog: the label of the field where the image's web address is typed."
+  },
+  "imageUrlConfirm": "Use this image",
+  "@imageUrlConfirm": {
+    "description": "The image address dialog: the button that has the server download the image."
+  },
+  "imageClipboardEmpty": "No image in the clipboard.",
+  "@imageClipboardEmpty": {
+    "description": "The gift form: Paste image found no image in the clipboard (Android, iOS)."
+  },
+  "imageClipboardEmptyWeb": "No image could be read from the clipboard. Press Ctrl+V (Cmd+V on a Mac) to paste one.",
+  "@imageClipboardEmptyWeb": {
+    "description": "The gift form, in a browser: Paste image found no image, or the browser did not let the app read the clipboard; the keyboard shortcut always works."
+  },
+  "imageTooLarge": "This image is too large: the limit is 10 MB.",
+  "@imageTooLarge": {
+    "description": "The gift form: the image file is over 10 MB."
+  },
+  "imageTooManyPixels": "This image has too many pixels. Try a smaller one.",
+  "@imageTooManyPixels": {
+    "description": "The gift form: the image's dimensions are over the server's limit."
+  },
+  "imageUnsupported": "This kind of image can't be used. Try a JPEG, PNG, WebP or GIF.",
+  "@imageUnsupported": {
+    "description": "The gift form: the file is not an image the server reads."
+  },
+  "imageBusy": "The server is busy with other images. Try again in a moment.",
+  "@imageBusy": {
+    "description": "The gift form: the server is processing other images and could not take this one in time."
+  },
+  "imageUrlNotAllowed": "This address can't be used.",
+  "@imageUrlNotAllowed": {
+    "description": "The gift form: the server refuses to download from this web address (a private or local address, an unusual port...)."
+  },
+  "imageUrlFetchFailed": "The image could not be downloaded from this address.",
+  "@imageUrlFetchFailed": {
+    "description": "The gift form: the server could not download an image from the address (not found, not an image, too slow, too large)."
+  },
+  "imageNotAttachable": "This image can no longer be used. Add it again.",
+  "@imageNotAttachable": {
+    "description": "The gift form, on saving: the image added in the form can no longer be attached to the gift."
+  },
+  "imageExpired": "This image was added too long ago. Add it again.",
+  "@imageExpired": {
+    "description": "The gift form, on saving: the image was added to the form more than a day before saving."
+  },
+  "imageReadFailed": "This image could not be read. Try another one.",
+  "@imageReadFailed": {
+    "description": "The gift form: the picked image could not be read from the device."
   }
 }

@@ -8,6 +8,7 @@ import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import 'common.dart';
 import 'currencies.dart';
+import 'gift_image_section.dart';
 import 'gift_links.dart';
 import 'lists_repository.dart';
 import 'price.dart';
@@ -18,9 +19,10 @@ const kGiftDescriptionMaxLength = 2000;
 const kMaxLinks = 10;
 const kLinkMaxLength = 2048;
 
-/// Adds a gift to the list [listId], or edits its gift [giftId]: title,
-/// description, shop links and an indicative price. Editing also deletes the
-/// gift, after confirmation. Goes back to the list once saved or deleted.
+/// Adds a gift to the list [listId], or edits its gift [giftId]: image,
+/// title, description, shop links and an indicative price. Editing also
+/// deletes the gift, after confirmation. Goes back to the list once saved or
+/// deleted.
 class GiftFormScreen extends StatefulWidget {
   const GiftFormScreen({super.key, required this.listId, this.giftId});
 
@@ -45,6 +47,10 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
   /// Editing: the gift as it is, read first.
   Future<Gift>? _gift;
   bool _busy = false;
+
+  /// What saving does to the image, and whether one is being sent.
+  ImageChange _imageChange = const KeepImage();
+  bool _imageBusy = false;
 
   bool get _adding => widget.giftId == null;
 
@@ -122,6 +128,7 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
       ],
       priceAmount: amount,
       priceCurrency: amount == null ? null : _currency.text,
+      imageChange: _imageChange,
     );
   }
 
@@ -139,7 +146,11 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
       if (mounted) context.pop();
     } catch (error) {
       messenger.showSnackBar(SnackBar(
-        content: Text(isNotFound(error) ? _goneMessage(l10n) : l10n.saveFailed),
+        content: Text(
+          isNotFound(error)
+              ? _goneMessage(l10n)
+              : imageRefusal(l10n, error) ?? l10n.saveFailed,
+        ),
       ));
       if (mounted) setState(() => _busy = false);
     }
@@ -179,7 +190,7 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
       body: PageFrame(
         child: SafeArea(
           child: _adding
-              ? _buildForm(context)
+              ? _buildForm(context, null)
               : FutureBuilder<Gift>(
                   future: _gift,
                   builder: (context, snapshot) {
@@ -194,7 +205,7 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
                     if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    return _buildForm(context);
+                    return _buildForm(context, snapshot.data);
                   },
                 ),
         ),
@@ -202,7 +213,8 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
     );
   }
 
-  Widget _buildForm(BuildContext context) {
+  /// [gift] is the gift as it is, when editing.
+  Widget _buildForm(BuildContext context, Gift? gift) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Form(
@@ -216,6 +228,13 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  GiftImageSection(
+                    initial: gift?.image,
+                    enabled: !_busy,
+                    onChanged: (change) => _imageChange = change,
+                    onBusyChanged: (busy) => setState(() => _imageBusy = busy),
+                  ),
+                  const SizedBox(height: Spacing.s24),
                   TextFormField(
                     controller: _title,
                     autofocus: _adding,
@@ -341,7 +360,7 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
                   ],
                   const SizedBox(height: Spacing.s24),
                   FilledButton(
-                    onPressed: _busy ? null : _save,
+                    onPressed: _busy || _imageBusy ? null : _save,
                     child: Text(_adding ? l10n.addGift : l10n.save),
                   ),
                   if (!_adding) ...[

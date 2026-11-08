@@ -159,6 +159,8 @@ void main() {
     expect(find.byType(GiftFormScreen), findsOneWidget);
 
     await tester.enterText(fieldLabelled('What is it?'), 'Earphones');
+    await tester.ensureVisible(find.text('Save'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
