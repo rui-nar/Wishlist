@@ -87,7 +87,12 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         # Read by the clients at start, so one build serves every environment
         # (accounts plan D6). The first client ID is the web client's.
         audiences = settings.google_audiences
-        return {"google_client_id": audiences[0] if audiences else None}
+        # Without its trailing slash: the client appends /join#<token>.
+        public_base_url = settings.public_base_url.strip().rstrip("/")
+        return {
+            "google_client_id": audiences[0] if audiences else None,
+            "public_base_url": public_base_url or None,
+        }
 
     @app.get("/api/health")
     def health() -> JSONResponse:

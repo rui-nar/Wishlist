@@ -1,10 +1,16 @@
-"""Request and response bodies of the list and gift endpoints (lists plan D8).
+"""Request and response bodies of the list, gift, occasion and join endpoints
+(lists plan D8).
 
 Responses list their fields explicitly, so a column added later appears in a
 response only when a plan adds it here. Request bodies refuse unknown fields:
 a list's kind, for one, cannot be sent to `PATCH` (D2).
+
+Owners and invitees get different models. The invitee's (`SharedOccasion`,
+`InviteeOccasionView`, `SharedGiftOut`) never carry a join token, a member, a
+list id or another occasion: those are in owners' models only.
 """
 
+import datetime as dt
 import uuid
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -23,7 +29,9 @@ from app.lists.currencies import CURRENCIES
 from app.lists.models import (
     GIFT_DESCRIPTION_MAX_LENGTH,
     GIFT_TITLE_MAX_LENGTH,
+    JOIN_TOKEN_MAX_LENGTH,
     LINK_MAX_LENGTH,
+    OCCASION_NAME_MAX_LENGTH,
     OTHER,
     PRICE_PRECISION,
     PRICE_SCALE,
@@ -79,6 +87,16 @@ Price = Annotated[
     Decimal, Field(ge=0, max_digits=PRICE_PRECISION, decimal_places=PRICE_SCALE)
 ]
 Currency = Annotated[str, AfterValidator(_check_currency)]
+OccasionName = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=OCCASION_NAME_MAX_LENGTH
+    ),
+]
+# Capped, so an oversized token is refused before it is looked up (D5).
+JoinToken = Annotated[
+    str, StringConstraints(min_length=1, max_length=JOIN_TOKEN_MAX_LENGTH)
+]
 
 
 class _Body(BaseModel):
@@ -133,6 +151,21 @@ class GiftUpdate(_Body):
     price_currency: Currency | None = None
 
 
+class OccasionCreate(_Body):
+    name: OccasionName
+    date: dt.date
+
+
+class OccasionUpdate(_Body):
+    name: OccasionName = None  # type: ignore[assignment]
+    date: dt.date = None  # type: ignore[assignment]
+
+
+class JoinRequest(_Body):
+    # In the body, never in the URL, so no access log records it (D5).
+    token: JoinToken
+
+
 class GiftOut(BaseModel):
     id: uuid.UUID
     list_id: uuid.UUID
@@ -151,10 +184,93 @@ class ListOut(BaseModel):
     recipient_name: str | None
 
 
+class OccasionOut(BaseModel):
+    """An occasion as its list's owners see it."""
+
+    id: uuid.UUID
+    list_id: uuid.UUID
+    name: str
+    date: dt.date
+    # The client builds the link from it (D5); null when there is none.
+    join_token: str | None
+    member_count: int
+
+
 class ListSummary(ListOut):
     gift_count: int
+    occasion_count: int
 
 
 class ListDetail(ListOut):
     # Oldest first (D3).
     gifts: list[GiftOut]
+    # By date.
+    occasions: list[OccasionOut]
+
+
+class OwnerOccasionView(OccasionOut):
+    role: Literal["owner"]
+    list: ListOut
+    gifts: list[GiftOut]
+
+
+class MemberOut(BaseModel):
+    """Someone who joined an occasion, or whom its owner removed from it."""
+
+    user_id: uuid.UUID
+    display_name: str
+    # Removed by an owner: no link lets them back until they are allowed again.
+    removed: bool
+
+
+class SharedGiftOut(BaseModel):
+    """A gift as an invitee sees it: no list id."""
+
+    id: uuid.UUID
+    title: str
+    description: str
+    links: list[str]
+    price_amount: Decimal | None
+    price_currency: str | None
+
+
+class SharedOccasion(BaseModel):
+    """An occasion as one of its invitees sees it (D8)."""
+
+    id: uuid.UUID
+    name: str
+    date: dt.date
+    list_title: str
+    # The list's `recipient_name`, or its owners' names for a "for me" list.
+    recipient_name: str
+    owner_names: list[str]
+
+
+class InviteeOccasionView(SharedOccasion):
+    role: Literal["invitee"]
+    gifts: list[SharedGiftOut]
+
+
+# `GET /api/occasions/{id}`: one model per role, told apart by `role`.
+OccasionView = Annotated[
+    OwnerOccasionView | InviteeOccasionView, Field(discriminator="role")
+]
+
+
+class JoinPreview(BaseModel):
+    """What a link would join, for the confirmation screen (D5, D6)."""
+
+    name: str
+    date: dt.date
+    list_title: str
+    recipient_name: str
+    owner_names: list[str]
+    role: Literal["owner", "member", "none"]
+    # The list to open instead, for an owner; null otherwise.
+    list_id: uuid.UUID | None
+    # The occasion already joined, for a member; null otherwise.
+    occasion_id: uuid.UUID | None
+
+
+class Joined(BaseModel):
+    occasion_id: uuid.UUID

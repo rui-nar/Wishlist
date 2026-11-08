@@ -16,13 +16,22 @@ def test_config_gives_the_web_client_id(make_client):
     response = client.get("/api/config")
 
     assert response.status_code == 200
-    assert response.json() == {"google_client_id": "web-id"}
+    assert response.json() == {"google_client_id": "web-id", "public_base_url": None}
 
 
 def test_config_without_google(make_client):
     response = make_client(google_client_ids="").get("/api/config")
 
-    assert response.json() == {"google_client_id": None}
+    assert response.json() == {"google_client_id": None, "public_base_url": None}
+
+
+def test_config_gives_the_share_links_base_url(make_client):
+    # Share links are <base>/join#<token> (lists plan D5): no trailing slash.
+    client = make_client(public_base_url=" https://wishlist.example.com/ ")
+
+    response = client.get("/api/config")
+
+    assert response.json()["public_base_url"] == "https://wishlist.example.com"
 
 
 def test_first_sign_in_creates_one_user_and_a_working_token(client, google, engine):
