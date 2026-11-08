@@ -70,3 +70,50 @@ themes and passes. No Fix now: review of the plan complete (§6).
 - Revisit when: `InputDecorationTheme` sets `filled: true`, any screen puts `onSurfaceVariant` text on `surfaceContainerHighest`, or the owner's dark-palette check flags low-contrast hints — then add the pair to `contrast_test.dart` and fix the colour if it fails
 - Override: —
 - Outcome: open
+
+## Round 3 — 2026-11-08, integrated diff (DELIVERY.md §5 point 2), reviewed at 894913a
+
+No Fix now: the review is complete.
+
+### R3-1 — GiftCard's 44 px action area is a layout box, not a hit target
+- Trigger: a later screen passes a small tappable as `action` → taps in the 44 px box but off the control go to the card or nowhere
+- Scores: trigger=theoretical (triager: was plausible — no caller passes a non-Material action yet), impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Reject (D11) — reword the doc comment or make the box a real hit target when the first screen passes a non-Material action
+- Override: —
+- Outcome: open
+
+### R3-2 — Golden failure images are not gitignored
+- Trigger: owner runs a failing `.\goldens.ps1 -Check`, then `git add -A` → diff images are committed
+- Scores: trigger=plausible, impact=maintainability, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: a `failures/` directory under `client/test` appears in a commit, a diff under review or staged files, or a delivery step stages with `git add -A`; then add `failures/` to `client/.gitignore`
+- Override: —
+- Outcome: open
+
+### R3-3 — R2-1's revisit trigger reads as fired
+- Trigger: none today — text fields are filled with `surface`, so the 4.04:1 pair is not drawn
+- Scores: trigger=theoretical, impact=maintainability, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Reject (D11). Note on R2-1: its `filled: true` clause was checked at 894913a and is not met (the fill is `surface`); R2-1 stays open on its other clauses.
+- Override: —
+- Outcome: open
+
+## Delivery
+
+Delivered on `feat/first-version`, 2026-11-08. Checks at integration: `flutter
+analyze`, `flutter test` (goldens skipped on Windows with their reason),
+`.\goldens.ps1 -Check` (22 goldens), `flutter build web --release
+--no-web-resources-cdn`, `actionlint`.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Tokens, themes and fonts | Sonnet → Opus | — | 2 | X1 → Opus (no static Space Grotesk 600 upstream; plan amended to 500) | yes (a test gap fixed before integration) | R1-1, R1-4, R1-6 |
+| U2 | Localisation scaffolding | Opus | S2 | 1 | — | yes | R1-5 |
+| U3 | Shared widgets and goldens | Sonnet | — | 1 | — | yes | R3-1 |
+| U4 | Golden tooling | Opus | S3 | 2 | — | no (PowerShell array splat bug) | R1-2, R1-3, R3-2 |
+| U5 | Skeleton screen restyled, design reference | Opus | S3 | 1 | — | yes | R2-1, R3-3 |
+
+Notes:
+- Implementer agents cannot run `pwsh`; they ran `goldens.ps1`'s Docker steps
+  from Git Bash, and every verifier ran `.\goldens.ps1 -Check` itself.
+- The web build must keep `--no-web-resources-cdn` (Dockerfile): without it
+  CanvasKit is fetched from `www.gstatic.com` (U1's report).
