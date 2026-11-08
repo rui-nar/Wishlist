@@ -1,20 +1,24 @@
 """The surprise rule, role by role (lists plan D10).
 
 One scenario: a "for me" list and a "for someone else" list, each with its
-owner, a gift with an image and two occasions shared by link, an invitee who
-joined the first occasion and another who joined the second; someone who
-joined the first occasion of both lists and was removed from them; and a
-stranger who has nothing to do with either. Every endpoint is called by every
-actor on every list, and checked for:
+owner, a gift with an image, a second gift the invitee of the first occasion
+reserved and bought there, and two occasions dated in the future and shared
+by link, an invitee who joined the first occasion and another who joined the
+second; someone who joined the first occasion of both lists and was removed
+from them; and a stranger who has nothing to do with either. Every endpoint
+is called by every actor on every list, and checked for:
 
 - access: what each relation to the list and its first occasion gets
-  (`expected`);
+  (`expected`); the owner of the "for me" list, its recipient, gets 404 from
+  every activity route (reserving plan D4);
 - content: no JSON response carries a `join_token` key or an id or token the
   caller may not see (`Scenario.hidden_from`), whole or inside a string (an
-  image id travels inside its paths);
+  image id travels inside its paths); none to the recipient carries an
+  activity key (`ACTIVITY_KEYS`);
 - probing: whatever a refused caller gets for a real id, they get for a random
   one;
-- no effect: a refused call leaves both lists as their owners see them.
+- no effect: a refused call leaves both lists as their owners see them, and
+  the first occasion's activity as its invitee sees it.
 
 The routes that name no object of a list (my lists, creating a list, shared
 with me, the join endpoints, uploading an image or giving its URL) have their
@@ -30,10 +34,15 @@ import io
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
 from PIL import Image
+
+# Relative to today: a fixed date would turn the occasions into passed ones,
+# where every activity write is refused (reserving plan D8).
+OCCASION_DATE = (date.today() + timedelta(days=60)).isoformat()
 
 SIGNED_OUT = "signed out"
 # The actors, each a user except SIGNED_OUT.
@@ -87,9 +96,10 @@ UNRELATED = "unrelated"
 class Scenario:
     accounts: dict[str, Any]
     # Per list: the ids of what it holds, by name ("list_id", "gift_id",
-    # "image_id", the gift's image, "occasion_id", "other_occasion_id",
-    # "user_id", the invitee of the first occasion, and "removed_id", the
-    # person removed from it).
+    # "image_id", the gift's image, "claimed_gift_id", the gift bought in the
+    # first occasion, "occasion_id", "other_occasion_id", "user_id", the
+    # invitee of the first occasion, and "removed_id", the person removed
+    # from it).
     lists: dict[str, dict[str, str]]
     # Per list: each occasion's join token, by the name of its id.
     tokens: dict[str, dict[str, str]]
@@ -115,7 +125,8 @@ class Scenario:
 
         An owner sees everything of their list, the ids of its invitees and
         of the people removed from it included. An invitee sees their
-        occasion and the list's gifts with their images; not the list's id,
+        occasion and the list's gifts with their images, and their activity
+        through that occasion, which names no user by id; not the list's id,
         its other occasion or any token. A removed person sees nothing of the
         list. Nobody sees another user's id unless they own a list that user
         joined.
@@ -132,10 +143,14 @@ class Scenario:
                 visible |= {
                     self.accounts[invitee].id for invitee in INVITEES[list_key].values()
                 }
-            elif relation == INVITEE:
-                visible |= {ids[FIRST], ids["gift_id"], ids["image_id"]}
-            elif relation == INVITEE_ELSEWHERE:
-                visible |= {ids[SECOND], ids["gift_id"], ids["image_id"]}
+            elif relation in (INVITEE, INVITEE_ELSEWHERE):
+                occasion = FIRST if relation == INVITEE else SECOND
+                visible |= {
+                    ids[occasion],
+                    ids["gift_id"],
+                    ids["image_id"],
+                    ids["claimed_gift_id"],
+                }
         return everything - visible
 
     def joined(self, actor: str) -> set[str]:
@@ -175,12 +190,20 @@ def scenario(client, make_account) -> Scenario:
             headers=headers,
         ).json()
         assert gift["image"]["id"] == image["id"]
-        ids = {"list_id": list_id, "gift_id": gift["id"], "image_id": image["id"]}
+        claimed = client.post(
+            f"/api/lists/{list_id}/gifts", json={"title": "Scarf"}, headers=headers
+        ).json()
+        ids = {
+            "list_id": list_id,
+            "gift_id": gift["id"],
+            "image_id": image["id"],
+            "claimed_gift_id": claimed["id"],
+        }
         tokens[list_key] = {}
         for occasion, name in ((FIRST, "Birthday 2026"), (SECOND, "Christmas 2026")):
             created = client.post(
                 f"/api/lists/{list_id}/occasions",
-                json={"name": name, "date": "2026-12-25"},
+                json={"name": name, "date": OCCASION_DATE},
                 headers=headers,
             ).json()
             token = client.post(
@@ -194,6 +217,15 @@ def scenario(client, make_account) -> Scenario:
             ids[occasion] = created["id"]
             tokens[list_key][occasion] = token
         ids["user_id"] = accounts[INVITEES[list_key][FIRST]].id
+        # Activity: the first occasion's invitee reserves the second gift
+        # there, then buys it (reserving plan D6).
+        giver = accounts[INVITEES[list_key][FIRST]].headers
+        for action in ("reservation", "bought"):
+            done = client.post(
+                f"/api/occasions/{ids[FIRST]}/gifts/{claimed['id']}/{action}",
+                headers=giver,
+            )
+            assert done.status_code == 200, done.text
         removed = accounts[REMOVED_INVITEE]
         client.post(
             "/api/join",
@@ -219,6 +251,9 @@ class Endpoint:
     # path; everyone else is refused (`expected`).
     success: int
     invitee: int = 404
+    # The status for the owner of the "for me" list, its recipient, when it
+    # is not `success`: 404 on every activity route (reserving plan D4).
+    recipient: int | None = None
     # The route as the API declares it, when `path` names its parameters
     # differently (two routes name a different user `{user_id}`).
     route: str | None = None
@@ -274,7 +309,41 @@ ENDPOINTS = [
         invitee=200,
         route="/api/occasions/{occasion_id}/images/{image_id}/{variant}",
     ),
+    # Invitee activity: its givers, the invitees of the occasion and the
+    # owners of a list for someone else, see and act; its recipient gets what
+    # a stranger gets (reserving plan D4, D6).
+    Endpoint(
+        "GET", "/api/occasions/{occasion_id}/claims", None, 200, 200, recipient=404
+    ),
+    Endpoint(
+        "POST",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/reservation",
+        None,
+        200,
+        200,
+        recipient=404,
+    ),
+    Endpoint(
+        "DELETE",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/reservation",
+        None,
+        204,
+        204,
+        recipient=404,
+    ),
+    Endpoint(
+        "POST",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/bought",
+        None,
+        200,
+        200,
+        recipient=404,
+    ),
 ]
+
+# What only a giver may read (reserving plan D6): never a key of a response
+# to the recipient.
+ACTIVITY_KEYS = {"claims", "participants", "pledge_amount", "state", "bought", "passed"}
 
 # The API paths whose routes must all appear in this module.
 GUARDED_PREFIXES = (
@@ -299,7 +368,9 @@ COVERED_ELSEWHERE = {
 }
 
 
-def expected(endpoint: Endpoint, relation: str) -> int:
+def expected(endpoint: Endpoint, relation: str, list_key: str) -> int:
+    if relation == OWNER and list_key == FOR_ME and endpoint.recipient is not None:
+        return endpoint.recipient
     return {
         OWNER: endpoint.success,
         INVITEE: endpoint.invitee,
@@ -331,13 +402,17 @@ def walk(value: Any) -> Iterator[tuple[str | None, Any]]:
             yield from walk(item)
 
 
-def assert_reveals_nothing(body: Any, hidden: set[str], owner: bool = False) -> None:
+def assert_reveals_nothing(
+    body: Any, hidden: set[str], owner: bool = False, recipient: bool = False
+) -> None:
     """No hidden id or token in the body, whole or inside a string value (an
-    image id travels inside `url` and `thumb_url`, review R1-7), and no
+    image id travels inside `url` and `thumb_url`, review R1-7), no
     `join_token` key unless the caller is the owner of the list the body is
-    about."""
+    about, and no activity key for the recipient (the owner of the "for me"
+    list)."""
     for key, value in walk(body):
         assert owner or key != "join_token"
+        assert not (recipient and key in ACTIVITY_KEYS), key
         assert key not in hidden
         if isinstance(value, str):
             assert not any(h in value for h in hidden), value
@@ -354,9 +429,18 @@ def test_a_hidden_id_inside_a_string_is_caught():
     assert_reveals_nothing({"url": f"/api/images/{uuid.uuid4()}/full"}, {hidden})
 
 
+def test_an_activity_key_is_caught_for_the_recipient_only():
+    body = {"gifts": [{"state": "reserved", "participants": []}]}
+
+    with pytest.raises(AssertionError):
+        assert_reveals_nothing(body, set(), recipient=True)
+    assert_reveals_nothing(body, set())
+
+
 def owners_view(client, scenario: Scenario) -> dict[str, Any]:
     """Both lists as their owners see them: their gifts, their occasions with
-    links and member counts, and who joined or was removed from the first."""
+    links and member counts, and who joined or was removed from the first;
+    and the first occasion's activity, as its invitee sees it."""
     view = {}
     for list_key, ids in scenario.lists.items():
         headers = scenario.headers(LISTS[list_key][0])
@@ -366,6 +450,10 @@ def owners_view(client, scenario: Scenario) -> dict[str, Any]:
         view[list_key, FIRST] = client.get(
             f"/api/occasions/{ids[FIRST]}/members", headers=headers
         ).json()
+        view[list_key, FIRST, "claims"] = client.get(
+            f"/api/occasions/{ids[FIRST]}/claims",
+            headers=scenario.headers(INVITEES[list_key][FIRST]),
+        ).json()
     return view
 
 
@@ -374,7 +462,7 @@ def owners_view(client, scenario: Scenario) -> dict[str, Any]:
 @pytest.mark.parametrize("endpoint", ENDPOINTS, ids=str)
 def test_endpoint_by_role(client, scenario, endpoint, list_key, actor):
     relation = scenario.relation(actor, list_key)
-    status = expected(endpoint, relation)
+    status = expected(endpoint, relation, list_key)
     before = owners_view(client, scenario)
 
     response = call(client, scenario, actor, endpoint, scenario.lists[list_key])
@@ -383,7 +471,10 @@ def test_endpoint_by_role(client, scenario, endpoint, list_key, actor):
     # An image's bytes are the only body that is not JSON.
     if response.headers.get("content-type") == "application/json":
         assert_reveals_nothing(
-            response.json(), scenario.hidden_from(actor), owner=relation == OWNER
+            response.json(),
+            scenario.hidden_from(actor),
+            owner=relation == OWNER,
+            recipient=actor == ME_OWNER,
         )
     if status < 400:
         return
@@ -409,7 +500,9 @@ def test_my_lists_by_role(client, scenario, actor):
         if scenario.relation(actor, list_key) == OWNER
     }
     assert {found["id"] for found in response.json()} == owned
-    assert_reveals_nothing(response.json(), scenario.hidden_from(actor))
+    assert_reveals_nothing(
+        response.json(), scenario.hidden_from(actor), recipient=actor == ME_OWNER
+    )
 
 
 @pytest.mark.parametrize("actor", ACTORS)
@@ -423,7 +516,9 @@ def test_creating_a_list_by_role(client, scenario, actor):
     )
 
     assert response.status_code == (401 if actor == SIGNED_OUT else 201)
-    assert_reveals_nothing(response.json(), scenario.hidden_from(actor))
+    assert_reveals_nothing(
+        response.json(), scenario.hidden_from(actor), recipient=actor == ME_OWNER
+    )
     assert owners_view(client, scenario) == before
 
 
@@ -437,7 +532,9 @@ def test_shared_with_me_by_role(client, scenario, actor):
     assert response.status_code == 200
     # Owners are never invitees of their own lists, strangers of anything.
     assert {found["id"] for found in response.json()} == scenario.joined(actor)
-    assert_reveals_nothing(response.json(), scenario.hidden_from(actor))
+    assert_reveals_nothing(
+        response.json(), scenario.hidden_from(actor), recipient=actor == ME_OWNER
+    )
 
 
 @pytest.mark.parametrize("actor", ACTORS)
@@ -472,7 +569,9 @@ def test_join_preview_by_role(client, scenario, list_key, actor):
         INVITEE_ELSEWHERE: ("none", None, None),
         UNRELATED: ("none", None, None),
     }[relation]
-    assert_reveals_nothing(preview, scenario.hidden_from(actor))
+    assert_reveals_nothing(
+        preview, scenario.hidden_from(actor), recipient=actor == ME_OWNER
+    )
 
 
 @pytest.mark.parametrize("actor", ACTORS)
@@ -511,7 +610,11 @@ def test_join_by_role(client, scenario, rows, list_key, actor):
     # The invitee who had joined stays one member; anyone else is a new one.
     assert members == (1 if relation == INVITEE else 2)
     # Joined: the occasion is now theirs to see, and nothing else is.
-    assert_reveals_nothing(response.json(), scenario.hidden_from(actor) - {ids[FIRST]})
+    assert_reveals_nothing(
+        response.json(),
+        scenario.hidden_from(actor) - {ids[FIRST]},
+        recipient=actor == ME_OWNER,
+    )
 
 
 @pytest.mark.parametrize("actor", ACTORS)
@@ -529,7 +632,9 @@ def test_uploading_an_image_by_role(client, scenario, actor):
         assert response.status_code == 401
         return
     assert response.status_code == 201
-    assert_reveals_nothing(response.json(), scenario.hidden_from(actor))
+    assert_reveals_nothing(
+        response.json(), scenario.hidden_from(actor), recipient=actor == ME_OWNER
+    )
     # Readable by its uploader only.
     for reader in ACTORS:
         read = client.get(response.json()["url"], headers=scenario.headers(reader))
@@ -555,7 +660,9 @@ def test_image_from_url_by_role(client, scenario, url_fetcher, actor):
         assert url_fetcher.calls == []
         return
     assert response.status_code == 201
-    assert_reveals_nothing(response.json(), scenario.hidden_from(actor))
+    assert_reveals_nothing(
+        response.json(), scenario.hidden_from(actor), recipient=actor == ME_OWNER
+    )
     for reader in ACTORS:
         read = client.get(response.json()["url"], headers=scenario.headers(reader))
         assert read.status_code == (
