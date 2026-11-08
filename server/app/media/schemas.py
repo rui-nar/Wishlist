@@ -1,8 +1,16 @@
-"""Response bodies of the image endpoints (gift images plan D11)."""
+"""Request and response bodies of the image endpoints (gift images plan D11)."""
 
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+
+class ImageFromUrl(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Checked by the fetcher, which answers url_not_allowed for anything it
+    # refuses, a URL too long included (D6).
+    url: str
 
 
 class ImageOut(BaseModel):

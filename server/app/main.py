@@ -22,6 +22,7 @@ from app.accounts.router import router as accounts_router
 from app.db import create_db_engine, create_session_factory
 from app.lists.router import router as lists_router
 from app.media.router import router as media_router
+from app.safe_fetch import SafeFetcher
 from app.settings import Settings
 
 # The Flutter web build. The image puts it in /app/web, next to /app/server;
@@ -64,11 +65,13 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
-    # Both replaced by tests: no test calls Google or waits for the clock.
+    # Replaced by tests: no test calls Google, waits for the clock or fetches
+    # from the network.
     app.state.google_verifier = (
         GoogleVerifier(settings.google_audiences) if settings.google_audiences else None
     )
     app.state.clock = sessions.utc_now
+    app.state.url_fetcher = SafeFetcher(version=settings.app_version)
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.

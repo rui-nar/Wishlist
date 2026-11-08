@@ -10,7 +10,7 @@ scratch database it creates and drops.
 """
 
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator
 from typing import Any
 
 import pytest
@@ -56,3 +56,29 @@ def make_client(database_url: str, tmp_path) -> Iterator[Callable[..., TestClien
     yield make
     for client in clients:
         client.__exit__(None, None, None)
+
+
+class FakeFetcher:
+    """Stands in for `app.state.url_fetcher`, a SafeFetcher: answers every
+    fetch with `result`, or raises it when it is an exception, and records
+    the calls. No endpoint test fetches from the network."""
+
+    def __init__(self) -> None:
+        self.result: tuple[bytes, str] | Exception = (b"", "image/png")
+        self.calls: list[tuple[str, tuple[str, ...], int]] = []
+
+    def fetch(
+        self, url: str, accept: Collection[str], max_bytes: int
+    ) -> tuple[bytes, str]:
+        self.calls.append((url, tuple(accept), max_bytes))
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+@pytest.fixture
+def url_fetcher(client: TestClient) -> FakeFetcher:
+    """The fake fetcher, put in the app of the package's `client` fixture."""
+    fake = FakeFetcher()
+    client.app.state.url_fetcher = fake
+    return fake

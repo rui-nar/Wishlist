@@ -15,6 +15,7 @@ import struct
 import tempfile
 import threading
 import uuid
+from datetime import timedelta
 from pathlib import Path
 from typing import NamedTuple
 
@@ -30,6 +31,8 @@ _log = logging.getLogger(__name__)
 # Limits (D4). Clients mirror MAX_BYTES to refuse a file before uploading it.
 MAX_BYTES = 10 * 1024 * 1024
 FORMATS = ("JPEG", "PNG", "WEBP", "GIF")
+# The same formats, as the media types an image URL may answer with (D6).
+MEDIA_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
 # Baseline JPEGs are decoded through draft(), at a fraction of their size.
 MAX_JPEG_PIXELS = 100_000_000
 # A progressive JPEG, or one whose components come in separate scans, makes
@@ -48,6 +51,9 @@ THUMB_SIDE = 256
 WEBP_QUALITY = 80
 # One image decoded at a time; a request waiting longer gets image_busy.
 LOCK_WAIT_SECONDS = 30.0
+# A pending image can be attached to a gift for this long (D11); the purge
+# releases a never-attached row only well after, so it never races an attach.
+ATTACHABLE_FOR = timedelta(hours=24)
 
 # Files (D3): <media_dir>/gifts/<id hex>.webp and <id hex>.thumb.webp, written
 # under a temporary name ending in TEMP_SUFFIX, then renamed into place.
