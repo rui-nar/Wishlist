@@ -79,7 +79,9 @@ def visible_occasion(
     raise not_found()
 
 
-def giving_occasion(db: Session, user: User, occasion_id: uuid.UUID) -> Occasion:
+def giving_occasion(
+    db: Session, user: User, occasion_id: uuid.UUID, lock: bool = True
+) -> Occasion:
     """The occasion, if the user is one of its givers; otherwise 404
     (reserving plan D4).
 
@@ -89,15 +91,21 @@ def giving_occasion(db: Session, user: User, occasion_id: uuid.UUID) -> Occasion
     Decided from the list's kind on every call, never stored with the
     activity.
 
-    The occasion is locked `FOR SHARE` before the membership is checked
-    (D7 step 1): a removal or a leave, which lock it `FOR UPDATE`, either
-    committed before (and the check fails) or waits for this request.
+    For a write, the occasion is locked `FOR SHARE` before the membership is
+    checked (D7 step 1): a removal or a leave, which lock it `FOR UPDATE`,
+    either committed before (and the check fails) or waits for this request.
+    A read passes `lock=False`: it needs no lock, and one would make an
+    owner's change to the occasion wait on a giver's read, a wait the
+    recipient could notice (review round 2).
     """
-    locked = db.scalar(
-        select(Occasion).where(Occasion.id == occasion_id).with_for_update(read=True)
-    )
-    if locked is None:
-        raise not_found()
+    if lock:
+        locked = db.scalar(
+            select(Occasion)
+            .where(Occasion.id == occasion_id)
+            .with_for_update(read=True)
+        )
+        if locked is None:
+            raise not_found()
     occasion, role = visible_occasion(db, user, occasion_id)
     if role == OWNER and db.get_one(List, occasion.list_id).recipient_kind != OTHER:
         raise not_found()

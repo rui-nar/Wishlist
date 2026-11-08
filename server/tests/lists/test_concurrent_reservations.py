@@ -4,14 +4,20 @@ Concurrency): the outcome is one of the serial orders, exactly one claim
 per gift, never a 500, and D2's invariants hold.
 """
 
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from functools import partial
+from types import SimpleNamespace
 
 import pytest
 from claims_invariants import assert_claims_consistent
 from locks import TIMEOUT_SECONDS, together, wait_until_blocked_on_a_lock
 from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.accounts.models import User
+from app.reserving.router import occasion_claims
 
 ROUNDS = 20
 FUTURE = (date.today() + timedelta(days=60)).isoformat()
@@ -311,3 +317,33 @@ def test_a_reservation_waiting_on_the_reservers_removal_is_a_404(
     assert (response.status_code, response.json()) == (404, {"detail": "Not found"})
     assert rows("gift_claims") == 0
     assert_claims_consistent(engine)
+
+
+def test_an_owners_occasion_change_does_not_wait_on_a_claims_read(
+    client, make_account, owner, list_id, engine
+):
+    # The claims endpoint itself runs in a transaction held open here, as if
+    # its request were still in flight; the recipient's change to the
+    # occasion must not wait for it (review round 2): a read takes no lock.
+    ana = make_account("Ana")
+    occasion = share(client, owner, list_id, ana)
+    request = SimpleNamespace(app=client.app)
+    with ThreadPoolExecutor(max_workers=1) as pool, Session(engine) as reading:
+        reading.begin()
+        try:
+            reader = reading.get_one(User, uuid.UUID(ana.id))
+            read = occasion_claims(uuid.UUID(occasion), request, reader, reading)
+            assert read.gifts == []
+            patching = pool.submit(
+                client.patch,
+                f"/api/occasions/{occasion}",
+                json={"name": "Renamed", "date": FUTURE},
+                headers=owner.headers,
+            )
+            patched = patching.result(timeout=TIMEOUT_SECONDS)
+        finally:
+            # Released whatever happened, so a waiting PATCH cannot hang the
+            # run.
+            reading.rollback()
+
+    assert patched.status_code == 200, patched.text

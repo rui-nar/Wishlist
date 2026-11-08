@@ -57,7 +57,8 @@ _CONFLICT_RESPONSE = {status.HTTP_409_CONFLICT: {"model": ClaimConflict}}
 def occasion_claims(
     occasion_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
 ) -> OccasionClaims:
-    occasion = giving_occasion(db, user, occasion_id)
+    # No lock: an owner's change to the occasion never waits on this read.
+    occasion = giving_occasion(db, user, occasion_id, lock=False)
     now = request.app.state.clock()
     # Live claims only: one of a passed occasion that was not bought is gone,
     # for its own invitees too (D8).
