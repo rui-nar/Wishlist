@@ -78,16 +78,6 @@
   "@retry": {
     "description": "Button that retries a call to the server that failed."
   },
-  "homeSignedInAs": "Signed in as {name}",
-  "@homeSignedInAs": {
-    "description": "The home screen: who is signed in. The name is the Google account's name, or its email when it has none.",
-    "placeholders": {
-      "name": {
-        "type": "String",
-        "example": "Alice Martin"
-      }
-    }
-  },
   "accountTitle": "Account",
   "@accountTitle": {
     "description": "The account screen's title, and the tooltip of the home screen's button that opens it."
@@ -123,5 +113,239 @@
   "deleteAccountFailed": "Your account could not be deleted. Try again.",
   "@deleteAccountFailed": {
     "description": "A message after the server did not delete the account; the user is still signed in."
+  },
+  "myListsTitle": "My lists",
+  "@myListsTitle": {
+    "description": "Home: the title of the screen listing the lists the user owns."
+  },
+  "myListsEmpty": "You have no lists yet. Create one for yourself or for someone else.",
+  "@myListsEmpty": {
+    "description": "My lists: shown when the user owns no list."
+  },
+  "newList": "New list",
+  "@newList": {
+    "description": "My lists: the button that opens the form creating a list, and that form's title."
+  },
+  "listGiftCount": "{count, plural, =0{No gifts} =1{1 gift} other{{count} gifts}}",
+  "@listGiftCount": {
+    "description": "My lists: how many gifts a list holds.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "listCardLine": "{recipient} · {gifts}",
+  "@listCardLine": {
+    "description": "My lists: the line under a list's title, who it is for and how many gifts it holds.",
+    "placeholders": {
+      "recipient": {
+        "type": "String",
+        "example": "For Léa"
+      },
+      "gifts": {
+        "type": "String",
+        "example": "3 gifts"
+      }
+    }
+  },
+  "listForMe": "For me",
+  "@listForMe": {
+    "description": "Who a list is for: the user themself. A choice in the list form, and a line under a list's title."
+  },
+  "listForSomeoneElse": "For someone else",
+  "@listForSomeoneElse": {
+    "description": "The list form: the choice of a list for another person."
+  },
+  "listForName": "For {name}",
+  "@listForName": {
+    "description": "A line under a list's title: who the list is for.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "listTitleLabel": "List title",
+  "@listTitleLabel": {
+    "description": "The list form: the label of the list's title field."
+  },
+  "listTitleRequired": "Enter a title",
+  "@listTitleRequired": {
+    "description": "The list form: the title field was left empty."
+  },
+  "listRecipientChoice": "Who is this list for?",
+  "@listRecipientChoice": {
+    "description": "The list form: the question above the For me / For someone else choice."
+  },
+  "listRecipientKindFixed": "This cannot be changed later.",
+  "@listRecipientKindFixed": {
+    "description": "The list form, when creating: under the For me / For someone else choice."
+  },
+  "recipientNameLabel": "Their name",
+  "@recipientNameLabel": {
+    "description": "The list form: the label of the field naming the person a list is for."
+  },
+  "recipientNameRequired": "Enter their name",
+  "@recipientNameRequired": {
+    "description": "The list form: the recipient's name was left empty."
+  },
+  "renameList": "Rename",
+  "@renameList": {
+    "description": "List detail: the menu entry that opens the form renaming the list."
+  },
+  "renameListTitle": "Rename list",
+  "@renameListTitle": {
+    "description": "The title of the form renaming a list."
+  },
+  "deleteList": "Delete list",
+  "@deleteList": {
+    "description": "List detail: the menu entry that asks to delete the list."
+  },
+  "deleteListTitle": "Delete this list?",
+  "@deleteListTitle": {
+    "description": "The title of the dialog confirming a list's deletion."
+  },
+  "deleteListBody": "The list and all its gifts are deleted. This cannot be undone.",
+  "@deleteListBody": {
+    "description": "The dialog confirming a list's deletion: what deleting does."
+  },
+  "delete": "Delete",
+  "@delete": {
+    "description": "A confirmation dialog's button that deletes a list or a gift."
+  },
+  "create": "Create",
+  "@create": {
+    "description": "A form's button that creates what it describes."
+  },
+  "save": "Save",
+  "@save": {
+    "description": "A form's button that saves the changes."
+  },
+  "giftsEmpty": "No gifts yet. Add the first one.",
+  "@giftsEmpty": {
+    "description": "List detail: shown when the list has no gift."
+  },
+  "addGift": "Add a gift",
+  "@addGift": {
+    "description": "List detail: the button that opens the form adding a gift, and that form's title."
+  },
+  "editGift": "Edit gift",
+  "@editGift": {
+    "description": "The title of the form editing a gift."
+  },
+  "giftTitleLabel": "What is it?",
+  "@giftTitleLabel": {
+    "description": "The gift form: the label of the gift's title field."
+  },
+  "giftTitleRequired": "Enter what the gift is",
+  "@giftTitleRequired": {
+    "description": "The gift form: the title field was left empty."
+  },
+  "giftDescriptionLabel": "Details (size, colour, model...)",
+  "@giftDescriptionLabel": {
+    "description": "The gift form: the label of the description field."
+  },
+  "giftLinksLabel": "Shop links",
+  "@giftLinksLabel": {
+    "description": "The gift form: the heading above the links."
+  },
+  "giftLinkLabel": "Link {number}",
+  "@giftLinkLabel": {
+    "description": "The gift form: the label of one link field.",
+    "placeholders": {
+      "number": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "addLink": "Add a link",
+  "@addLink": {
+    "description": "The gift form: the button adding a link field."
+  },
+  "removeLink": "Remove this link",
+  "@removeLink": {
+    "description": "The gift form: the tooltip of the button removing a link field."
+  },
+  "linkInvalid": "Enter a web address starting with http:// or https://",
+  "@linkInvalid": {
+    "description": "The gift form: a link is not an http or https address."
+  },
+  "priceLabel": "Price (indicative)",
+  "@priceLabel": {
+    "description": "The gift form: the label of the price amount field."
+  },
+  "priceInvalid": "Enter an amount such as 149.90",
+  "@priceInvalid": {
+    "description": "The gift form: the price is not an amount of at most 10 digits and 2 decimals."
+  },
+  "currencyLabel": "Currency",
+  "@currencyLabel": {
+    "description": "The gift form: the label of the currency code field."
+  },
+  "currencyRequired": "Enter a currency code such as EUR",
+  "@currencyRequired": {
+    "description": "The gift form: a price was given without a currency."
+  },
+  "currencyUnknown": "Unknown currency code",
+  "@currencyUnknown": {
+    "description": "The gift form: the currency code is not one the app knows."
+  },
+  "deleteGift": "Delete gift",
+  "@deleteGift": {
+    "description": "The gift form: the button that asks to delete the gift."
+  },
+  "deleteGiftTitle": "Delete this gift?",
+  "@deleteGiftTitle": {
+    "description": "The title of the dialog confirming a gift's deletion."
+  },
+  "deleteGiftBody": "The gift is removed from the list. This cannot be undone.",
+  "@deleteGiftBody": {
+    "description": "The dialog confirming a gift's deletion: what deleting does."
+  },
+  "giftLinkCount": "{count, plural, =1{1 link} other{{count} links}}",
+  "@giftLinkCount": {
+    "description": "List detail: a chip on a gift saying how many shop links it has.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "openLink": "Open the link",
+  "@openLink": {
+    "description": "List detail: the tooltip of the button opening a gift's only link."
+  },
+  "openLinks": "Open a link",
+  "@openLinks": {
+    "description": "List detail: the tooltip of the button listing a gift's links to open one."
+  },
+  "linkOpenFailed": "The link could not be opened.",
+  "@linkOpenFailed": {
+    "description": "A message after a gift's link could not be opened."
+  },
+  "listNotFound": "This list no longer exists.",
+  "@listNotFound": {
+    "description": "List detail or a form: the list was deleted, or is not the user's."
+  },
+  "giftNotFound": "This gift no longer exists.",
+  "@giftNotFound": {
+    "description": "The gift form: the gift was deleted."
+  },
+  "backToMyLists": "Back to my lists",
+  "@backToMyLists": {
+    "description": "The button leaving a list or a gift that no longer exists."
+  },
+  "saveFailed": "Your changes could not be saved. Try again.",
+  "@saveFailed": {
+    "description": "A form: the server did not save it."
+  },
+  "deleteFailed": "It could not be deleted. Try again.",
+  "@deleteFailed": {
+    "description": "A message after the server did not delete a list or a gift."
   }
 }

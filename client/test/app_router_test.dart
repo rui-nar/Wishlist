@@ -133,11 +133,13 @@ void main() {
       expect(server.calls, isNot(contains('GET /api/config')));
     });
 
-    testWidgets('home shows who is signed in and opens the account screen',
+    testWidgets('home shows My lists and opens the account screen',
         (tester) async {
       await start(tester, '/', store: MemoryTokenStore(server.addSession()));
 
-      expect(find.text('Signed in as Alice Martin'), findsOneWidget);
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.text('My lists'), findsOneWidget);
+      expect(server.calls, contains('GET /api/lists'));
       await tester.tap(find.byTooltip('Account'));
       await tester.pumpAndSettle();
       expect(find.byType(AccountScreen), findsOneWidget);

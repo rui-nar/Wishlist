@@ -29,6 +29,70 @@ void main() {
     expect(seen[1].headers['Authorization'], 'Bearer secret');
   });
 
+  test('patchJson sends a PATCH with a JSON body and reads the object',
+      () async {
+    final seen = <http.Request>[];
+    final api = ApiClient(
+      MockClient((request) async {
+        seen.add(request);
+        return http.Response('{"id": "g1"}', 200);
+      }),
+      baseUrl: 'http://api.test',
+    )..token = 'secret';
+
+    final answer = await api.patchJson('/api/gifts/g1', {'title': 'Book'});
+
+    expect(answer, {'id': 'g1'});
+    expect(seen.single.method, 'PATCH');
+    expect(seen.single.url, Uri.parse('http://api.test/api/gifts/g1'));
+    expect(seen.single.headers['Authorization'], 'Bearer secret');
+    expect(seen.single.headers['Content-Type'], startsWith('application/json'));
+    expect(jsonDecode(seen.single.body), {'title': 'Book'});
+  });
+
+  test('getJsonList reads an array; an object where an array is expected '
+      'is not a usable answer, nor the reverse', () async {
+    ApiClient answering(String body) => ApiClient(
+          MockClient((request) async => http.Response(body, 200)),
+          baseUrl: '',
+        );
+
+    expect(await answering('[{"id": "l1"}]').getJsonList('/api/lists'), [
+      {'id': 'l1'},
+    ]);
+    await expectLater(
+      answering('{"id": "l1"}').getJsonList('/api/lists'),
+      throwsA(isA<ApiUnreachableException>()),
+    );
+    await expectLater(
+      answering('[]').getJson('/api/me'),
+      throwsA(isA<ApiUnreachableException>()),
+    );
+  });
+
+  test('getJsonList and patchJson report errors as the other calls do',
+      () async {
+    final reported = <String>[];
+    final api = ApiClient(
+      MockClient((request) async =>
+          http.Response('', request.method == 'PATCH' ? 422 : 401)),
+      baseUrl: '',
+    )
+      ..token = 't'
+      ..onUnauthorized = reported.add;
+
+    await expectLater(
+      api.getJsonList('/api/lists'),
+      throwsA(isA<UnauthorizedException>()),
+    );
+    expect(reported, ['t']);
+    await expectLater(
+      api.patchJson('/api/lists/l1', {}),
+      throwsA(isA<ApiException>()
+          .having((e) => e.statusCode, 'statusCode', 422)),
+    );
+  });
+
   test('a 401 to a call with a token throws and reports that token', () async {
     final reported = <String>[];
     final api = ApiClient(

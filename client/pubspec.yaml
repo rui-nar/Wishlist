@@ -58,6 +58,9 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   shared_preferences: ^2.5.6
 
+  # Gift links open in the external browser (LISTS_GIFTS_SHARING_PLAN D12).
+  url_launcher: ^6.3.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -71,6 +74,11 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+  # Referenced by the tests, which stand in for url_launcher's platform
+  # implementation to see which links a screen opens.
+  url_launcher_platform_interface: ^2.3.2
+  plugin_platform_interface: ^2.1.8
 
 # google_sign_in_web 1.1.3 with Google's script loaded in init() instead of at
 # plugin registration, so only the sign-in screen fetches it (ACCOUNTS_PLAN
