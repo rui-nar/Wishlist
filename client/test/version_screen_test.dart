@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -58,6 +58,22 @@ void main() {
 
     expect(find.text('App v1.2.3'), findsOneWidget);
     expect(find.text('Server unreachable'), findsOneWidget);
+  });
+
+  testWidgets('shows a failure in the error colour, with an error icon',
+      (tester) async {
+    final client = MockClient((request) async {
+      throw http.ClientException('Connection refused', request.url);
+    });
+
+    await pumpApp(tester, client);
+
+    final context = tester.element(find.text('Server unreachable'));
+    final error = Theme.of(context).colorScheme.error;
+    final text = tester.widget<Text>(find.text('Server unreachable'));
+    expect(text.style?.color, error);
+    final icon = tester.widget<Icon>(find.byIcon(Icons.error_outline));
+    expect(icon.color, error);
   });
 
   testWidgets('names the status when the server answers an error',

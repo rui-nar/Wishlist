@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../l10n/app_localizations.dart';
+import 'design/tokens.dart';
 import 'server_version.dart';
 
 /// Shows the app's version and the server's version and env, or why the
-/// server's could not be read.
+/// server's could not be read, in a card under the themed app bar.
 class VersionScreen extends StatefulWidget {
   const VersionScreen({
     super.key,
@@ -31,35 +32,85 @@ class _VersionScreenState extends State<VersionScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.appTitle)),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(l10n.appVersion(widget.appVersion)),
-            const SizedBox(height: 8),
-            FutureBuilder<ServerVersion>(
-              future: _server,
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Text(
-                    _failureText(l10n, snapshot.error!),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.s16),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Spacing.s16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      l10n.appVersion(widget.appVersion),
+                      style: textTheme.bodyLarge,
                     ),
-                  );
-                }
-                final server = snapshot.data;
-                if (server == null) {
-                  return const CircularProgressIndicator();
-                }
-                return Text(l10n.serverVersion(server.version, server.env));
-              },
+                    const SizedBox(height: Spacing.s8),
+                    FutureBuilder<ServerVersion>(
+                      future: _server,
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return _ServerError(
+                            _failureText(l10n, snapshot.error!),
+                          );
+                        }
+                        final server = snapshot.data;
+                        if (server == null) {
+                          return const Align(
+                            alignment: Alignment.centerLeft,
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        return Text(
+                          l10n.serverVersion(server.version, server.env),
+                          style: textTheme.bodyLarge,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Why the server's version could not be read, in the `error` colour behind
+/// an error icon.
+class _ServerError extends StatelessWidget {
+  const _ServerError(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final error = Theme.of(context).colorScheme.error;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Decorative: the message says it all.
+        ExcludeSemantics(
+          child: Icon(Icons.error_outline, size: Spacing.s20, color: error),
+        ),
+        const SizedBox(width: Spacing.s8),
+        Expanded(
+          child: Text(
+            message,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: error,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
