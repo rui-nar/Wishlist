@@ -87,8 +87,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The SDK version is the Dockerfile's FLUTTER_TAG and the dev machine's:
-      # move all three together.
+      # The SDK version is the Dockerfile's FLUTTER_TAG, goldens.ps1's and the
+      # dev machine's: move all four together.
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -104,3 +104,14 @@ jobs:
 
       - name: Run tests
         run: flutter test
+
+      # A failed golden comparison writes its diff images to a failures/
+      # directory next to the test (plan D10). Uses steps ignore the job's
+      # working-directory, so the path starts at the repository root.
+      - name: Upload golden failures
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: golden-failures
+          path: client/test/**/failures/
+          if-no-files-found: ignore
