@@ -1,0 +1,4 @@
+tags:
+  # Pixel comparisons, rendered on Linux only (DESIGN_SYSTEM_PLAN D10):
+  # run them with .\goldens.ps1.
+  golden:
