@@ -126,7 +126,7 @@ Subject: the round 1 fixes and the media storage decision (D18).
 - Decision: Defer (D10)
 - Revisit when: the gifts feature plan implements the purge (state the rule relative to the oldest kept dump), or the backup healthcheck stays unhealthy for more than one night
 - Override: —
-- Outcome: open
+- Outcome: fixed (gift images plan D9: files purged only past the oldest kept dump, `server/app/media/purge.py`)
 
 ## Round 3 — 2026-11-07, reviewed at e543c77
 

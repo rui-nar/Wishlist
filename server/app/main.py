@@ -21,6 +21,7 @@ from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
 from app.db import create_db_engine, create_session_factory
 from app.lists.router import router as lists_router
+from app.media.purge import MediaPurge
 from app.media.router import router as media_router
 from app.safe_fetch import SafeFetcher
 from app.settings import Settings
@@ -58,7 +59,20 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         # the directory as not writable.
         with contextlib.suppress(OSError):
             settings.media_dir.mkdir(parents=True, exist_ok=True)
+        # Only where dumps can be dated (gift images plan D10); stopped
+        # before the engine goes.
+        app.state.media_purge = None
+        if settings.backup_dir is not None:
+            app.state.media_purge = MediaPurge(
+                app.state.session_factory,
+                settings.media_dir,
+                settings.backup_dir,
+                lambda: app.state.clock(),
+            )
+            app.state.media_purge.start()
         yield
+        if app.state.media_purge is not None:
+            app.state.media_purge.stop()
         engine.dispose()
 
     app = FastAPI(title="Wishlist", version=settings.app_version, lifespan=lifespan)

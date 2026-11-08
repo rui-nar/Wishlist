@@ -236,4 +236,4 @@ Later candidates: group gift activity, occasion reminders.
 | Can invitees also add hidden gifts to a "for someone else" list, where nobody is blind until a handover? | Hidden gifts, handover |
 | Offline edits by two co-owners on the same gift: last write wins, or a conflict shown? | Sync design |
 | Comment moderation: can invitees edit or delete comments; can anyone report one? | Comments design |
-| Image limits: size, count per gift, storage per account | VPS disk, backups, premium |
+| Image storage per account (size and count per gift are decided: 10 MB per image, one image per gift, gift images plan D4, D11) | VPS disk, backups, premium |
