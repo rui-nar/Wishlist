@@ -1,9 +1,10 @@
-"""The list tables (lists plan D1, D3).
+"""The list tables (lists plan D1, D3, D4).
 
 Keys are random UUIDs, as for accounts, so no identifier reveals how many
-lists or gifts exist.
+lists, gifts or occasions exist.
 """
 
+import datetime as dt
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -22,6 +23,10 @@ LINK_MAX_LENGTH = 2048
 # numeric(12,2): ten integer digits and two decimals (D3).
 PRICE_PRECISION = 12
 PRICE_SCALE = 2
+OCCASION_NAME_MAX_LENGTH = 100
+# Join tokens are secrets.token_urlsafe(16), 22 characters; requests may carry
+# up to this many, so a longer value is refused before any lookup (D5).
+JOIN_TOKEN_MAX_LENGTH = 64
 
 SELF = "self"
 OTHER = "other"
@@ -99,4 +104,43 @@ class Gift(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Occasion(Base):
+    """An occasion a list is shared for; invitees belong to it (D4)."""
+
+    __tablename__ = "occasions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    list_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("lists.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(OCCASION_NAME_MAX_LENGTH))
+    # A calendar date, no time of day.
+    date: Mapped[dt.date]
+    # The share link's token, stored as is so the owner can copy the link
+    # again (D5). Null: no link, nobody can join. Shown to owners only.
+    join_token: Mapped[str | None] = mapped_column(
+        String(JOIN_TOKEN_MAX_LENGTH), unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class OccasionMember(Base):
+    """An invitee of an occasion: someone who joined it by its link (D4, D5)."""
+
+    __tablename__ = "occasion_members"
+
+    occasion_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("occasions.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Indexed on its own: "shared with me" looks it up.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )

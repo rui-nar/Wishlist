@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # uses and Android passes as its server client ID; /api/config hands it to
     # the clients (D6). Empty: Google sign-in is not configured.
     google_client_ids: str = ""
+    # The origin share links are built on, `<PUBLIC_BASE_URL>/join#<token>`
+    # (lists plan D5); /api/config hands it to the mobile apps. Empty in DEV:
+    # the web client builds the link on its own origin.
+    public_base_url: str = ""
 
     @property
     def google_audiences(self) -> list[str]:

@@ -57,3 +57,51 @@ def test_a_list_with_another_owner_outlives_the_account(
     detail = client.get(f"/api/lists/{shared}", headers=co_owner.headers)
     assert detail.status_code == 200
     assert len(detail.json()["gifts"]) == 1
+
+
+def share(client, owner, list_id, *invitees):
+    """An occasion on the list, joined by each invitee; returns its id."""
+    occasion = client.post(
+        f"/api/lists/{list_id}/occasions",
+        json={"name": "Christmas", "date": "2026-12-25"},
+        headers=owner.headers,
+    ).json()["id"]
+    link = client.post(f"/api/occasions/{occasion}/link", headers=owner.headers)
+    for invitee in invitees:
+        joined = client.post(
+            "/api/join",
+            json={"token": link.json()["join_token"]},
+            headers=invitee.headers,
+        )
+        assert joined.status_code == 200
+    return occasion
+
+
+def test_deleting_an_invitees_account_deletes_their_memberships_only(
+    client, make_account, rows
+):
+    owner = make_account("Ada")
+    leaving = make_account("Bea")
+    staying = make_account("Cid")
+    occasion = share(client, owner, add_list(client, owner, "Ada's"), leaving, staying)
+
+    client.delete("/api/me", headers=leaving.headers)
+
+    assert rows("occasion_members", "user_id", leaving.id) == 0
+    assert rows("occasions") == 1
+    members = client.get(f"/api/occasions/{occasion}/members", headers=owner.headers)
+    assert [member["display_name"] for member in members.json()] == ["Cid"]
+
+
+def test_deleting_an_owners_account_deletes_their_occasions_and_invitees(
+    client, make_account, rows
+):
+    leaving = make_account("Ada")
+    invitee = make_account("Bea")
+    share(client, leaving, add_list(client, leaving, "Ada's"), invitee)
+
+    client.delete("/api/me", headers=leaving.headers)
+
+    assert rows("occasions") == 0
+    assert rows("occasion_members") == 0
+    assert client.get("/api/shared", headers=invitee.headers).json() == []
