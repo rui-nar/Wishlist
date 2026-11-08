@@ -214,8 +214,13 @@ data model chosen here must not need rewriting when they arrive.
     "taken" elsewhere; the gift is free;
   - a bought claim stays "taken" for every other occasion until the owner
     deletes the gift ("received" is a later plan, NEEDS);
-  - writes on a passed occasion answer 409 `passed`; reads still work, and
-    `OccasionClaims.passed` tells the client to hide the actions;
+  - writes on a passed occasion answer 409 `passed`, with one exception
+    (envelope answer, review round 1): a giver may still mark **bought** their
+    own claim of a passed occasion while that claim still exists (it is only
+    purged when someone claims the gift again, below), so a gift handed over
+    on the day can be recorded afterwards and is not freed for the next
+    occasion; reads still work, and `OccasionClaims.passed` tells the client
+    to hide every other action;
   - expiry is evaluated, never written: expired rows are purged only when
     someone claims that gift again (D7 step 3). If an owner moves an
     occasion's date later before that happens, its unbought claims are live
@@ -261,8 +266,15 @@ data model chosen here must not need rewriting when they arrive.
     bought claims stay, their `occasion_id` set to null by the foreign key,
     so a gift bought for a deleted occasion stays "taken" and cannot be
     bought twice (NEEDS: it stays taken "until the owner marks it received
-    or deletes it"). `delete_occasion` deletes the unbought ones explicitly
-    in its transaction before deleting the occasion;
+    or deletes it"). `delete_occasion` first locks the occasion
+    `FOR UPDATE` (as removal and leave do, D7), so no reservation can commit
+    in it meanwhile, then deletes the unbought claims, then the occasion.
+    Without the lock, a reservation committing while the delete waits would
+    make the foreign key's `SET NULL` violate the claims' check constraint and
+    answer the owner a 500 that only invitee activity can cause (review
+    R1-1). Deleting a list or an account reaches the same `SET NULL` through
+    the occasions cascade; there the gifts cascade must delete the claims
+    first: U5 states and tests it rather than relying on trigger order;
   - **deleting the list**, or the owner's account: everything cascades;
   - **changing an occasion's date**: D8.
 - **D12 — What a recipient can never observe.** For an owner of a "for me"
@@ -484,8 +496,10 @@ REVIEW.md defaults apply, with these additions:
      invitee sees their name; the invitee of the second occasion sees
      `taken` with no participants, no bought flag, no occasion id, and
      gets 409 `taken`; expiry: an occasion dated long ago → `passed: true`,
-     writes 409 `passed`, its unbought claim no longer shown nor `taken`
-     elsewhere, and claiming the gift in another occasion purges it; a
+     writes 409 `passed` except marking bought one's own still-present
+     claim (200, and the gift stays `taken` elsewhere), its unbought claim
+     no longer shown nor `taken` elsewhere, and claiming the gift in another
+     occasion purges it; a
      bought claim of a passed occasion stays `taken`; `has_passed` at
      D + 1 11:59:59 UTC (false) and 12:00:00 UTC (true); no user id in any
      claims response; the "for me" owner gets 404 on every route with the
@@ -565,7 +579,10 @@ REVIEW.md defaults apply, with these additions:
      bounds, the gift's currency stored with the pledge, 422 without a
      currency).
   2. `test_roles.py`: rows for both routes; the scenario gains a group gift
-     with two pledges in the second occasion of each list.
+     in the second occasion of each list: with one pledge on the "for me"
+     list (its only giver there is `ME_INVITEE_ELSEWHERE`; the owner is the
+     recipient), with two on the "for someone else" list (its owner and
+     `OTHER_INVITEE_ELSEWHERE`) (review R1-2).
   3. `test_group_gifts.py`: start, join, change amount, amount `null`,
      leave; last one out → gift free; pledge on a reserved gift (mine or
      someone else's) → 409 `taken`; on a gift held in another occasion →
@@ -664,8 +681,11 @@ REVIEW.md defaults apply, with these additions:
      the same transaction. Answers unchanged.
   3. `delete_me`: lock the user row `FOR UPDATE`, release in every
      occasion, then the existing list and user deletion.
-  4. `delete_occasion`: delete its unbought claims, then the occasion (the
-     foreign key keeps bought ones with a null occasion, D11).
+  4. `delete_occasion`: lock the occasion `FOR UPDATE`, delete its unbought
+     claims, then the occasion (the foreign key keeps bought ones with a null
+     occasion, D11; review R1-1). List and account deletion: delete the
+     lists' claims explicitly before the cascades, so no `SET NULL` can meet
+     an unbought claim whatever order Postgres fires the cascades in.
   5. `test_reservation_release.py`, for leave and for removal: an unbought
      reservation is freed; a bought one stays with the name; a pledge on an
      unbought group gift goes, and the group survives other participants;
@@ -679,9 +699,14 @@ REVIEW.md defaults apply, with these additions:
   6. `test_concurrent_release.py`: a reservation racing the reserver's
      leave, removal, and account deletion (barrier, 20 rounds, and a held
      transaction) → never a claim by a non-member and never a 500; a join
-     of a group racing the removal of its last other participant.
-  7. `test_account_deletion.py`: an account with a bought reservation and a
-     pledge is deleted → no row names them, the bought gift stays bought.
+     of a group racing the removal of its last other participant; an
+     occasion deletion racing a reservation in it (held transaction) → 204,
+     never a 500 (review R1-1).
+  7. `test_account_deletion.py`: first date `share()`'s occasion relative
+     to today (`date.today() + timedelta(days=60)`), as U1 does for
+     `test_roles.py` (review R1-3); then: an account with a bought
+     reservation and a pledge is deleted → no row names them, the bought gift
+     stays bought.
 - **Acceptance:** `ruff check`; `alembic upgrade head` then `alembic check`;
   `pytest` passes, including the tests of Do 5–7 and the existing
   `test_concurrent_join.py` and `test_roles.py`.
@@ -753,7 +778,11 @@ REVIEW.md defaults apply, with these additions:
      claim of the passed occasion, bought and not; bought for an occasion
      since deleted), with G2 free: every endpoint the owner can call on G1
      answers what it answers on G2, after swapping the two ids: status,
-     body and headers apart from `Date`. Covered: `GET /api/lists`,
+     body and headers apart from `Date`. The endpoint list is derived from
+     the OpenAPI document, as `test_every_route_is_in_the_matrix` does, and
+     the test fails on a route it does not cover, so routes added by the
+     gift-images plan (`/api/images…`, the gift's `image` field) are in it
+     (envelope answer, review round 1). Covered: `GET /api/lists`,
      `GET /api/lists/{id}`, `PATCH` and `DELETE /api/gifts/{id}` (on twin
      copies), `GET /api/occasions/{id}`, `GET …/members`, removing the
      invitee who holds the activity versus one who holds none,

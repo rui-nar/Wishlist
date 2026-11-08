@@ -111,6 +111,8 @@ Later: priority, quantity (with partial reservations).
   - An occasion has passed from 12:00 UTC on the day after its date: that
     day has then ended in every time zone, so a reservation never ends early
     (the side that protects against a double gift).
+    Whoever reserved a gift, or joined its group gift, can still mark it
+    bought after the date, as long as nobody has claimed it since.
   - A bought reservation of someone who left or was removed keeps their name
     for the other invitees; deleting their account removes the name.
   - Deleting an occasion keeps the gifts bought in it "taken" (anonymously)
