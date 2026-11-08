@@ -21,7 +21,7 @@ below; replace them as you run the commands.
 
 | Placeholder | What to put there |
 |---|---|
-| `<prod-host>` | PROD's public hostname (open decision: the domain) |
+| `<prod-host>` | PROD's public hostname (for now a subdomain of TraxJourney's domain, until Wishlist has its own) |
 | `<val-host>` | VAL's public hostname |
 | `<vps-host>` | the VPS's SSH address (`DEPLOY_HOST` in `deploy.env`) |
 | `<deploy-user>` | the VPS account `deploy.ps1` connects as, in the `docker` group (TraxJourney's runbook §1) |
@@ -298,7 +298,8 @@ app itself, the mobile apps send no `Origin`), and `FORWARDED_ALLOW_IPS`
 (checked after the first start, [step 8](#8-first-val-deploy)).
 `GOOGLE_CLIENT_IDS` stays empty until [step 11](#11-google-sign-in): until
 then the app runs and answers sign-in with "Google sign-in is not
-configured". Never add `MEDIA_DIR` or `APP_VERSION`: the image sets both, and
+configured". `PUBLIC_BASE_URL` stays empty until Caddy serves the hosts
+([step 6](#6-caddy)). Never add `MEDIA_DIR` or `APP_VERSION`: the image sets both, and
 the comments in `.env.example` say what breaks otherwise.
 
 Things to know about these files:
@@ -402,13 +403,39 @@ the appended blocks before trying again.
 ```bash
 curl -s https://<traxjourney-prod-host>/api/version; echo
 curl -s https://<traxjourney-val-host>/api/version; echo
-sudo journalctl -u caddy -n 50 --no-pager | grep -i -E 'certificate|error'
+sudo journalctl -u caddy -n 200 --no-pager | grep '"logger":"tls'   # "certificate obtained successfully" for both hosts
 curl -sI https://<val-host>/ | head -n 1     # 502 until VAL runs (step 8); no TLS error
 ```
+
+`NXDOMAIN` in those lines means the host has no DNS record yet: add it, and
+Caddy retries on its own. The new names appear in the public certificate
+logs within minutes, and scanners start probing them (`/.env`, `/.git/config`,
+…): until the apps run, Caddy logs each probe as a 502 `connection refused`,
+which is expected.
 
 The VAL site routes `/gh-webhook/*` to the webhook on 9998 (with the prefix
 stripped) and everything else to the app on 8011. PROD's site never exposes
 the hook.
+
+**[VPS]** Now that the hosts are served, give each app its public address,
+which share links are built on (`<PUBLIC_BASE_URL>/join#<token>`). The web
+client would fall back to its own address; the mobile apps cannot:
+
+```bash
+# literal placeholder: <val-host>, <prod-host> are this document's, replace them
+cd /opt/wishlist-val
+grep -n '^PUBLIC_BASE_URL=' .env        # PUBLIC_BASE_URL= (empty)
+sed -i 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://<val-host>|' .env
+cd /opt/wishlist
+grep -n '^PUBLIC_BASE_URL=' .env
+sed -i 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://<prod-host>|' .env
+```
+
+If `grep` prints nothing, the `.env` predates this setting: add the line
+from `.env.example` first. The apps pick it up when they start (step 8 for
+VAL, step 9 for PROD); one already running needs `docker compose up -d`
+in its directory. Check with `curl -s https://<val-host>/api/config`:
+`"public_base_url":"https://<val-host>"`.
 
 ## 7. The VAL webhook
 
@@ -522,8 +549,10 @@ change proves it again on a new version.
 **[VPS]** Watch it arrive:
 
 ```bash
-tail -f /opt/wishlist-val/webhook/deploy.log
+tail -F /opt/wishlist-val/webhook/deploy.log
 ```
+
+`-F` waits for the file: the script creates it on its first delivery.
 
 Within 5 minutes of the build finishing, without any manual step:
 
@@ -1269,7 +1298,7 @@ sending anything, untick **Active** on the webhook instead.
 **Watching:**
 
 ```bash
-tail -f /opt/wishlist-val/webhook/deploy.log
+tail -F /opt/wishlist-val/webhook/deploy.log
 sudo journalctl -u wishlist-webhook -f
 ```
 
@@ -1310,9 +1339,12 @@ Each item of the plan's Definition of done, and where it is checked:
 
 ## Open items
 
-- [ ] **Domain and hostnames** for PROD and VAL. Needed for [step 6](#6-caddy)
-      onwards, including the Google sign-in origins of
-      [step 11](#11-google-sign-in).
+- [ ] **Wishlist's own domain.** PROD and VAL run for now on two subdomains
+      of TraxJourney's domain. Moving to an own domain means: DNS records,
+      the Caddy blocks ([step 6](#6-caddy)), `PUBLIC_BASE_URL` in both `.env`,
+      the Google sign-in origins ([step 11](#11-google-sign-in)), and the old
+      hosts redirecting to the new ones so share links already sent keep
+      working.
 - [ ] **Off-site backups** of the dumps **and** the media directory (shared
       problem with TraxJourney). Today both are lost with the VPS, its disk or
       OVH's datacenter. Needed before PROD holds real users' data.
