@@ -49,5 +49,79 @@
   "serverUnexpectedAnswer": "Unexpected answer from the server",
   "@serverUnexpectedAnswer": {
     "description": "The server's version could not be read: its answer was not in the expected form."
+  },
+  "signInPrompt": "Sign in to see your lists and the lists shared with you.",
+  "@signInPrompt": {
+    "description": "The sign-in screen: the line under the app's name."
+  },
+  "signInWithGoogle": "Continue with Google",
+  "@signInWithGoogle": {
+    "description": "The sign-in screen on Android and iOS: the button that opens Google's account picker."
+  },
+  "signInNotConfigured": "Sign-in is not available on this server yet.",
+  "@signInNotConfigured": {
+    "description": "The sign-in screen: the server has no Google sign-in configured, so there is no button."
+  },
+  "signInRejected": "Google sign-in could not be verified. Try again.",
+  "@signInRejected": {
+    "description": "The sign-in screen: the server refused the Google sign-in."
+  },
+  "signInGoogleFailed": "Google sign-in did not complete. Try again.",
+  "@signInGoogleFailed": {
+    "description": "The sign-in screen: Google's own sign-in flow failed before reaching the server."
+  },
+  "serverError": "The server could not complete the request. Try again.",
+  "@serverError": {
+    "description": "Any screen: the server answered with an error."
+  },
+  "retry": "Try again",
+  "@retry": {
+    "description": "Button that retries a call to the server that failed."
+  },
+  "homeSignedInAs": "Signed in as {name}",
+  "@homeSignedInAs": {
+    "description": "The home screen: who is signed in. The name is the Google account's name, or its email when it has none.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Alice Martin"
+      }
+    }
+  },
+  "accountTitle": "Account",
+  "@accountTitle": {
+    "description": "The account screen's title, and the tooltip of the home screen's button that opens it."
+  },
+  "aboutApp": "About this app",
+  "@aboutApp": {
+    "description": "The account screen: opens the screen with the app's and the server's versions."
+  },
+  "signOut": "Sign out",
+  "@signOut": {
+    "description": "The account screen: the button that signs out of this device."
+  },
+  "deleteAccount": "Delete account",
+  "@deleteAccount": {
+    "description": "The account screen: the button that asks to delete the account."
+  },
+  "deleteAccountTitle": "Delete your account?",
+  "@deleteAccountTitle": {
+    "description": "The title of the dialog confirming an account deletion."
+  },
+  "deleteAccountBody": "Your account is deleted and you are signed out on every device. This cannot be undone.",
+  "@deleteAccountBody": {
+    "description": "The dialog confirming an account deletion: what deleting does."
+  },
+  "deleteAccountConfirm": "Delete",
+  "@deleteAccountConfirm": {
+    "description": "The dialog confirming an account deletion: the button that deletes."
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "A dialog's button that closes it and does nothing."
+  },
+  "deleteAccountFailed": "Your account could not be deleted. Try again.",
+  "@deleteAccountFailed": {
+    "description": "A message after the server did not delete the account; the user is still signed in."
   }
 }

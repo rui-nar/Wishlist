@@ -5,16 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:wishlist/main.dart';
 import 'package:wishlist/src/server_version.dart';
+import 'package:wishlist/src/version_screen.dart';
+
+import 'support/fakes.dart';
 
 void main() {
   Future<void> pumpApp(WidgetTester tester, http.Client client) async {
-    await tester.pumpWidget(WishlistApp(
+    await tester.pumpWidget(localizedApp(VersionScreen(
       httpClient: client,
       apiBaseUrl: 'http://api.test',
       appVersion: 'v1.2.3',
-    ));
+    )));
     await tester.pumpAndSettle();
   }
 
@@ -97,11 +99,11 @@ void main() {
       (tester) async {
     final client = MockClient((request) => Completer<http.Response>().future);
 
-    await tester.pumpWidget(WishlistApp(
+    await tester.pumpWidget(localizedApp(VersionScreen(
       httpClient: client,
       apiBaseUrl: 'http://api.test',
       appVersion: 'v1.2.3',
-    ));
+    )));
     await tester.pump(const Duration(seconds: 11));
 
     expect(find.text('Server unreachable (timed out)'), findsOneWidget);

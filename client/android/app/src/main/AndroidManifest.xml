@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The app calls the server (sign-in, /api/config, /api/me). The debug and
+         profile manifests add this for development tools only. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="wishlist"
         android:name="${applicationName}"
