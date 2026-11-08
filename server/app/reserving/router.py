@@ -21,7 +21,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy import exists, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -64,22 +64,38 @@ def occasion_claims(
     # No lock: an owner's change to the occasion never waits on this read.
     occasion = giving_occasion(db, user, occasion_id, lock=False)
     now = request.app.state.clock()
-    # Live claims only: one of a passed occasion that was not bought is gone,
-    # for its own invitees too (D8).
-    claims = db.scalars(
-        select(GiftClaim)
+    # Live claims, and the caller's own claims of this occasion that have
+    # expired: they may still mark those bought (D8, review R3-1). Anyone
+    # else's expired claim is gone, for this occasion's invitees too, and
+    # counts as taken nowhere.
+    rows = db.execute(
+        select(GiftClaim, is_live(now).label("live"))
         .join(Gift, Gift.id == GiftClaim.gift_id)
-        .where(Gift.list_id == occasion.list_id, is_live(now))
+        .where(
+            Gift.list_id == occasion.list_id,
+            or_(
+                is_live(now),
+                and_(
+                    GiftClaim.occasion_id == occasion.id,
+                    exists().where(
+                        ClaimParticipant.gift_id == GiftClaim.gift_id,
+                        ClaimParticipant.user_id == user.id,
+                    ),
+                ),
+            ),
+        )
         .order_by(Gift.created_at, Gift.id)
     ).all()
     participants = _participants(
         db,
-        [claim.gift_id for claim in claims if claim.occasion_id == occasion.id],
+        [claim.gift_id for claim, _ in rows if claim.occasion_id == occasion.id],
         user,
     )
     return OccasionClaims(
         passed=has_passed(occasion.date, now),
-        gifts=[_claim_out(claim, occasion.id, participants) for claim in claims],
+        gifts=[
+            _claim_out(claim, live, occasion.id, participants) for claim, live in rows
+        ],
     )
 
 
@@ -108,7 +124,7 @@ def reserve(
         and _is_mine(db, held, occasion.id, user)
     ):
         return _conflict(TAKEN)
-    return _gift_claim_out(db, gift_id, occasion.id, user)
+    return _gift_claim_out(db, gift_id, occasion.id, user, now)
 
 
 @router.delete(
@@ -164,7 +180,7 @@ def mark_bought(
         # A free gift is reserved and bought at once.
         created, claim = _take(db, gift_id, occasion.id, user, now, bought_at=now)
         if created:
-            return _gift_claim_out(db, gift_id, occasion.id, user)
+            return _gift_claim_out(db, gift_id, occasion.id, user, now)
         # My reservation, or a group gift I am in, here.
         if claim is None or not _is_mine(db, claim, occasion.id, user):
             return _conflict(TAKEN)
@@ -172,7 +188,7 @@ def mark_bought(
     if claim.bought_at is None:
         claim.bought_at = now
         db.flush()
-    return _gift_claim_out(db, gift_id, occasion.id, user)
+    return _gift_claim_out(db, gift_id, occasion.id, user, now)
 
 
 @router.put(
@@ -214,7 +230,7 @@ def pledge(
         db, gift_id, occasion.id, user, now, bought_at=None, kind=GROUP_KIND, **pledged
     )
     if created:
-        return _gift_claim_out(db, gift_id, occasion.id, user)
+        return _gift_claim_out(db, gift_id, occasion.id, user, now)
     # A reservation, mine included (release it first), or anything held from
     # another occasion.
     if claim is None or claim.occasion_id != occasion.id or claim.kind != GROUP_KIND:
@@ -232,7 +248,7 @@ def pledge(
             set_=pledged,
         )
     )
-    return _gift_claim_out(db, gift_id, occasion.id, user)
+    return _gift_claim_out(db, gift_id, occasion.id, user, now)
 
 
 @router.delete(
@@ -396,30 +412,38 @@ def _participants(
 
 def _claim_out(
     claim: GiftClaim,
+    live: bool,
     occasion_id: uuid.UUID,
     participants: dict[uuid.UUID, list[ParticipantOut]],
 ) -> GiftClaimOut:
+    """`live` is false only for the caller's own expired claim of this
+    occasion: no other expired claim reaches a giver (`occasion_claims`)."""
     if claim.occasion_id != occasion_id:
         # Held from another occasion, or bought in a deleted one: neither who
         # nor where nor whether it was bought (D6).
         return GiftClaimOut(
-            gift_id=claim.gift_id, state=TAKEN, bought=False, participants=[]
+            gift_id=claim.gift_id,
+            state=TAKEN,
+            bought=False,
+            expired=False,
+            participants=[],
         )
     return GiftClaimOut(
         gift_id=claim.gift_id,
         state=RESERVED if claim.kind == RESERVATION else GROUP,
         bought=claim.bought_at is not None,
+        expired=not live,
         participants=participants.get(claim.gift_id, []),
     )
 
 
 def _gift_claim_out(
-    db: Session, gift_id: uuid.UUID, occasion_id: uuid.UUID, user: User
+    db: Session, gift_id: uuid.UUID, occasion_id: uuid.UUID, user: User, now: datetime
 ) -> GiftClaimOut:
     """The gift's claim as a giver of the occasion sees it after a write."""
-    claim = db.scalars(
-        select(GiftClaim)
+    claim, live = db.execute(
+        select(GiftClaim, is_live(now).label("live"))
         .where(GiftClaim.gift_id == gift_id)
         .execution_options(populate_existing=True)
     ).one()
-    return _claim_out(claim, occasion_id, _participants(db, [gift_id], user))
+    return _claim_out(claim, live, occasion_id, _participants(db, [gift_id], user))

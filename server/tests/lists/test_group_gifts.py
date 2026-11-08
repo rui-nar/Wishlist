@@ -400,14 +400,20 @@ def test_a_gift_of_another_list_is_not_found(client, world, make_world, rows):
 def test_the_recipient_gets_not_found_whatever_the_state(
     client, world, make_account, rows
 ):
-    _, group, bought = world.gifts
+    expired, group, bought = world.gifts
     pledge(client, world.ana, world.first, group, "30.00")
     pledge(client, world.ben, world.first, group)
     pledge(client, world.ana, world.first, bought, "10.00")
     mark_bought(client, world.ana, world.first, bought)
     dan = make_account("Dan")
     past = share(client, world.owner, world.list_id, "Last year", dan)
+    pledge(client, dan, past, expired, "40.00")
     move(client, world, past, PAST)
+    # Its participant still sees the expired one (review R3-1); the
+    # recipient does not, below.
+    assert claims(client, dan, past).json()["gifts"][0] == held(
+        expired, "group", False, participant("Dan", True, "40.00", "EUR"), expired=True
+    )
 
     def answer(response):
         headers = {k: v for k, v in response.headers.items() if k != "date"}
@@ -435,4 +441,4 @@ def test_the_recipient_gets_not_found_whatever_the_state(
         ),
         held(bought, "group", True, participant("Ana", True, "10.00", "EUR")),
     ]
-    assert rows("claim_participants") == 3
+    assert rows("claim_participants") == 4

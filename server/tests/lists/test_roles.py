@@ -382,7 +382,15 @@ ENDPOINTS = [
 
 # What only a giver may read (reserving plan D6): never a key of a response
 # to the recipient.
-ACTIVITY_KEYS = {"claims", "participants", "pledge_amount", "state", "bought", "passed"}
+ACTIVITY_KEYS = {
+    "claims",
+    "participants",
+    "pledge_amount",
+    "state",
+    "bought",
+    "expired",
+    "passed",
+}
 
 # The API paths whose routes must all appear in this module.
 GUARDED_PREFIXES = (

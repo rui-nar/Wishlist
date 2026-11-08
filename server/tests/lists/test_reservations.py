@@ -137,11 +137,12 @@ def participant(name, mine, amount=None, currency=None):
     }
 
 
-def held(gift, state, bought, *participants):
+def held(gift, state, bought, *participants, expired=False):
     return {
         "gift_id": gift,
         "state": state,
         "bought": bought,
+        "expired": expired,
         "participants": list(participants),
     }
 
@@ -417,11 +418,19 @@ def test_a_passed_occasion(client, world):
 
     move(client, world, world.first, PAST)
 
-    # Its unbought reservation has ended, for its own invitees too; what was
-    # bought in it stays, and stays taken elsewhere (D8).
+    # Its unbought reservation has ended, for its own invitees too; only its
+    # holder still sees it, as expired (review R3-1). What was bought in it
+    # stays, and stays taken elsewhere (D8).
+    assert claims(client, world.ben, world.first).json() == {
+        "passed": True,
+        "gifts": [held(bought, "reserved", True, participant("Ana", False))],
+    }
     assert claims(client, world.ana, world.first).json() == {
         "passed": True,
-        "gifts": [held(bought, "reserved", True, participant("Ana", True))],
+        "gifts": [
+            held(reserved, "reserved", False, participant("Ana", True), expired=True),
+            held(bought, "reserved", True, participant("Ana", True)),
+        ],
     }
     assert claims(client, world.cleo, world.second).json() == {
         "passed": False,
@@ -443,10 +452,22 @@ def test_a_passed_occasion(client, world):
 
 def test_a_giver_marks_their_claim_of_a_passed_occasion_bought(client, world):
     # A gift handed over on the day is recorded afterwards, while nobody has
-    # claimed it since (D8, review round 1).
+    # claimed it since (D8, review round 1). Its holder sees it to do so
+    # (review R3-1); nobody else does, and it is free elsewhere meanwhile.
     gift = world.gifts[0]
     reserve(client, world.ana, world.first, gift)
     move(client, world, world.first, PAST)
+    assert claims(client, world.ana, world.first).json() == {
+        "passed": True,
+        "gifts": [
+            held(gift, "reserved", False, participant("Ana", True), expired=True)
+        ],
+    }
+    assert claims(client, world.ben, world.first).json() == {
+        "passed": True,
+        "gifts": [],
+    }
+    assert claims(client, world.cleo, world.second).json()["gifts"] == []
 
     refused = mark_bought(client, world.ben, world.first, gift)
     response = mark_bought(client, world.ana, world.first, gift)
@@ -454,20 +475,64 @@ def test_a_giver_marks_their_claim_of_a_passed_occasion_bought(client, world):
     assert (refused.status_code, refused.json()) == (409, PASSED)
     assert response.status_code == 200, response.text
     assert response.json() == held(gift, "reserved", True, participant("Ana", True))
+    assert claims(client, world.ana, world.first).json() == {
+        "passed": True,
+        "gifts": [held(gift, "reserved", True, participant("Ana", True))],
+    }
+    assert claims(client, world.ben, world.first).json()["gifts"] == [
+        held(gift, "reserved", True, participant("Ana", False))
+    ]
     assert claims(client, world.cleo, world.second).json()["gifts"] == [taken(gift)]
     refused = reserve(client, world.cleo, world.second, gift)
     assert (refused.status_code, refused.json()) == (409, TAKEN)
 
 
-def test_a_group_participant_marks_it_bought_after_the_date(client, world, engine):
+def test_a_group_participant_marks_it_bought_after_the_date(
+    client, world, engine, make_account
+):
     gift = world.gifts[0]
     add_group(engine, gift, world.first, (world.ana, None), (world.ben, "20.00"))
+    dan = make_account("Dan")
+    token = client.post(
+        f"/api/occasions/{world.first}/link", headers=world.owner.headers
+    ).json()["join_token"]
+    client.post("/api/join", json={"token": token}, headers=dan.headers)
     move(client, world, world.first, PAST)
+    # Each participant sees it, expired (review R3-1); an invitee not in it
+    # does not, nor does another occasion.
+    assert claims(client, world.ben, world.first).json()["gifts"] == [
+        held(
+            gift,
+            "group",
+            False,
+            participant("Ana", False),
+            participant("Ben", True, "20.00", "EUR"),
+            expired=True,
+        )
+    ]
+    assert claims(client, dan, world.first).json()["gifts"] == []
+    assert claims(client, world.cleo, world.second).json()["gifts"] == []
 
     response = mark_bought(client, world.ana, world.first, gift)
 
     assert response.status_code == 200, response.text
-    assert response.json()["bought"] is True
+    assert response.json() == held(
+        gift,
+        "group",
+        True,
+        participant("Ana", True),
+        participant("Ben", False, "20.00", "EUR"),
+    )
+    assert claims(client, dan, world.first).json()["gifts"] == [
+        held(
+            gift,
+            "group",
+            True,
+            participant("Ana", False),
+            participant("Ben", False, "20.00", "EUR"),
+        )
+    ]
+    assert claims(client, world.cleo, world.second).json()["gifts"] == [taken(gift)]
 
 
 def test_claiming_a_gift_of_a_passed_occasion_purges_its_claim(
@@ -484,7 +549,8 @@ def test_claiming_a_gift_of_a_passed_occasion_purges_its_claim(
     assert rows("gift_claims") == 1
     assert rows("claim_participants", "user_id", world.ana.id) == 0
     assert rows("gift_claims", "occasion_id", world.second) == 1
-    # Ana's claim is gone: nothing left of hers to mark bought.
+    # Ana's claim is gone: nothing left of hers to see or mark bought.
+    assert claims(client, world.ana, world.first).json()["gifts"] == [taken(gift)]
     refused = mark_bought(client, world.ana, world.first, gift)
     assert (refused.status_code, refused.json()) == (409, PASSED)
 
@@ -533,7 +599,13 @@ def test_the_server_clock_decides(client, world):
     after = claims(client, world.ana, world.first)
 
     assert before.status_code == 200
-    assert after.json() == {"passed": True, "gifts": []}
+    assert after.json() == {
+        "passed": True,
+        "gifts": [
+            held(gift, "reserved", False, participant("Ana", True), expired=True)
+        ],
+    }
+    assert claims(client, world.ben, world.first).json()["gifts"] == []
 
 
 def test_no_user_id_in_any_claims_response(client, world, engine):
@@ -568,6 +640,11 @@ def test_the_recipient_gets_not_found_whatever_the_state(
     past = share(client, world.owner, world.list_id, "Last year", dan)
     reserve(client, dan, past, expired)
     move(client, world, past, PAST)
+    # Its holder still sees the expired one (review R3-1); the recipient
+    # does not, below.
+    assert claims(client, dan, past).json()["gifts"][-1] == held(
+        expired, "reserved", False, participant("Dan", True), expired=True
+    )
 
     def answer(response):
         headers = {k: v for k, v in response.headers.items() if k != "date"}

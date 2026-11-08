@@ -203,10 +203,12 @@ def test_a_join_racing_the_last_participants_leave(
 def test_a_join_waiting_on_the_last_participants_leave_starts_a_new_group(
     client, make_account, owner, list_id, gift, rows, engine
 ):
-    # Deterministic: Ana's leave is made here, as the endpoint makes it (the
-    # claim FOR UPDATE, then her row and the emptied claim deleted), and held
-    # uncommitted; Ben's pledge waits on the claim, finds it gone, and starts
-    # the group gift afresh (D7 step 4).
+    # Deterministic: Ana's leave is made here, as the endpoint makes it, in
+    # two steps. It holds the claim FOR UPDATE; Ben's pledge finds the claim
+    # there (its insert does nothing) and waits on that lock. Only then are
+    # her row and the emptied claim deleted and committed: Ben's lock finds
+    # the claim gone, and `_take` tries once more and starts the group gift
+    # afresh (D7 step 4, review R4-1).
     ana, ben = make_account("Ana"), make_account("Ben")
     occasion = share(client, owner, list_id, ana, ben)
     assert pledge(client, ana, occasion, gift, "30.00").status_code == 200
@@ -216,17 +218,19 @@ def test_a_join_waiting_on_the_last_participants_leave_starts_a_new_group(
             text("SELECT gift_id FROM gift_claims WHERE gift_id = :gift FOR UPDATE"),
             values,
         )
-        leaving.execute(
-            text(
-                "DELETE FROM claim_participants"
-                " WHERE gift_id = :gift AND user_id = :user"
-            ),
-            values,
-        )
-        leaving.execute(text("DELETE FROM gift_claims WHERE gift_id = :gift"), values)
         with ThreadPoolExecutor(max_workers=1) as pool:
             joining = pool.submit(pledge, client, ben, occasion, gift, "20.00")
             wait_until_blocked_on_a_lock(engine)
+            leaving.execute(
+                text(
+                    "DELETE FROM claim_participants"
+                    " WHERE gift_id = :gift AND user_id = :user"
+                ),
+                values,
+            )
+            leaving.execute(
+                text("DELETE FROM gift_claims WHERE gift_id = :gift"), values
+            )
             leaving.commit()
             response = joining.result(timeout=TIMEOUT_SECONDS)
 
