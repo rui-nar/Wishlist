@@ -172,7 +172,7 @@ step 7) without a triage pass, since the floors fix their decisions.
 - Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=M/local, confidence=verified
 - Decision: Fix now (D3, floor F2)
 - Override: —
-- Outcome: open
+- Outcome: fixed (8d15b81)
 
 ### R5-2 — A host clock more than a day behind dates orphan stamps before a dump that still holds the row
 - Trigger: the VPS clock runs more than ~25 h behind → released rows are stamped too early → files deleted while a kept dump references them
@@ -180,4 +180,4 @@ step 7) without a triage pass, since the floors fix their decisions.
 - Decision: Guard (D4, floor F2)
 - Guard: skip the run with `media purge: skipped (clock behind)` when any orphan stamp, image creation time or dump date is later than now
 - Override: —
-- Outcome: open
+- Outcome: guard added (8d15b81)
