@@ -2,15 +2,18 @@
 
 Lists, gifts and occasions are their owners' business. Invitees reach an
 occasion through the join endpoints, `GET /api/shared` and
-`GET /api/occasions/{id}`, which answers each role with its own model.
+`GET /api/occasions/{id}`, which answers each role with its own model. A
+gift's image is attached, replaced and removed through the gift's own
+endpoints (gift images plan D1, D11).
 """
 
 import secrets
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable
+from datetime import datetime
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import ColumnElement, delete, func, select
@@ -62,6 +65,13 @@ from app.lists.schemas import (
     SharedGiftOut,
     SharedOccasion,
 )
+from app.media.gift_images import (
+    occasion_image_out,
+    owner_image_out,
+    set_gift_image,
+)
+from app.media.images import ImageRejected
+from app.media.models import Image
 
 router = APIRouter(prefix="/api", tags=["lists"])
 
@@ -111,7 +121,7 @@ def get_list(list_id: uuid.UUID, user: CurrentUser, db: DbSession) -> ListDetail
     found = owned_list(db, user, list_id)
     return ListDetail(
         **_list_out(found).model_dump(),
-        gifts=[_gift_out(gift) for gift in _gifts(db, found.id)],
+        gifts=[_gift_out(gift, image) for gift, image in _gifts(db, found.id)],
         occasions=_occasions_out(db, Occasion.list_id == found.id),
     )
 
@@ -148,7 +158,11 @@ def delete_list(list_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Respons
 
 @router.post("/lists/{list_id}/gifts", status_code=status.HTTP_201_CREATED)
 def add_gift(
-    list_id: uuid.UUID, body: GiftCreate, user: CurrentUser, db: DbSession
+    list_id: uuid.UUID,
+    body: GiftCreate,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
 ) -> GiftOut:
     found = owned_list(db, user, list_id)
     gift = Gift(
@@ -159,27 +173,39 @@ def add_gift(
         price_amount=body.price_amount,
         price_currency=body.price_currency,
     )
+    _set_image(db, user, gift, body.image_id, request.app.state.clock())
     db.add(gift)
     db.flush()
     # Read back as stored: an amount of 149 is answered as "149.00".
     db.refresh(gift)
-    return _gift_out(gift)
+    return _gift_out(gift, _image_of(db, gift))
 
 
 @router.patch("/gifts/{gift_id}")
 def update_gift(
-    gift_id: uuid.UUID, body: GiftUpdate, user: CurrentUser, db: DbSession
+    gift_id: uuid.UUID,
+    body: GiftUpdate,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
 ) -> GiftOut:
     gift = owned_gift(db, user, gift_id)
-    for field in body.model_fields_set:
+    if "image_id" in body.model_fields_set:
+        # Locked until the request commits: two changes of the image at the
+        # same moment take turns, so each one detaches, and stamps, the image
+        # the other attached.
+        db.refresh(gift, with_for_update=True)
+    for field in body.model_fields_set - {"image_id"}:
         setattr(gift, field, getattr(body, field))
+    if "image_id" in body.model_fields_set:
+        _set_image(db, user, gift, body.image_id, request.app.state.clock())
     # Either half of the price may be sent alone; the result must still be
     # both or neither.
     if (gift.price_amount is None) != (gift.price_currency is None):
         raise _invalid("price_currency", "a price has both an amount and a currency")
     db.flush()
     db.refresh(gift)
-    return _gift_out(gift)
+    return _gift_out(gift, _image_of(db, gift))
 
 
 @router.delete("/gifts/{gift_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -213,14 +239,14 @@ def get_occasion(
             **_occasion_out(db, occasion).model_dump(),
             role=OWNER,
             list=_list_out(found),
-            gifts=[_gift_out(gift) for gift in gifts],
+            gifts=[_gift_out(gift, image) for gift, image in gifts],
         )
     # The invitee's own model: no token, no members, no other occasion (D8).
     shared = _shared_occasion(occasion, found, _owner_names(db, [found.id]))
     return InviteeOccasionView(
         **shared.model_dump(),
         role=INVITEE,
-        gifts=[_shared_gift_out(gift) for gift in gifts],
+        gifts=[_shared_gift_out(gift, image, occasion.id) for gift, image in gifts],
     )
 
 
@@ -443,7 +469,20 @@ def _list_out(found: List) -> ListOut:
     )
 
 
-def _gift_out(gift: Gift) -> GiftOut:
+def _set_image(
+    db: Session, user: User, gift: Gift, image_id: uuid.UUID | None, now: datetime
+) -> None:
+    try:
+        set_gift_image(db, user, gift, image_id, now)
+    except ImageRejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.code) from None
+
+
+def _image_of(db: Session, gift: Gift) -> Image | None:
+    return None if gift.image_id is None else db.get_one(Image, gift.image_id)
+
+
+def _gift_out(gift: Gift, image: Image | None) -> GiftOut:
     return GiftOut(
         id=gift.id,
         list_id=gift.list_id,
@@ -452,21 +491,24 @@ def _gift_out(gift: Gift) -> GiftOut:
         links=gift.links,
         price_amount=gift.price_amount,
         price_currency=gift.price_currency,
+        image=None if image is None else owner_image_out(image),
     )
 
 
-def _gifts(db: Session, list_id: uuid.UUID) -> list[Gift]:
-    # Oldest first (D3).
-    return list(
-        db.scalars(
-            select(Gift)
-            .where(Gift.list_id == list_id)
-            .order_by(Gift.created_at, Gift.id)
-        )
+def _gifts(db: Session, list_id: uuid.UUID) -> list[tuple[Gift, Image | None]]:
+    """The list's gifts, oldest first (D3), each with its image."""
+    rows = db.execute(
+        select(Gift, Image)
+        .outerjoin(Image, Image.id == Gift.image_id)
+        .where(Gift.list_id == list_id)
+        .order_by(Gift.created_at, Gift.id)
     )
+    return [(gift, image) for gift, image in rows]
 
 
-def _shared_gift_out(gift: Gift) -> SharedGiftOut:
+def _shared_gift_out(
+    gift: Gift, image: Image | None, occasion_id: uuid.UUID
+) -> SharedGiftOut:
     return SharedGiftOut(
         id=gift.id,
         title=gift.title,
@@ -474,6 +516,7 @@ def _shared_gift_out(gift: Gift) -> SharedGiftOut:
         links=gift.links,
         price_amount=gift.price_amount,
         price_currency=gift.price_currency,
+        image=None if image is None else occasion_image_out(image, occasion_id),
     )
 
 

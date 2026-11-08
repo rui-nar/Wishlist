@@ -56,6 +56,7 @@ def test_adding_a_gift_with_every_field(client, ada, list_id, add):
         # As stored, numeric(12,2), and as a string: never a binary float.
         "price_amount": "149.00",
         "price_currency": "EUR",
+        "image": None,
     }
     assert gifts_of(client, ada, list_id) == [gift]
 
@@ -71,6 +72,7 @@ def test_adding_a_gift_with_a_title_only(add, list_id):
         "links": [],
         "price_amount": None,
         "price_currency": None,
+        "image": None,
     }
 
 
