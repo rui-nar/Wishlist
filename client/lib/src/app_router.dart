@@ -2,6 +2,7 @@
 library;
 
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import 'api/api_client.dart';
 import 'auth/account_screen.dart';
@@ -26,15 +27,23 @@ const kSignInPath = '/sign-in';
 /// Signed out, every location but the sign-in screen goes to
 /// `/sign-in?from=<location>`. Signed in, the sign-in screen goes to `from`
 /// when [safeFrom] accepts it, `/` otherwise. Share links (`/join`) rely on
-/// this return; their token waits in [PendingJoin], not in the location.
-String? authRedirect(AuthStatus status, Uri uri) {
+/// this return; their token waits in [PendingJoin], not in the location, so
+/// a `from` of `/join` with no token pending ([joinPending] false) goes to
+/// `/` too. That is the browser going back to the sign-in entry after the
+/// join used the token, which would otherwise say the link is no longer
+/// valid (review R6-1).
+String? authRedirect(AuthStatus status, Uri uri, {required bool joinPending}) {
   // The start gate shows no route until the stored session is known.
   if (status == AuthStatus.restoring || status == AuthStatus.unavailable) {
     return null;
   }
   final onSignIn = uri.path == kSignInPath;
   if (status == AuthStatus.signedIn) {
-    return onSignIn ? safeFrom(uri.queryParameters['from']) ?? '/' : null;
+    if (!onSignIn) return null;
+    final from = safeFrom(uri.queryParameters['from']);
+    if (from == null) return '/';
+    if (!joinPending && Uri.parse(from).path == kJoinPath) return '/';
+    return from;
   }
   if (onSignIn) return null;
   final location = uri.toString();
@@ -78,7 +87,11 @@ GoRouter buildRouter({
   return GoRouter(
     refreshListenable: auth,
     observers: [listsRouteObserver],
-    redirect: (context, state) => authRedirect(auth.status, state.uri),
+    redirect: (context, state) => authRedirect(
+      auth.status,
+      state.uri,
+      joinPending: context.read<PendingJoin>().token != null,
+    ),
     routes: [
       GoRoute(
         path: kSignInPath,

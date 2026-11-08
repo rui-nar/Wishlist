@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -436,6 +438,42 @@ void main() {
         server.calls,
         contains('DELETE /api/occasions/$occasion/members/$carol'),
       );
+      expect(find.text('Removed'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Allow again'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Remove'), findsOneWidget);
+    });
+
+    testWidgets('removing someone who just left shows them as removed (R6-2)',
+        (tester) async {
+      final carol = userId('Carol');
+      await startApp(
+        tester,
+        server,
+        '/lists/$listId/occasions/$occasion/members',
+      );
+      // Carol leaves while the owner still sees her among the invitees.
+      final left = server.members[occasion]!.removeAt(0);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Remove').first);
+      await tester.pumpAndSettle();
+      server.hold = Completer();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(TextButton, 'Remove'),
+        ),
+      );
+      await tester.pump();
+      // The server records the removal all the same, and answers 204.
+      server.removed[occasion]!.add(left);
+      server.hold!.complete();
+      await tester.pumpAndSettle();
+
+      expect(
+        server.calls,
+        contains('DELETE /api/occasions/$occasion/members/$carol'),
+      );
+      expect(find.text('This occasion no longer exists.'), findsNothing);
       expect(find.text('Removed'), findsOneWidget);
       expect(find.widgetWithText(TextButton, 'Allow again'), findsOneWidget);
       expect(find.widgetWithText(TextButton, 'Remove'), findsOneWidget);

@@ -12,8 +12,12 @@ import 'support/fakes.dart';
 
 void main() {
   group('authRedirect', () {
-    String? redirect(AuthStatus status, String location) =>
-        authRedirect(status, Uri.parse(location));
+    String? redirect(
+      AuthStatus status,
+      String location, {
+      bool joinPending = false,
+    }) =>
+        authRedirect(status, Uri.parse(location), joinPending: joinPending);
 
     test('signed out: to sign-in, with where the user was going', () {
       final target = redirect(AuthStatus.signedOut, '/account');
@@ -62,6 +66,28 @@ void main() {
             Uri(path: '/sign-in', queryParameters: {'from': from}).toString();
         expect(redirect(AuthStatus.signedIn, location), '/', reason: from);
       }
+    });
+
+    test('signed in: back to /join only while a link is pending (R6-1)', () {
+      expect(
+        redirect(AuthStatus.signedIn, '/sign-in?from=%2Fjoin',
+            joinPending: true),
+        '/join',
+      );
+      // The browser back on the sign-in entry after the join used the link.
+      expect(redirect(AuthStatus.signedIn, '/sign-in?from=%2Fjoin'), '/');
+      expect(
+        redirect(AuthStatus.signedIn, '/sign-in?from=%2Fjoin%3Fa%3D1'),
+        '/',
+      );
+      // /join itself is let through: it says the link is no longer valid.
+      expect(redirect(AuthStatus.signedIn, '/join'), isNull);
+      // Signed out, the return to /join is kept whatever is pending.
+      expect(
+        Uri.parse(redirect(AuthStatus.signedOut, '/join')!)
+            .queryParameters['from'],
+        '/join',
+      );
     });
 
     test('a from inside the app is kept, query included', () {
