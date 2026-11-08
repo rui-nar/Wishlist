@@ -51,3 +51,13 @@ triaged table after enforcing the floors. No floor finding was raised.
 No findings. The R1-2 wording and tests are consistent with U1 step 8, and the
 moved units satisfy DELIVERY.md W1–W4. Review of the plan complete (§6: no Fix
 now).
+
+## Round 3 — 2026-11-08, U1 unit review (DELIVERY.md §5 point 3), reviewed at 7375c18
+
+### R3-1 — A request racing the sign-out or deletion of its own session answers 500
+- Trigger: two tabs share the token; one signs out or deletes the account while the other's request touches the session → the touch UPDATE matches 0 rows (StaleDataError) or the user lookup misses (NoResultFound) → 500 instead of 401
+- Scores: trigger=plausible, impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=verified (traced)
+- Decision: Defer (D10)
+- Revisit when: a 500 with StaleDataError or NoResultFound from the session touch appears in the logs, a user reports an error after signing out or deleting the account on another tab or device, or the client's auth handling needs a 401 on a revoked session
+- Override: —
+- Outcome: open
