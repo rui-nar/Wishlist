@@ -105,6 +105,15 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      # The vendored google_sign_in_web's patch: no Google script before
+      # init(). Only a browser can see the page's script tags; the runner's
+      # Chrome runs it.
+      - name: Test vendored google_sign_in_web
+        working-directory: client/third_party/google_sign_in_web
+        run: |
+          flutter pub get
+          flutter test --platform chrome
+
       # A failed golden comparison writes its diff images to a failures/
       # directory next to the test (plan D10). Uses steps ignore the job's
       # working-directory, so the path starts at the repository root.
