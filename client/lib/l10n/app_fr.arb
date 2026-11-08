@@ -150,5 +150,6 @@
   "welcomeControlBody": "Désactivez un lien ou retirez quelqu'un d'une occasion à tout moment.",
   "registerTitle": "Créez votre compte",
   "registerPrompt": "Votre compte Google suffit.",
-  "whatIsWishlist": "Qu'est-ce que Wishlist ?"
+  "whatIsWishlist": "Qu'est-ce que Wishlist ?",
+  "imageViewerClose": "Fermer"
 }

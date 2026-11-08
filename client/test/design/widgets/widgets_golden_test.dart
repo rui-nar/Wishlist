@@ -6,8 +6,10 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wishlist/l10n/app_localizations.dart';
 import 'package:wishlist/src/design/theme.dart';
 import 'package:wishlist/src/design/widgets/gift_card.dart';
+import 'package:wishlist/src/design/widgets/image_viewer.dart';
 import 'package:wishlist/src/design/widgets/privacy_banner.dart';
 import 'package:wishlist/src/design/widgets/status_chip.dart';
 
@@ -238,6 +240,31 @@ void main() {
         await expectLater(
           find.byType(MaterialApp),
           matchesGoldenFile('goldens/gift_card_no_image_$mode.png'),
+        );
+      }, tags: ['golden']);
+      testWidgets('image viewer, $mode', (tester) async {
+        final image = await photo(tester);
+        tester.view.physicalSize = const Size(_width, 300);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ImageViewer(image: image),
+          ),
+        );
+        await tester.runAsync(() async {
+          for (final element in find.byType(Image).evaluate()) {
+            await precacheImage((element.widget as Image).image, element);
+          }
+        });
+        await tester.pumpAndSettle();
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile('goldens/image_viewer_$mode.png'),
         );
       }, tags: ['golden']);
     }

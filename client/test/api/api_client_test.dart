@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -179,6 +180,108 @@ void main() {
         api.getJson('/api/me'),
         throwsA(isA<ApiUnreachableException>()),
       );
+    });
+  });
+
+  group('bytes', () {
+    test('postBytes sends the bytes, content type and token; reads JSON',
+        () async {
+      final seen = <http.Request>[];
+      final api = ApiClient(
+        MockClient((request) async {
+          seen.add(request);
+          return http.Response('{"id": "i1"}', 201);
+        }),
+        baseUrl: 'http://api.test',
+      )..token = 'secret';
+
+      final answer = await api.postBytes(
+        '/api/images',
+        Uint8List.fromList([1, 2, 3]),
+        contentType: 'image/png',
+      );
+
+      expect(answer, {'id': 'i1'});
+      expect(seen.single.method, 'POST');
+      expect(seen.single.url, Uri.parse('http://api.test/api/images'));
+      expect(seen.single.bodyBytes, [1, 2, 3]);
+      expect(seen.single.headers['Content-Type'], 'image/png');
+      expect(seen.single.headers['Authorization'], 'Bearer secret');
+    });
+
+    test('an error code surfaces as an ApiException with the body', () async {
+      final api = ApiClient(
+        MockClient(
+          (request) async =>
+              http.Response('{"detail": "image_unsupported"}', 422),
+        ),
+        baseUrl: '',
+      );
+      await expectLater(
+        api.postBytes('/api/images', Uint8List(1)),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.statusCode, 'statusCode', 422)
+              .having((e) => e.body?['detail'], 'detail', 'image_unsupported'),
+        ),
+      );
+    });
+
+    test('getBytes returns the bytes, with the token', () async {
+      final seen = <http.Request>[];
+      final api = ApiClient(
+        MockClient((request) async {
+          seen.add(request);
+          return http.Response.bytes([0, 255, 7], 200);
+        }),
+        baseUrl: '',
+      )..token = 'secret';
+
+      expect(await api.getBytes('/api/images/i1/thumb'), [0, 255, 7]);
+      expect(seen.single.headers['Authorization'], 'Bearer secret');
+    });
+
+    test('getBytes reports a 404 as an ApiException', () async {
+      final api = ApiClient(
+        MockClient((request) async => http.Response('', 404)),
+        baseUrl: '',
+      );
+      await expectLater(
+        api.getBytes('/api/images/x/full'),
+        throwsA(isA<ApiException>()),
+      );
+    });
+  });
+
+  group('per-call timeout', () {
+    // The answer arrives after 20 s of the (fake) clock.
+    ApiClient slow() => ApiClient(
+          MockClient((request) async {
+            await Future<void>.delayed(const Duration(seconds: 20));
+            return http.Response('{"ok": true}', 200);
+          }),
+          baseUrl: '',
+        );
+
+    testWidgets('a JSON post given 60 s waits past 10 s', (tester) async {
+      Object? result;
+      slow()
+          .postJson('/api/images/from-url', {'url': 'u'},
+              timeout: const Duration(seconds: 60))
+          .then((v) => result = v);
+      await tester.pump(const Duration(seconds: 21));
+      expect(result, {'ok': true});
+    });
+
+    testWidgets('a JSON post without it keeps 10 s', (tester) async {
+      Object? error;
+      slow().postJson('/api/x', {}).catchError((Object e) {
+        error = e;
+        return <String, dynamic>{};
+      });
+      await tester.pump(const Duration(seconds: 11));
+      expect(error, isA<ApiUnreachableException>());
+      await tester.pump(const Duration(seconds: 20));
     });
   });
 

@@ -3,6 +3,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -40,6 +41,10 @@ class ApiUnreachableException implements Exception {
 
 const _kTimeout = Duration(seconds: 10);
 
+/// Image bytes take longer than JSON: 60 s up, 30 s down (GIFT_IMAGES D13).
+const _kUploadTimeout = Duration(seconds: 60);
+const _kDownloadTimeout = Duration(seconds: 30);
+
 /// Calls `<baseUrl>/api/...` with the session's bearer token, if any.
 ///
 /// Errors are typed, never the server's text: [UnauthorizedException] on 401,
@@ -68,11 +73,36 @@ class ApiClient {
   Future<List<dynamic>> getJsonList(String path) async =>
       _decode<List<dynamic>>(await _send('GET', path));
 
+  /// [timeout] is for the few calls the server may take longer to answer,
+  /// such as fetching an image from a URL (GIFT_IMAGES review R1-5).
   Future<Map<String, dynamic>> postJson(
     String path,
-    Map<String, dynamic> body,
-  ) async =>
-      _decode<Map<String, dynamic>>(await _send('POST', path, body: body));
+    Map<String, dynamic> body, {
+    Duration timeout = _kTimeout,
+  }) async =>
+      _decode<Map<String, dynamic>>(
+        await _send('POST', path, body: body, timeout: timeout),
+      );
+
+  /// A POST of raw [bytes] whose answer is a JSON object.
+  Future<Map<String, dynamic>> postBytes(
+    String path,
+    Uint8List bytes, {
+    String contentType = 'application/octet-stream',
+  }) async =>
+      _decode<Map<String, dynamic>>(
+        await _send(
+          'POST',
+          path,
+          bytes: bytes,
+          contentType: contentType,
+          timeout: _kUploadTimeout,
+        ),
+      );
+
+  /// A GET whose answer is raw bytes.
+  Future<Uint8List> getBytes(String path) async =>
+      (await _send('GET', path, timeout: _kDownloadTimeout)).bodyBytes;
 
   Future<Map<String, dynamic>> patchJson(
     String path,
@@ -90,6 +120,9 @@ class ApiClient {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    Uint8List? bytes,
+    String? contentType,
+    Duration timeout = _kTimeout,
   }) async {
     final sentToken = token;
     final request = http.Request(method, Uri.parse('$baseUrl$path'));
@@ -100,11 +133,15 @@ class ApiClient {
       request.headers['Content-Type'] = 'application/json';
       request.body = jsonEncode(body);
     }
+    if (bytes != null) {
+      request.headers['Content-Type'] = contentType!;
+      request.bodyBytes = bytes;
+    }
     final http.Response response;
     try {
       response = await http.Response.fromStream(
-        await httpClient.send(request).timeout(_kTimeout),
-      ).timeout(_kTimeout);
+        await httpClient.send(request).timeout(timeout),
+      ).timeout(timeout);
     } on http.ClientException {
       throw const ApiUnreachableException();
     } on TimeoutException {

@@ -719,5 +719,9 @@
   "whatIsWishlist": "What is Wishlist?",
   "@whatIsWishlist": {
     "description": "The sign-in screen: the link to the welcome page, which explains the app."
+  },
+  "imageViewerClose": "Close",
+  "@imageViewerClose": {
+    "description": "The full-screen image viewer: the tooltip of the button that closes it."
   }
 }

@@ -1,10 +1,18 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:wishlist/src/api/api_client.dart';
+import 'package:wishlist/src/api/api_image.dart';
 import 'package:wishlist/src/design/theme.dart';
 import 'package:wishlist/src/design/widgets/gift_card.dart';
+import 'package:wishlist/src/design/widgets/image_viewer.dart';
 import 'package:wishlist/src/design/widgets/privacy_banner.dart';
 import 'package:wishlist/src/design/widgets/status_chip.dart';
 import 'package:wishlist/src/design/wishlist_colors.dart';
+import 'package:wishlist/l10n/app_localizations.dart';
 
 void main() {
   Future<void> pump(WidgetTester tester, Widget child, {ThemeData? theme}) {
@@ -166,6 +174,84 @@ void main() {
       final title = tester.widget<Text>(find.textContaining('A very long'));
       expect(title.maxLines, 2);
       expect(title.overflow, TextOverflow.ellipsis);
+    });
+    testWidgets('an image that fails to load shows the placeholder', (
+      tester,
+    ) async {
+      final api = ApiClient(
+        MockClient((request) async => http.Response('', 404)),
+        baseUrl: '',
+      );
+      await pump(
+        tester,
+        GiftCard(title: 'Headphones', image: ApiImage(api, '/api/images/a/t')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.card_giftcard_outlined), findsOneWidget);
+    });
+
+    testWidgets('onImageTap fires on the image, not the card tap', (
+      tester,
+    ) async {
+      final api = ApiClient(
+        MockClient((request) async => http.Response('', 404)),
+        baseUrl: '',
+      );
+      var imageTaps = 0;
+      var cardTaps = 0;
+      await pump(
+        tester,
+        GiftCard(
+          title: 'Headphones',
+          image: ApiImage(api, '/api/images/a/t'),
+          onImageTap: () => imageTaps++,
+          onTap: () => cardTaps++,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('gift-card-image')));
+      expect((imageTaps, cardTaps), (1, 0));
+      await tester.tap(find.text('Headphones'));
+      expect((imageTaps, cardTaps), (1, 1));
+      final size = tester.getSize(find.byKey(const ValueKey('gift-card-image')));
+      expect(size.shortestSide, greaterThanOrEqualTo(44));
+    });
+
+    testWidgets('onImageTap is ignored without an image', (tester) async {
+      await pump(tester, GiftCard(title: 'Headphones', onImageTap: () {}));
+      expect(find.byKey(const ValueKey('gift-card-image')), findsNothing);
+    });
+  });
+
+  group('showImageViewer', () {
+    testWidgets('opens full screen and the close button closes it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLightTheme(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showImageViewer(
+                context,
+                MemoryImage(Uint8List(0)),
+                semanticLabel: 'Headphones',
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(find.byTooltip('Close'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InteractiveViewer), findsNothing);
     });
   });
 }

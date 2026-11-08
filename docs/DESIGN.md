@@ -121,7 +121,8 @@ Do not wrap a Material widget in a custom one to style it: change the theme in
 |---|---|
 | `StatusChip` | A pill. Variants: `inviteeActivity` (rose), `hidden` (teal) and `neutral` |
 | `PrivacyBanner` | A teal container with an eye-off icon and a message, telling someone what is hidden from them |
-| `GiftCard` | The gift card of the mock-up: image slot (or placeholder), title, metadata line, chips, optional action |
+| `GiftCard` | The gift card of the mock-up: image slot, title, metadata line, chips, optional action. The slot shows the placeholder when there is no image or it fails to load; with `onImageTap` the image is tappable (its 64 px exceed the 44 px hit area) and the tap does not reach the card's own |
+| `showImageViewer` | A full-screen dialog with the image in an `InteractiveViewer` (pinch and drag to zoom) and a close button with a tooltip (the one string a design widget takes from `AppLocalizations`). Opened by the card's `onImageTap` |
 | `PageFrame`, `Backdrop` | A page's body: content capped and centred on the abstract backdrop (Layout, below) |
 
 **Components take display values, never data** (plan D7). A component gets
