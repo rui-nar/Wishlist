@@ -164,11 +164,11 @@ owner's explicit decision wins. Recorded in `docs/NEEDS.md` (Access).
 - Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/shared, confidence=verified
 - Decision: Fix now (D6)
 - Override: —
-- Outcome: open (fix unit F3)
+- Outcome: fixed (F3, 8051cf4)
 
 ### R6-2 — Removing an invitee who just left is not recorded, and the owner is told the occasion is gone
 - Trigger: an owner removes someone who left a moment earlier → the server answers 404 before recording the removal → the client says "This occasion no longer exists" → the person can rejoin with the current link
 - Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=M/shared, confidence=verified
 - Decision: Fix now (D3, floor F3)
 - Override: —
-- Outcome: open (fix unit F2; allow-again made idempotent in the same unit)
+- Outcome: fixed (F2, e330a1e; allow-again made idempotent)
