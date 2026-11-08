@@ -70,3 +70,31 @@ Both are written into the plan's envelope, D5 and D8.
 - Revisit when: the VAL/PROD domain is decided, or a mobile build targeting VAL or PROD goes to testers: then set `PUBLIC_BASE_URL` in the deployment env and runbook, and hide share actions on mobile while it is empty
 - Override: —
 - Outcome: open
+
+## Round 2 — 2026-11-08, reviewed at dcf2593
+
+Envelope question: is the server access log an accepted sink for join tokens
+(the first page load of `/join/<token>` is served and logged by uvicorn)?
+Answer (orchestrator, standing instruction): no; the token moves into the URL
+fragment (`/join#<token>`) before the link format ships.
+
+### R2-1 — The join token still reaches the access log on every page load of the link
+- Trigger: an invitee pastes `https://<host>/join/<token>` → the browser GETs it → uvicorn logs the path with the token
+- Scores: trigger=concrete, impact=security, detect=logged, later=expensive, fix=S/local, confidence=verified
+- Decision: Fix now (D3, floors F1 and F4)
+- Override: —
+- Outcome: fixed (in plan: `/join#<token>`, D5, envelope, boundary, U4; ACCOUNTS D10's mention updated to match)
+
+### R2-2 — The confirmation screen has no test or golden in U4
+- Trigger: U4 delivered as written → the confirmation screen ships without a golden; Cancel, member and owner paths untested
+- Scores: trigger=concrete, impact=maintainability, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan: U4 item 5)
+
+### R2-3 — The join `token` body field has no size cap
+- Trigger: a modified client posts a multi-megabyte token → read and looked up
+- Scores: trigger=concrete, impact=maintainability (triager: was degraded-ux), detect=silent, later=cheap, fix=S/local, confidence=verified (triager)
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan: at most 64 characters, 422 test)

@@ -60,16 +60,20 @@ chosen here must not need rewriting when they arrive.
   occasion, not to the list (`docs/NEEDS.md`).
 - **D5 — Joining by link.** The owner creates an occasion's link: a random
   token (`secrets.token_urlsafe(16)`), stored as is so the owner can copy the
-  link again later. The link is `<PUBLIC_BASE_URL>/join/<token>`
+  link again later. The link is `<PUBLIC_BASE_URL>/join#<token>`
   (`PUBLIC_BASE_URL` from settings, returned by `/api/config` for the mobile
   apps; on the web the client uses its own origin). Opening it requires
   signing in (the accounts plan's `from` return). The client then shows a
   confirmation screen built from `POST /api/join/preview` (occasion name and
   date, list title, recipient, owners' names) and joins only when the user
   confirms, with `POST /api/join`, which makes the user a member and returns
-  the occasion's id. Both endpoints take the token in the JSON body
-  (`{"token": "..."}`), never in the URL, so it does not reach access logs
-  (round-1 envelope answers). Joining twice is not an error (200, same
+  the occasion's id. The token is in the URL fragment, which browsers never
+  send to the server, so loading the link does not put it in the server's
+  access log; both endpoints take it in the JSON body (`{"token": "..."}`,
+  at most 64 characters), never in the URL (round-1 and round-2 envelope
+  answers). The client reads the fragment when `/join` loads, keeps the
+  pending token in memory (and in the browser's session storage, so a reload
+  during sign-in keeps it), and removes the fragment from the address bar. Joining twice is not an error (200, same
   occasion). Regenerating the link
   replaces the token, so the old link stops working; revoking sets it to null.
   Members who already joined keep access (`docs/NEEDS.md`, Access).
@@ -155,9 +159,10 @@ chosen here must not need rewriting when they arrive.
 
 REVIEW.md defaults apply, with these additions:
 
-- **Join tokens never travel in API URLs.** The API takes them in request
-  bodies; the client's `/join/<token>` route keeps the token in the browser's
-  history, which is accepted (whoever reads it already holds the link).
+- **Join tokens never reach the server in a URL.** Share links carry the
+  token in the fragment (`/join#<token>`), which the browser does not send;
+  the API takes it in request bodies. The browser's history may keep the
+  link, which is accepted (whoever reads it already holds the link).
 - **Joining is explicit.** Opening a link shows what will be joined and asks
   for confirmation; nothing is joined on a click alone.
 - **Share links are bearer capabilities.** Anyone holding an occasion's link
@@ -185,7 +190,7 @@ REVIEW.md defaults apply, with these additions:
 - **API contract (F4):** the endpoints of D8. Additions later; no shape
   changes.
 - **Stored data:** users' lists and gifts; deletion as in D9.
-- **Share link format:** `/join/<token>` becomes a URL people paste into
+- **Share link format:** `/join#<token>` becomes a URL people paste into
   messages; it must keep working for as long as the link is not regenerated.
 
 ## Conventions
@@ -206,7 +211,7 @@ REVIEW.md defaults apply, with these additions:
 | Free-plan limits (1 list, 20 gifts) are not enforced until the premium plan | Users created before enforcement may hold more; they keep them and cannot grow (`docs/NEEDS.md`) | The premium plan |
 | Gift images (upload, fetch from shop link, size limits) | Media storage, backups (R2-5) | A later plan |
 | Who can add co-owners | `list_owners` endpoints | The co-owners plan |
-| Mobile app links (`/join/<token>` opening the installed app) | Android App Links, iOS universal links | Before the first store release |
+| Mobile app links (`/join#<token>` opening the installed app) | Android App Links, iOS universal links | Before the first store release |
 | `PUBLIC_BASE_URL` for VAL and PROD | Share links from the mobile apps | When the domain is decided |
 
 ## Execution units
@@ -293,7 +298,7 @@ REVIEW.md defaults apply, with these additions:
      - the invitee model names the recipient: `recipient_name` for a "for
        someone else" list, the owner's display name for a "for me" list;
      - the token is accepted only in the body: `POST /api/join/<token>` is
-       404;
+       404; a token longer than 64 characters → 422;
      - an unknown, regenerated-away or revoked token → 404;
      - a removed invitee gets 404 afterwards and can rejoin only with a
        current link;
@@ -364,8 +369,9 @@ REVIEW.md defaults apply, with these additions:
      share link (`share_plus`), regenerate (with a warning that the old link
      stops working), revoke, see members and remove one (confirmation),
      rename, delete.
-  2. `/join/:token`: signed-out users go through sign-in and come back (the
-     accounts plan's `from`); then `POST /api/join/preview` and a
+  2. `/join` reads the token from the URL fragment (D5): signed-out users
+     go through sign-in and come back (the accounts plan's `from=/join`, the
+     token kept as pending); then `POST /api/join/preview` and a
      confirmation screen (occasion, date, list, recipient, owners; "Join" and
      "Cancel"); "Join" calls `POST /api/join` and opens the occasion; a
      member is taken straight to the occasion; on 404 explain the link is no
@@ -378,11 +384,16 @@ REVIEW.md defaults apply, with these additions:
      leave the occasion from a menu.
   4. The share link uses `public_base_url` from `/api/config` when set,
      otherwise the web client's own origin.
-  5. Tests: join flow (signed out → sign-in → back → joined; 404; 409);
+  5. Tests: join flow (signed out → sign-in → back to the confirmation;
+     the fragment is read and removed; a reload keeps the pending token);
+     confirmation screen content; "Cancel" makes no join call; "Join" joins
+     and opens the occasion; `role: member` skips the confirmation;
+     `role: owner` and a 409 open the list; 404 shows the invalid-link
+     message;
      occasion actions call the right endpoints; members list and removal;
      shared-with-me states; the invitee view has no edit controls. Goldens:
-     occasion section, shared with me, occasion view, join error, light and
-     dark.
+     occasion section, shared with me, occasion view, join confirmation,
+     join error, light and dark.
 - **Acceptance:** `flutter analyze`; `flutter test`; `.\goldens.ps1 -Check`;
   `flutter build web --release`.
 - **Out of scope:** reservations and other invitee actions, notifications,

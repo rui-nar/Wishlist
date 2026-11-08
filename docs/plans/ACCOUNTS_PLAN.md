@@ -115,7 +115,7 @@ on start, so rolling PROD back across this release would take it down.
 - **D10 — Client: go_router and provider, as in TraxJourney.**
   - `go_router` with a redirect guard: a signed-out user is sent to
     `/sign-in?from=<location>` and returned to `<location>` after signing in.
-    A later plan's share links (`/join/<token>`) depend on this return.
+    A later plan's share links (`/join#<token>`) depend on this return.
   - `provider` with an `AuthController` (`ChangeNotifier`): signed out,
     signing in, signed in (with the user), and an error state.
   - An `ApiClient` wrapping `package:http`: adds the bearer token, maps a 401

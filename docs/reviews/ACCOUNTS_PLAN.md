@@ -45,3 +45,9 @@ triaged table after enforcing the floors. No floor finding was raised.
 - Revisit when: before the runbook's rollback is first used on PROD, before the `validation` tag is moved back from a branch that carries a migration, or when VAL logs the D13 "unknown revision" warning and then serves 500s
 - Override: —
 - Outcome: open
+
+## Round 2 — 2026-11-08, reviewed at dcf2593
+
+No findings. The R1-2 wording and tests are consistent with U1 step 8, and the
+moved units satisfy DELIVERY.md W1–W4. Review of the plan complete (§6: no Fix
+now).
