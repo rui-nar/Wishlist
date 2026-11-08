@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import event, select, text
+from sqlalchemy import delete, event, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.lists.models import Gift, List
@@ -68,11 +68,20 @@ def recent_dumps(backups, after):
     nightly(backups, after + 2 * DAY, count=3)
 
 
-def write_files(media_dir, image_id):
+def write_files(media_dir, image_id, written):
+    """The image's two files, as `images.store` wrote them at `written`."""
     for variant in ("full", "thumb"):
         path = image_path(media_dir, image_id, variant)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"webp")
+        os.utime(path, (written.timestamp(),) * 2)
+
+
+def modified(media_dir, image_id):
+    return {
+        datetime.fromtimestamp(image_path(media_dir, image_id, v).stat().st_mtime, UTC)
+        for v in ("full", "thumb")
+    }
 
 
 def has_files(media_dir, image_id):
@@ -109,14 +118,14 @@ def add_image(
                 )
             )
     if files:
-        write_files(media_dir, image_id)
+        write_files(media_dir, image_id, created_at)
     return image_id
 
 
-def orphan_files(media_dir):
+def orphan_files(media_dir, written=NOW - 365 * DAY):
     """Files with no row, as a failed upload leaves them."""
     image_id = uuid.uuid4()
-    write_files(media_dir, image_id)
+    write_files(media_dir, image_id, written)
     return image_id
 
 
@@ -135,6 +144,22 @@ def first_seen(engine, image_id):
 def set_first_seen(engine, image_id, at):
     with Session(engine) as session, session.begin():
         session.merge(MediaOrphan(name=image_id.hex, first_seen_at=at))
+
+
+def after_step_1(session, callback):
+    """Calls `callback` once, when the transaction releasing rows (step 1)
+    has committed in `session`."""
+    released = []
+
+    @event.listens_for(session, "do_orm_execute")
+    def note(state):
+        if state.is_delete and state.statement.table.name == "images":
+            released.append(True)
+
+    @event.listens_for(session, "after_commit")
+    def call(_session):
+        if released and released.pop():
+            callback()
 
 
 def run(engine, media_dir, backups, now=NOW, session=None):
@@ -191,6 +216,8 @@ def test_a_referenced_file_is_never_deleted(db, media_dir, backups):
     assert has_row(db, image_id) and has_files(media_dir, image_id)
     assert first_seen(db, image_id) is None
     assert counts.purged == 0 and counts.rows_released == 0
+    # The run's memory a database rollback cannot take back (review R5-1).
+    assert modified(media_dir, image_id) == {NOW}
 
 
 def test_a_new_orphan_is_recorded_not_deleted(db, media_dir, backups):
@@ -255,16 +282,39 @@ def test_a_kept_copy_without_its_date_protects_by_its_name(db, media_dir, backup
     assert not has_files(media_dir, image_id)
 
 
-def test_a_dump_dated_in_the_future_never_lets_a_fresh_orphan_go(
-    db, media_dir, backups
+@pytest.mark.parametrize(
+    "ahead", ["dump file date", "dump name date", "orphan record", "upload"]
+)
+def test_r5_2_a_clock_behind_a_recorded_date_changes_nothing(
+    db, media_dir, backups, caplog, ahead
 ):
-    dump(backups, "wishlist_2027-01-01.dump", NOW + 60 * DAY)
-    image_id = orphan_files(media_dir)
+    nightly(backups, NOW - 30 * DAY)
+    detached = add_image(db, media_dir, attached_at=NOW - 90 * DAY)
+    orphan = orphan_files(media_dir)
+    set_first_seen(db, orphan, NOW - 900 * DAY)
+    live = add_image(db, media_dir, created_at=NOW - 5 * DAY, on_gift=True)
+    later = NOW + timedelta(seconds=1)
+    if ahead == "dump file date":
+        dump(backups, "before-restore.dump", later)
+    elif ahead == "dump name date":
+        dump(backups, f"kept_{(NOW + DAY).date().isoformat()}.dump", NOW - DAY)
+    elif ahead == "orphan record":
+        set_first_seen(db, uuid.uuid4(), later)
+    else:
+        add_image(db, media_dir, created_at=later)
 
-    counts = run(db, media_dir, backups)
+    with caplog.at_level(logging.INFO, logger="app.media.purge"):
+        assert run(db, media_dir, backups) is None
 
-    assert has_files(media_dir, image_id)
-    assert counts.horizon == NOW - DAY
+    assert has_row(db, detached) and has_files(media_dir, detached)
+    assert first_seen(db, detached) is None
+    assert has_files(media_dir, orphan) and first_seen(db, orphan) == NOW - 900 * DAY
+    assert modified(media_dir, live) == {NOW - 5 * DAY}
+    assert [
+        (r.levelno, r.getMessage())
+        for r in caplog.records
+        if "media purge" in r.getMessage()
+    ] == [(logging.WARNING, "media purge: skipped (clock behind)")]
 
 
 @pytest.mark.parametrize("where", ["unset", "missing", "unreadable", "empty"])
@@ -340,17 +390,18 @@ def test_r1_1_a_row_gone_during_the_run_resets_its_clock(db, media_dir, backups)
     # but the purge's own), while an old record for it is there.
     x = add_image(db, media_dir, created_at=NOW - DAY)  # pending, not released
     set_first_seen(db, x, NOW - 100 * DAY)
+    # Files dated before the horizon, so only the record keeps them here.
+    write_files(media_dir, x, NOW - 100 * DAY)
     nightly(backups, NOW - 20 * DAY, count=21)
     session = Session(db)
     fired = []
 
-    @event.listens_for(session, "after_commit")
-    def delete_x(_session):
-        if not fired:
-            fired.append(True)
-            with db.begin() as connection:
-                connection.execute(text("DELETE FROM images WHERE id = :id"), {"id": x})
+    def delete_x():
+        fired.append(True)
+        with db.begin() as connection:
+            connection.execute(text("DELETE FROM images WHERE id = :id"), {"id": x})
 
+    after_step_1(session, delete_x)
     run(db, media_dir, backups, session=session)
 
     assert fired and not has_row(db, x)
@@ -366,15 +417,78 @@ def test_r1_1_a_released_row_is_stamped_with_its_deletion(db, media_dir, backups
     nightly(backups, NOW - 20 * DAY, count=21)
     session = Session(db)
 
-    @event.listens_for(session, "after_commit")
-    def crash(_session):
+    def crash():
         raise RuntimeError("stopped after step 1")
 
+    after_step_1(session, crash)
     with pytest.raises(RuntimeError):
         run(db, media_dir, backups, session=session)
 
     assert not has_row(db, a)
     assert first_seen(db, a) == NOW
+
+
+def test_r5_1_files_a_rolled_back_database_forgot_stay_until_the_horizon(
+    db, media_dir, backups
+):
+    def at(day):
+        return NOW - 60 * DAY + day * DAY
+
+    def dumps(first, last):
+        for path in backups.glob("*.dump"):
+            path.unlink()
+        nightly(backups, at(first), count=last - first + 1)
+
+    def remove_gift_and(delete_row):
+        with db.begin() as connection:
+            connection.execute(
+                text("DELETE FROM gifts WHERE image_id = :id"), {"id": a}
+            )
+            if delete_row:
+                connection.execute(text("DELETE FROM images WHERE id = :id"), {"id": a})
+
+    # Day 0: A uploaded and attached; day 1, a run sees it live.
+    a = add_image(db, media_dir, created_at=at(0), attached_at=at(0), on_gift=True)
+    dumps(-28, 1)
+    run(db, media_dir, backups, now=at(1))
+    # Day 2: A removed from its gift; the run releases its row.
+    remove_gift_and(delete_row=False)
+    dumps(-27, 2)
+    run(db, media_dir, backups, now=at(2))
+    assert not has_row(db, a) and first_seen(db, a) == at(2)
+
+    # Day 20: the day-1 dump is restored (A attached, no record), the backup
+    # service dumps at once, and a run sees A live.
+    with Session(db) as session, session.begin():
+        session.execute(delete(MediaOrphan).where(MediaOrphan.name == a.hex))
+        session.add(
+            Image(id=a, width=10, height=10, created_at=at(0), attached_at=at(0))
+        )
+        listing = List(title="Birthday", recipient_kind="self")
+        session.add(listing)
+        session.flush()
+        session.add(
+            Gift(list_id=listing.id, title="Kite", description="", links=[], image_id=a)
+        )
+    dumps(-9, 20)
+    run(db, media_dir, backups, now=at(20))
+    assert first_seen(db, a) is None
+
+    # Day 21: rolled back to before-restore.dump: no row for A, and the day-2
+    # record is back.
+    remove_gift_and(delete_row=True)
+    set_first_seen(db, a, at(2))
+
+    # The horizon has passed day 2, not day 20: the day-20 dump has A.
+    dumps(10, 39)
+    run(db, media_dir, backups, now=at(40))
+    assert has_files(media_dir, a)
+
+    # Once the horizon passes the last run that saw A's row, A goes.
+    dumps(22, 51)
+    counts = run(db, media_dir, backups, now=at(52))
+    assert not has_files(media_dir, a)
+    assert counts.purged == 1
 
 
 def test_a_detached_row_is_released_at_once_and_its_files_wait(db, media_dir, backups):

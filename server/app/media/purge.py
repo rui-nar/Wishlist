@@ -8,6 +8,12 @@ backup directory (the horizon), so restoring any kept dump finds its files.
 Every deletion of a row, and every run that saw the row, stamps the record
 with `now`, so a record brought back by a restore cannot carry an older clock
 past a live row (review R1-1).
+
+The records live in the database, so a rollback to an older dump can bring
+back a record older than a row that existed since (review R5-1). The files
+remember too: every run sets the modification time of a live row's files to
+`now`, and a stem goes only when its record and its files are both older
+than the horizon.
 """
 
 import logging
@@ -20,7 +26,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
 
-from sqlalchemy import delete, exists, or_, select
+from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -67,11 +73,15 @@ def horizon(backup_dir: Path | None) -> datetime | None:
     return _horizon(backup_dir)[0]
 
 
-def _horizon(backup_dir: Path | None) -> tuple[datetime | None, str]:
-    """The horizon, or None and the reason there is none."""
+def _horizon(
+    backup_dir: Path | None,
+) -> tuple[datetime | None, datetime | None, str]:
+    """The horizon and the latest date read from a dump (its file date or the
+    date in its name), or None, None and the reason there is no horizon."""
     if backup_dir is None:
-        return None, "no backup directory"
+        return None, None, "no backup directory"
     oldest: datetime | None = None
+    latest: datetime | None = None
     try:
         with os.scandir(backup_dir) as entries:
             for entry in entries:
@@ -81,19 +91,20 @@ def _horizon(backup_dir: Path | None) -> tuple[datetime | None, str]:
                     modified = entry.stat().st_mtime
                 except FileNotFoundError:
                     continue  # rotated away while listing: no longer kept
-                taken = datetime.fromtimestamp(modified, UTC)
+                dates = [datetime.fromtimestamp(modified, UTC)]
                 named = _date_in_name(entry.name)
                 if named is not None:
-                    taken = min(taken, named)
-                oldest = taken if oldest is None else min(oldest, taken)
+                    dates.append(named)
+                oldest = min(dates if oldest is None else [oldest, *dates])
+                latest = max(dates if latest is None else [latest, *dates])
     except FileNotFoundError:
-        return None, "backup directory missing"
+        return None, None, "backup directory missing"
     except OSError:
         # A dump that cannot be dated may be the oldest: no horizon.
-        return None, "backup directory unreadable"
+        return None, None, "backup directory unreadable"
     if oldest is None:
-        return None, "no dump"
-    return oldest - DUMP_DURATION, ""
+        return None, None, "no dump"
+    return oldest - DUMP_DURATION, latest, ""
 
 
 def _date_in_name(name: str) -> datetime | None:
@@ -114,22 +125,23 @@ def purge(
 
     `db` is a session outside any transaction: the run commits as it goes, one
     transaction per step and one per purged stem. Returns None when skipped
-    (no horizon, or the media directory cannot be listed): then nothing is
-    changed at all.
+    (no horizon, the media directory cannot be listed, or the clock is behind
+    a date already recorded): then nothing is changed at all.
     """
-    found, reason = _horizon(backup_dir)
+    limit, latest_dump, reason = _horizon(backup_dir)
     gifts_dir = media_dir / GIFTS_DIR
-    if found is not None:
+    if limit is not None:
         try:
             stems, temporary = _scan(gifts_dir)
         except OSError:
-            found, reason = None, "media directory unreadable"
-    if found is None:
+            limit, reason = None, "media directory unreadable"
+    if limit is not None and _clock_behind(db, latest_dump, now):
+        # A clock gone backwards would stamp records and files older than
+        # what they replace, and the horizon could pass them early (R5-2).
+        limit, reason = None, "clock behind"
+    if limit is None:
         _log.warning("media purge: skipped (%s)", reason)
         return None
-    # A dump dated in the future (a clock off on the host) must not let a
-    # record stamped `now` be purged: no horizon later than a dump of now.
-    limit = min(found, now - DUMP_DURATION)
 
     # Step 1: the stems that have a row now; then the rows no gift needs.
     with db.begin():
@@ -156,6 +168,9 @@ def purge(
         db.execute(
             delete(MediaOrphan).where(MediaOrphan.name.in_(sorted(stems & live)))
         )
+        # The memory a database restore cannot take back (review R5-1).
+        for name in sorted(stems & live):
+            _touch(gifts_dir, name, now)
         orphans = stems - live
         for name in sorted(orphans):
             statement = insert(MediaOrphan).values(name=name, first_seen_at=now)
@@ -195,6 +210,40 @@ def purge(
     return counts
 
 
+def _clock_behind(db: Session, latest_dump: datetime | None, now: datetime) -> bool:
+    """Whether a date already recorded, in the database or by a dump, is later
+    than `now` (review R5-2)."""
+    with db.begin():
+        latest_record = db.scalar(select(func.max(MediaOrphan.first_seen_at)))
+        latest_upload = db.scalar(select(func.max(Image.created_at)))
+    return any(
+        recorded is not None and recorded > now
+        for recorded in (latest_dump, latest_record, latest_upload)
+    )
+
+
+def _touch(gifts_dir: Path, name: str, now: datetime) -> None:
+    for suffix in VARIANTS.values():
+        try:
+            os.utime(gifts_dir / f"{name}{suffix}", (now.timestamp(),) * 2)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            _log.warning("media purge: cannot touch %s (%s)", name, type(exc).__name__)
+
+
+def _files_modified(gifts_dir: Path, name: str) -> datetime | None:
+    """The latest modification time of the stem's files, None if none is
+    there."""
+    times = []
+    for suffix in VARIANTS.values():
+        try:
+            times.append((gifts_dir / f"{name}{suffix}").stat().st_mtime)
+        except FileNotFoundError:
+            continue
+    return datetime.fromtimestamp(max(times), UTC) if times else None
+
+
 def _scan(gifts_dir: Path) -> tuple[set[str], list[tuple[Path, datetime]]]:
     """The image stems with a file under `gifts/`, and the temporary files of
     `images.store` with their modification times."""
@@ -220,8 +269,9 @@ def _scan(gifts_dir: Path) -> tuple[set[str], list[tuple[Path, datetime]]]:
 
 
 def _purge_stem(db: Session, gifts_dir: Path, name: str, limit: datetime) -> bool:
-    """Deletes the stem's files, then its record, if the record is still due
-    and no row has the stem, checked in the transaction holding the record."""
+    """Deletes the stem's files, then its record, if the record and the files
+    are still older than the horizon and no row has the stem, checked in the
+    transaction holding the record."""
     with db.begin():
         first_seen_at = db.scalar(
             select(MediaOrphan.first_seen_at)
@@ -233,6 +283,11 @@ def _purge_stem(db: Session, gifts_dir: Path, name: str, limit: datetime) -> boo
         if db.scalar(select(exists().where(Image.id == uuid.UUID(hex=name)))):
             # A row came back (a restore): the files are live again.
             db.execute(delete(MediaOrphan).where(MediaOrphan.name == name))
+            return False
+        modified = _files_modified(gifts_dir, name)
+        if modified is not None and modified >= limit:
+            # A row had the files after the record was written: a rollback
+            # brought back an older record (review R5-1).
             return False
         try:
             for suffix in VARIANTS.values():
