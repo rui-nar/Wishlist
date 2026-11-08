@@ -22,6 +22,9 @@ __pycache__/
 
 # Flutter build output
 client/build/
+# gen-l10n output, regenerated from the ARB files by `flutter pub get` and by
+# every build (client/l10n.yaml)
+client/lib/l10n/*.dart
 
 # Database dumps (backups, VAL seeds): never committed, the repository is public
 *.dump

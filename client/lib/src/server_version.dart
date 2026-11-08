@@ -14,14 +14,35 @@ class ServerVersion {
   final String env;
 }
 
-/// Why [fetchServerVersion] has no version to give. [message] is shown as is.
-class ServerVersionException implements Exception {
-  const ServerVersionException(this.message);
+/// Why [fetchServerVersion] has no version to give.
+enum ServerVersionFailure {
+  /// The server could not be reached.
+  unreachable,
 
-  final String message;
+  /// The server did not answer in time.
+  timedOut,
+
+  /// The server answered with a status other than 200.
+  httpError,
+
+  /// The server's answer is not the expected JSON.
+  unexpectedAnswer,
+}
+
+/// Thrown by [fetchServerVersion]. Carries a [reason], not a message: the
+/// screen shows the localised text for it.
+class ServerVersionException implements Exception {
+  const ServerVersionException(this.reason, {this.statusCode});
+
+  final ServerVersionFailure reason;
+
+  /// The HTTP status, for [ServerVersionFailure.httpError] only.
+  final int? statusCode;
 
   @override
-  String toString() => message;
+  String toString() => statusCode == null
+      ? 'ServerVersionException: ${reason.name}'
+      : 'ServerVersionException: ${reason.name} $statusCode';
 }
 
 const _kTimeout = Duration(seconds: 10);
@@ -39,12 +60,15 @@ Future<ServerVersion> fetchServerVersion(
     response =
         await client.get(Uri.parse('$baseUrl/api/version')).timeout(_kTimeout);
   } on http.ClientException {
-    throw const ServerVersionException('Server unreachable');
+    throw const ServerVersionException(ServerVersionFailure.unreachable);
   } on TimeoutException {
-    throw const ServerVersionException('Server unreachable (timed out)');
+    throw const ServerVersionException(ServerVersionFailure.timedOut);
   }
   if (response.statusCode != 200) {
-    throw ServerVersionException('Server answered HTTP ${response.statusCode}');
+    throw ServerVersionException(
+      ServerVersionFailure.httpError,
+      statusCode: response.statusCode,
+    );
   }
   try {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -53,6 +77,8 @@ Future<ServerVersion> fetchServerVersion(
       env: body['env'] as String,
     );
   } catch (_) {
-    throw const ServerVersionException('Unexpected answer from the server');
+    throw const ServerVersionException(
+      ServerVersionFailure.unexpectedAnswer,
+    );
   }
 }

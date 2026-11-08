@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../l10n/app_localizations.dart';
 import 'server_version.dart';
 
 /// Shows the app's version and the server's version and env, or why the
@@ -29,20 +30,21 @@ class _VersionScreenState extends State<VersionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Wishlist')),
+      appBar: AppBar(title: Text(l10n.appTitle)),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('App ${widget.appVersion}'),
+            Text(l10n.appVersion(widget.appVersion)),
             const SizedBox(height: 8),
             FutureBuilder<ServerVersion>(
               future: _server,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Text(
-                    '${snapshot.error}',
+                    _failureText(l10n, snapshot.error!),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
                     ),
@@ -52,7 +54,7 @@ class _VersionScreenState extends State<VersionScreen> {
                 if (server == null) {
                   return const CircularProgressIndicator();
                 }
-                return Text('Server ${server.version} (${server.env})');
+                return Text(l10n.serverVersion(server.version, server.env));
               },
             ),
           ],
@@ -60,4 +62,17 @@ class _VersionScreenState extends State<VersionScreen> {
       ),
     );
   }
+}
+
+/// The localised text for why the server's version could not be read. An
+/// error [fetchServerVersion] does not classify still means no version, shown
+/// as the server being unreachable.
+String _failureText(AppLocalizations l10n, Object error) {
+  if (error is! ServerVersionException) return l10n.serverUnreachable;
+  return switch (error.reason) {
+    ServerVersionFailure.unreachable => l10n.serverUnreachable,
+    ServerVersionFailure.timedOut => l10n.serverTimedOut,
+    ServerVersionFailure.httpError => l10n.serverHttpError(error.statusCode!),
+    ServerVersionFailure.unexpectedAnswer => l10n.serverUnexpectedAnswer,
+  };
 }
