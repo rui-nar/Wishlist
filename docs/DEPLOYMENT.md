@@ -136,17 +136,19 @@ changing them is a plan change.
 **[VPS]** Free memory and disk:
 
 ```bash
-free -m                 # "available": more than 1000 MB
+free -m                 # "available": more than 1150 MB
 swapon --show
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}'
 df -h /                 # at least 5 GB available
 docker system df
 ```
 
-Wishlist's memory limits add up to 960 MB (PROD app 256, PROD Postgres 256,
-VAL app 192, VAL Postgres 192, backup 64). Limits are caps, not reservations,
-but if less than that is available with TraxJourney running, stop and decide
-first: a peak on either project would then push the host into swap or the
+Wishlist's memory limits add up to 1088 MB (PROD app 320, PROD Postgres 256,
+VAL app 256, VAL Postgres 192, backup 64). The app limits leave room for image
+processing (gift images plan; measured idle ≈121 MB + ≈89 MB per image; idle
+RSS measured in a Linux container, 2026-11-08, to be refined on VAL). Limits
+are caps, not reservations, but if less than 1150 MB (the total plus a small
+margin) is available with TraxJourney running, stop and decide first: a peak on either project would then push the host into swap or the
 kernel's OOM killer, which may pick a TraxJourney process.
 
 The 5 GB of disk covers two app images plus the previous one each during a
@@ -682,15 +684,15 @@ curl.exe -m 5 http://<vps-host>:8010/api/version   # fails: connection refused o
 curl.exe -m 5 http://<vps-host>:8011/api/version   # same
 ```
 
-**[VPS]** Memory within the limits (about 1 GB in total):
+**[VPS]** Memory within the limits (about 1.1 GB in total):
 
 ```bash
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}' | grep -E 'NAME|wishlist'
 free -m
 ```
 
-Each `MemUsage` reads `used / limit`, with limits 256 MiB (PROD app and db),
-192 MiB (VAL app and db) and 64 MiB (backup). A container that reaches its
+Each `MemUsage` reads `used / limit`, with limits 320 MiB (PROD app), 256 MiB (PROD db and
+VAL app), 192 MiB (VAL db) and 64 MiB (backup). An idle app reads about 121 MiB. A container that reaches its
 limit is killed and restarted; it does not take memory from TraxJourney.
 
 **[dev]** TraxJourney still answers, as it did before:
@@ -1143,6 +1145,11 @@ Run these on the host **before** deploying the release named, once.
   Without it the release still runs: the purge logs `skipped` and deletes
   nothing.
 
+  The same release raises the app memory limits (PROD 320M, VAL 256M; total
+  1088 MB). **[VPS]** On an existing host, with both stacks running, check
+  that `free -m` shows "available" of at least 1150 MB; if not, stop and
+  decide before deploying.
+
 ### Updating the files on the host
 
 `deploy.ps1` and the webhook only pull images. Changes to the compose files,
@@ -1405,7 +1412,7 @@ Each item of the plan's Definition of done, and where it is checked:
 | `docker ps` shows no Wishlist port outside `127.0.0.1` and no Postgres port published | [10. Verifying](#10-verifying-the-installation), first block |
 | TraxJourney prod and val answer `/api/version` as before throughout | [6. Caddy](#6-caddy) after the reload, and [10. Verifying](#10-verifying-the-installation) |
 | A nightly dump exists after the first night; at most 30 kept; `backup` healthy; seeding VAL from it succeeds | the day after step 9: `sudo ls -l /opt/wishlist/backups/` shows a dump written at 02:00 UTC, the [daily check](#daily-check) shows `backup` healthy, then [Seeding VAL](#seeding-val-from-prod). The rotation to 30 is proven by the smoke test (31 old dumps, 30 kept). |
-| `docker stats` shows Wishlist's containers within their limits (about 1 GB) | [10. Verifying](#10-verifying-the-installation), memory |
+| `docker stats` shows Wishlist's containers within their limits (about 1.1 GB) | [10. Verifying](#10-verifying-the-installation), memory |
 | No secret, host name or key is committed | [10. Verifying](#10-verifying-the-installation), last block |
 
 ## Open items

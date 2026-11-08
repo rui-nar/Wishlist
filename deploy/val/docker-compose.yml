@@ -56,7 +56,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 192M
+          memory: 256M
     logging: *logging
 
   db:
