@@ -72,6 +72,12 @@ from app.media.gift_images import (
 )
 from app.media.images import ImageRejected
 from app.media.models import Image
+from app.reserving.release import (
+    delete_gift_claims,
+    delete_unbought_claims,
+    lock_occasions,
+    release_activity,
+)
 
 router = APIRouter(prefix="/api", tags=["lists"])
 
@@ -150,6 +156,11 @@ def update_list(
 @router.delete("/lists/{list_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_list(list_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
     found = owned_list(db, user, list_id)
+    # Its claims first, its occasions locked so that none is made meanwhile:
+    # an unbought claim must never meet the occasions' cascade (reserving
+    # plan D11, review R1-1).
+    lock_occasions(db, Occasion.list_id == found.id)
+    delete_gift_claims(db, Gift.list_id == found.id)
     # The foreign keys cascade to its owners, gifts, occasions, members and
     # removals.
     db.execute(delete(List).where(List.id == found.id))
@@ -266,6 +277,11 @@ def delete_occasion(
     occasion_id: uuid.UUID, user: CurrentUser, db: DbSession
 ) -> Response:
     occasion = owned_occasion(db, user, occasion_id)
+    # Locked so that no claim is made in it meanwhile; its unbought claims go
+    # with it, its bought ones stay with no occasion, so their gifts stay
+    # taken (reserving plan D11, review R1-1).
+    lock_occasions(db, Occasion.id == occasion.id)
+    delete_unbought_claims(db, occasion.id)
     # The foreign keys cascade to its members and removals.
     db.execute(delete(Occasion).where(Occasion.id == occasion.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -354,6 +370,10 @@ def remove_member(
         .values(occasion_id=occasion.id, user_id=user_id)
         .on_conflict_do_nothing()
     )
+    # What they had not bought is free again, their pledges go; a claim
+    # write of theirs waits on the occasion's lock, then is refused
+    # (reserving plan D10).
+    release_activity(db, user_id, occasion.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -389,6 +409,11 @@ def leave_occasion(
     # Owners are not members: they have nothing to leave.
     if role != INVITEE:
         raise not_found()
+    # Treated like a removal (reserving plan D10): the occasion locked the
+    # same way, so a claim write of theirs either committed and is released
+    # here, or waits and is refused.
+    lock_occasions(db, Occasion.id == occasion.id)
+    release_activity(db, user.id, occasion.id)
     _delete_membership(db, occasion.id, user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
