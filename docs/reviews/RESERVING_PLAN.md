@@ -35,3 +35,22 @@ it exists; every other write on a passed occasion stays refused (D8, NEEDS).
 - Decision: Fix now (D7)
 - Override: —
 - Outcome: fixed (in plan: U5 Do 7)
+
+## Round 2 — 2026-11-08, unit review of U1 (DELIVERY.md §5 point 3), reviewed at 950031c
+
+No findings. Envelope questions, answered by the orchestrator under the
+standing instruction:
+1. U1 without U5 gives a "for me" owner a 500 when deleting an occasion (or a
+   list or account) holding an unbought claim. Intended: the branch is not
+   released or tagged for VAL until U5 lands; no stopgap.
+2. The activity read locked the occasion `FOR SHARE`, so a recipient's
+   occasion edit could wait on an invitee's read. Not covered by the noise
+   exclusion when no lock is needed: the read no longer locks (writes keep
+   D7's locks), with a test.
+3. An owner's image change locked the gift `FOR UPDATE`, which waits on a
+   giver's `FOR KEY SHARE`. Asked to change it to `FOR NO KEY UPDATE`; the
+   implementer showed (probe) that changing the unique `gifts.image_id` is a
+   key update whatever lock is requested, and the claim's foreign key takes
+   `FOR KEY SHARE` anyway. Decision (orchestrator): accept the
+   millisecond wait as noise, like an owner deleting a gift being reserved;
+   no schema change. D7 amended. The read-lock change (2) is ee275d8.

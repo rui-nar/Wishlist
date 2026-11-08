@@ -179,7 +179,10 @@ data model chosen here must not need rewriting when they arrive.
      then releases what it made;
   2. the gift `FOR KEY SHARE`, checked to be on the occasion's list: an
      owner deleting it at the same moment either finished (404) or waits;
-     an owner editing it is not blocked at all (D3);
+     an owner editing its fields is not blocked at all (D3); changing its
+     image is a key update of `gifts.image_id` (unique), which can wait a few
+     milliseconds while a giver's write on that gift commits: accepted as
+     noise, like an owner deleting the gift (review round 2);
   3. creating a claim: purge this gift's expired unbought claim (D8), then
      `INSERT … ON CONFLICT (gift_id) DO NOTHING RETURNING`; no row returned
      means someone holds it: read that claim and answer per D6;

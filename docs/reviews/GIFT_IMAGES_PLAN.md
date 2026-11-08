@@ -157,3 +157,27 @@ Envelope question (bound concurrent fetches) answered by (a) above.
 - Revisit when: the fetch log shows timeouts on normally healthy hosts clustered around a slow-resolving host, or U5's from-url semaphore is sized above the 4 DNS threads
 - Override: —
 - Outcome: open
+
+## Round 4 — 2026-11-08, unit review of U5 (DELIVERY.md §5 point 3), reviewed at f770af0
+
+No findings, no envelope questions.
+
+## Round 5 — 2026-11-08, unit review of U8 (DELIVERY.md §5 point 3), reviewed at 409a57d
+
+Both findings are floor F2 (data loss); decided by floor enforcement (skill
+step 7) without a triage pass, since the floors fix their decisions.
+
+### R5-1 — A rollback that brings back a stale orphan record lets the purge delete a file a kept dump references
+- Trigger: an operator restores an older dump where image A is attached, the at-start dump records it, then rolls back with before-restore.dump bringing A's old orphan record back without the row → once the horizon passes the old stamp, A's files are deleted while the at-start dump still references them
+- Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=M/local, confidence=verified
+- Decision: Fix now (D3, floor F2)
+- Override: —
+- Outcome: open
+
+### R5-2 — A host clock more than a day behind dates orphan stamps before a dump that still holds the row
+- Trigger: the VPS clock runs more than ~25 h behind → released rows are stamped too early → files deleted while a kept dump references them
+- Scores: trigger=theoretical, impact=data-loss, detect=silent, later=cheap, fix=S/local, confidence=inferred
+- Decision: Guard (D4, floor F2)
+- Guard: skip the run with `media purge: skipped (clock behind)` when any orphan stamp, image creation time or dump date is later than now
+- Override: —
+- Outcome: open
