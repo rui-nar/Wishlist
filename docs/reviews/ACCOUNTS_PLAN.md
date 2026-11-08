@@ -122,3 +122,6 @@ Notes:
   Chromium container during U4.
 - Sign-in with a real Google account is not yet verified: no OAuth client ID
   exists (owner step, `docs/DEVELOPMENT.md` and `docs/DEPLOYMENT.md` step 11).
+- Integration fix F1 (Sonnet, 1 attempt): the Dockerfile copies
+  `client/third_party/` before `flutter pub get`, which the vendored package
+  needs; found by the Deploy smoke workflow on the branch, verified by it.

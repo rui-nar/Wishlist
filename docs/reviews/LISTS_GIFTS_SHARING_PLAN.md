@@ -172,3 +172,50 @@ owner's explicit decision wins. Recorded in `docs/NEEDS.md` (Access).
 - Decision: Fix now (D3, floor F3)
 - Override: —
 - Outcome: fixed (F2, e330a1e; allow-again made idempotent)
+
+## Round 7 — 2026-11-08, integrated diff (DELIVERY.md §5 point 2), reviewed at 7168245
+
+### R7-1 — The account-deletion dialog does not say the user's lists go with the account
+- Trigger: an owner who shared a list deletes their account → the dialog mentions only the account and sessions → their lists, gifts and occasions are deleted and their invitees lose access without warning
+- Scores: trigger=concrete, impact=wrong-visible (triager: was data-loss — the deletion is planned, D9; the warning is what is missing), detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: fixed (F4, 96d38e0)
+
+### R7-2 — The client test fake diverges from the server's idempotent removal and allow-again
+- Trigger: a later client test of these paths is written against the fake → it encodes a 404 and a missing removal the server does not have
+- Scores: trigger=plausible, impact=maintainability, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Guard (D9) — the triager's guard was to make both fake branches throw
+- Override: orchestrator: align the fake with the server instead of a throwing guard — F3's "removed after leaving" test already reaches that branch, so a throwing guard would break a correct test; alignment removes the divergence the guard would report
+- Outcome: fixed (F4, 96d38e0)
+
+Round 7's Fix now items are fixed by F4; with the plan's review cap passed, no
+further round was run. The next review of this code is the next plan's.
+
+## Delivery
+
+Delivered on `feat/first-version`, 2026-11-08. Checks at integration: server
+`ruff check`, `alembic upgrade head` + `alembic check`, `pytest` (574 tests);
+client `flutter analyze`, `flutter test` (255 tests), `.\goldens.ps1 -Check`
+(50 goldens), `flutter build web --release --no-web-resources-cdn`, `flutter
+build apk --debug`; CI Tests and Deploy smoke on the branch.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Server lists and gifts | Opus | S4 | 1 | X3 (accounts test cleanup) | yes | R4-1, R4-2 |
+| U2 | Server occasions, links and members | Opus | S4 | 2 | — | yes (then extended with the removal rule) | R1-1, R1-3, R1-4, R2-1, R2-3, R5-1, R6-2 |
+| U3 | Client lists and gifts | Opus | S2 | 1 | X3 twice (ApiClient, a router test) | yes | R1-5, R1-6 |
+| U4 | Client occasions and sharing | Opus | S5 | 1 | — | yes | R2-2, R3-1, R3-2, R6-1, R7-1 |
+| F2 | Removal recorded after leaving; idempotent allow-again | Opus | S5 | 1 | — | yes | R6-2 |
+| F3 | Back after joining | Opus | S5 | 1 | — | yes | R6-1 |
+| F4 | Deletion warning; test fake aligned | Sonnet | — | 1 | — | yes | R7-1, R7-2 |
+
+Notes:
+- Two product rules were decided during delivery under the owner's standing
+  instruction and recorded in `docs/NEEDS.md` (Access): removal is effective on
+  its own, and a removal is recorded even if the person had already left.
+- U3's scope was drawn too tightly twice (X3): plans touching client screens
+  should include the shared API client and router tests they change.
+- The browser-level join flow (`/join#<token>` through Google sign-in) is
+  covered by VM tests and a Chromium test of the token capture, not yet by a
+  real sign-in: no OAuth client ID exists.
