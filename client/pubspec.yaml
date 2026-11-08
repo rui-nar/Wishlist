@@ -58,10 +58,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  # The fonts' licence texts, registered with LicenseRegistry in main.dart.
+  assets:
+    - assets/fonts/inter/OFL.txt
+    - assets/fonts/space_grotesk/OFL.txt
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -88,3 +88,35 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+  # Bundled, never fetched (DESIGN_SYSTEM_PLAN D4); sources and sha256 in
+  # assets/fonts/README.md.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/inter/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/inter/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/inter/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/inter/Inter-Bold.ttf
+          weight: 700
+    - family: Space Grotesk
+      fonts:
+        - asset: assets/fonts/space_grotesk/SpaceGrotesk-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/space_grotesk/SpaceGrotesk-Bold.ttf
+          weight: 700
+    # The web engine downloads Roboto from fonts.gstatic.com unless a family
+    # of that name is in the font manifest: alias it to Inter.
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/inter/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/inter/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/inter/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/inter/Inter-Bold.ttf
+          weight: 700
