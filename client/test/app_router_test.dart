@@ -27,14 +27,54 @@ void main() {
       expect(uri.queryParameters['from'], '/account');
 
       expect(
-        Uri.parse(redirect(AuthStatus.failed, '/about?x=1')!)
+        Uri.parse(redirect(AuthStatus.failed, '/lists/1?x=1')!)
             .queryParameters['from'],
-        '/about?x=1',
+        '/lists/1?x=1',
       );
-      // Home needs no return: it is where sign-in goes by default.
-      expect(redirect(AuthStatus.signedOut, '/'), '/sign-in');
+      // The version screen is public (WEB_LAYOUT D6, review R1-1).
+      expect(redirect(AuthStatus.failed, '/about?x=1'), isNull);
+      // Home goes to the welcome page, not to sign-in (WEB_LAYOUT D6).
+      expect(redirect(AuthStatus.signedOut, '/'), '/welcome');
       expect(redirect(AuthStatus.signedOut, '/sign-in?from=/account'), isNull);
       expect(redirect(AuthStatus.signingIn, '/sign-in'), isNull);
+    });
+
+    test('signed out: home goes to the welcome page (WEB_LAYOUT D6)', () {
+      expect(redirect(AuthStatus.failed, '/'), '/welcome');
+      // Home with a query is a deep link like any other.
+      expect(redirect(AuthStatus.signedOut, '/?x=1'), '/sign-in?from=%2F%3Fx%3D1');
+    });
+
+    test('signed out: the welcome page and the version screen pass (D6)', () {
+      for (final status in [
+        AuthStatus.signedOut,
+        AuthStatus.failed,
+        AuthStatus.signingIn,
+      ]) {
+        expect(redirect(status, '/welcome'), isNull, reason: '$status');
+        expect(redirect(status, '/about'), isNull, reason: '$status');
+        expect(redirect(status, '/about?x=1'), isNull, reason: '$status');
+      }
+      expect(redirect(AuthStatus.signedOut, '/sign-in?mode=register'), isNull);
+    });
+
+    test('signed out: deep links and share links still go to sign-in', () {
+      expect(
+        redirect(AuthStatus.signedOut, '/account'),
+        '/sign-in?from=%2Faccount',
+      );
+      expect(redirect(AuthStatus.signedOut, '/join'), '/sign-in?from=%2Fjoin');
+      expect(
+        redirect(AuthStatus.signedOut, '/welcome/x'),
+        '/sign-in?from=%2Fwelcome%2Fx',
+      );
+    });
+
+    test('signed in: the welcome page goes home (D6)', () {
+      expect(redirect(AuthStatus.signedIn, '/welcome'), '/');
+      expect(redirect(AuthStatus.signedIn, '/about'), isNull);
+      // The register mode is not a return location.
+      expect(redirect(AuthStatus.signedIn, '/sign-in?mode=register'), '/');
     });
 
     test('signed in: back to from, or home', () {

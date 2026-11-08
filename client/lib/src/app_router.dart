@@ -19,13 +19,26 @@ import 'shared/join_screen.dart';
 import 'shared/occasion_screen.dart';
 import 'shared/pending_join.dart';
 import 'version_screen.dart';
+import 'welcome/welcome_screen.dart';
 
 const kSignInPath = '/sign-in';
+const kWelcomePath = '/welcome';
+const kAboutPath = '/about';
+
+/// The sign-in screen's `mode` that opens it to create an account
+/// (WEB_LAYOUT_PLAN D7). Any other value is the normal sign-in.
+const kRegisterMode = 'register';
+
+/// Locations shown signed out as well as signed in: they show no user data
+/// (WEB_LAYOUT_PLAN D6, review R1-1).
+const _publicPaths = {kWelcomePath, kAboutPath};
 
 /// Where the guard sends a request for [uri], or null to let it through.
 ///
-/// Signed out, every location but the sign-in screen goes to
-/// `/sign-in?from=<location>`. Signed in, the sign-in screen goes to `from`
+/// Signed out, `/` goes to the welcome page, the welcome page, the sign-in
+/// screen and the version screen pass, and every other location goes to
+/// `/sign-in?from=<location>` (WEB_LAYOUT_PLAN D6). Signed in, the welcome
+/// page goes to `/`, and the sign-in screen goes to `from`
 /// when [safeFrom] accepts it, `/` otherwise. Share links (`/join`) rely on
 /// this return; their token waits in [PendingJoin], not in the location, so
 /// a `from` of `/join` with no token pending ([joinPending] false) goes to
@@ -39,18 +52,18 @@ String? authRedirect(AuthStatus status, Uri uri, {required bool joinPending}) {
   }
   final onSignIn = uri.path == kSignInPath;
   if (status == AuthStatus.signedIn) {
+    if (uri.path == kWelcomePath) return '/';
     if (!onSignIn) return null;
     final from = safeFrom(uri.queryParameters['from']);
     if (from == null) return '/';
     if (!joinPending && Uri.parse(from).path == kJoinPath) return '/';
     return from;
   }
-  if (onSignIn) return null;
+  if (onSignIn || _publicPaths.contains(uri.path)) return null;
   final location = uri.toString();
-  return Uri(
-    path: kSignInPath,
-    queryParameters: location == '/' ? null : {'from': location},
-  ).toString();
+  if (location == '/') return kWelcomePath;
+  return Uri(path: kSignInPath, queryParameters: {'from': location})
+      .toString();
 }
 
 /// [from] when it is a location inside the app: a path starting with one
@@ -71,10 +84,11 @@ String? safeFrom(String? from) {
   return from;
 }
 
-/// The routes: sign-in, home with the lists, gifts and occasions under it,
+/// The routes: the welcome page, sign-in, home with the lists, gifts and occasions under it,
 /// Shared with me with the shared occasions under it, joining by link,
 /// account and the version screen (`/about`). The guard runs again whenever
-/// [auth] changes, and covers every route but sign-in.
+/// [auth] changes, and covers every route but the public ones: sign-in, the
+/// welcome page and the version screen.
 ///
 /// The lists' routes are under home and the shared occasions under Shared
 /// with me, so one opened from a link still has its destination to go back
@@ -94,8 +108,16 @@ GoRouter buildRouter({
     ),
     routes: [
       GoRoute(
+        path: kWelcomePath,
+        builder: (context, state) => const WelcomeScreen(),
+      ),
+      GoRoute(
         path: kSignInPath,
-        builder: (context, state) => const SignInScreen(),
+        builder: (context, state) => SignInScreen(
+          register: state.uri.queryParameters['mode'] == kRegisterMode,
+          // Someone arriving from a share link or a deep link is mid-flow.
+          offerWelcome: !state.uri.queryParameters.containsKey('from'),
+        ),
       ),
       GoRoute(
         path: '/',
@@ -177,7 +199,7 @@ GoRouter buildRouter({
         builder: (context, state) => const AccountScreen(),
       ),
       GoRoute(
-        path: '/about',
+        path: kAboutPath,
         builder: (context, state) => VersionScreen(
           httpClient: api.httpClient,
           apiBaseUrl: api.baseUrl,

@@ -667,5 +667,57 @@
   "joinLinkInvalid": "This link is no longer valid. Ask the person who shared it for a new one.",
   "@joinLinkInvalid": {
     "description": "The join screen: the link is unknown, was replaced or revoked, or the user may not join."
+  },
+  "welcomeHeadline": "Wish lists for every occasion",
+  "@welcomeHeadline": {
+    "description": "The welcome page: the headline, under the app's name."
+  },
+  "welcomePurpose": "Keep the things you'd love to receive, share them with family and friends for each occasion, and let them coordinate without spoiling the surprise.",
+  "@welcomePurpose": {
+    "description": "The welcome page: the sentence under the headline, saying what the app is for."
+  },
+  "welcomeRegister": "Register",
+  "@welcomeRegister": {
+    "description": "The welcome page: the button that opens the sign-in screen to create an account."
+  },
+  "welcomeLogIn": "Log in",
+  "@welcomeLogIn": {
+    "description": "The welcome page: the button that opens the sign-in screen."
+  },
+  "welcomeListsTitle": "Lists for everything you wish for",
+  "@welcomeListsTitle": {
+    "description": "The welcome page: the title of the card about lists."
+  },
+  "welcomeListsBody": "Keep lasting lists of the things you'd love, for yourself or for someone else, such as a child.",
+  "@welcomeListsBody": {
+    "description": "The welcome page: the text of the card about lists."
+  },
+  "welcomeOccasionsTitle": "Shared for each occasion",
+  "@welcomeOccasionsTitle": {
+    "description": "The welcome page: the title of the card about occasions."
+  },
+  "welcomeOccasionsBody": "Christmas, a birthday: share your list for the occasion and invite people with a link.",
+  "@welcomeOccasionsBody": {
+    "description": "The welcome page: the text of the card about occasions."
+  },
+  "welcomeSurpriseTitle": "The surprise stays a surprise",
+  "@welcomeSurpriseTitle": {
+    "description": "The welcome page: the title of the card about the surprise."
+  },
+  "welcomeSurpriseBody": "On a list for you, what invitees do stays hidden from you, so they can coordinate in peace.",
+  "@welcomeSurpriseBody": {
+    "description": "The welcome page: the text of the card about the surprise."
+  },
+  "registerTitle": "Create your account",
+  "@registerTitle": {
+    "description": "The sign-in screen opened with Register: the heading, instead of the app's name."
+  },
+  "registerPrompt": "Your Google account is all you need.",
+  "@registerPrompt": {
+    "description": "The sign-in screen opened with Register: the line under the heading."
+  },
+  "whatIsWishlist": "What is Wishlist?",
+  "@whatIsWishlist": {
+    "description": "The sign-in screen: the link to the welcome page, which explains the app."
   }
 }

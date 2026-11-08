@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:wishlist/src/api/api_client.dart';
 import 'package:wishlist/src/auth/auth_controller.dart';
@@ -148,6 +149,89 @@ void main() {
       find.text("La connexion n'est pas encore disponible sur ce serveur."),
       findsOneWidget,
     );
+  });
+
+  group('opened by the router (WEB_LAYOUT D7)', () {
+    Future<void> open(WidgetTester tester, String at) async {
+      tester.platformDispatcher.defaultRouteNameTestValue = at;
+      addTearDown(tester.platformDispatcher.clearDefaultRouteNameTestValue);
+      final app = buildApp(server);
+      await tester.pumpWidget(app.app);
+      await app.auth.restore();
+      await tester.pumpAndSettle();
+    }
+
+    Uri location(WidgetTester tester) => GoRouter.of(
+          tester.element(find.byType(Scaffold).last),
+        ).routerDelegate.currentConfiguration.uri;
+
+    const signInPrompt =
+        'Sign in to see your lists and the lists shared with you.';
+
+    testWidgets('mode=register: the register heading and prompt',
+        (tester) async {
+      await open(tester, '/sign-in?mode=register');
+
+      expect(find.text('Create your account'), findsOneWidget);
+      expect(find.text('Your Google account is all you need.'),
+          findsOneWidget);
+      expect(find.text(signInPrompt), findsNothing);
+      // The same Google sign-in, which creates the account the first time.
+      expect(find.text('Continue with Google'), findsOneWidget);
+    });
+
+    for (final at in ['/sign-in', '/sign-in?mode=other', '/sign-in?mode=']) {
+      testWidgets('$at: the normal heading and prompt', (tester) async {
+        await open(tester, at);
+
+        expect(find.text('Wishlist'), findsOneWidget);
+        expect(find.text(signInPrompt), findsOneWidget);
+        expect(find.text('Create your account'), findsNothing);
+      });
+    }
+
+    testWidgets('without from: a link to the welcome page', (tester) async {
+      await open(tester, '/sign-in');
+
+      expect(find.text('What is Wishlist?'), findsOneWidget);
+    });
+
+    testWidgets('with from: no link, the visitor is mid-flow',
+        (tester) async {
+      await open(tester, '/sign-in?from=%2Faccount');
+
+      expect(find.text('What is Wishlist?'), findsNothing);
+    });
+
+    testWidgets('a share link goes to sign-in, with no welcome link',
+        (tester) async {
+      await open(tester, '/join');
+
+      expect(find.byType(SignInScreen), findsOneWidget);
+      expect(location(tester).path, '/sign-in');
+      expect(location(tester).queryParameters, {'from': '/join'});
+      expect(find.text('What is Wishlist?'), findsNothing);
+    });
+  });
+
+  testWidgets('register mode in French', (tester) async {
+    tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+    addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+    await auth.restore();
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        Provider<ApiClient>.value(value: api),
+        ChangeNotifierProvider<AuthController>.value(value: auth),
+      ],
+      child: localizedApp(
+        const SignInScreen(register: true, offerWelcome: true),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Créez votre compte'), findsOneWidget);
+    expect(find.text('Votre compte Google suffit.'), findsOneWidget);
+    expect(find.text("Qu'est-ce que Wishlist ?"), findsOneWidget);
   });
 
   // Anything else that initialised Google sign-in, such as main(), would load
