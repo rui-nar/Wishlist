@@ -75,8 +75,10 @@ def engine(accounts_database_url: str) -> Iterator[Engine]:
 @pytest.fixture(autouse=True)
 def empty_tables(engine: Engine) -> Iterator[None]:
     yield
+    # CASCADE: later tables refer to users (list_owners and those after it),
+    # and Postgres refuses to truncate a table another table refers to.
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE users, user_identities, sessions"))
+        connection.execute(text("TRUNCATE users, user_identities, sessions CASCADE"))
 
 
 class FakeGoogle:
