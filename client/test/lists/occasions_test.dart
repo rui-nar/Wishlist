@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -452,21 +450,16 @@ void main() {
         '/lists/$listId/occasions/$occasion/members',
       );
       // Carol leaves while the owner still sees her among the invitees.
-      final left = server.members[occasion]!.removeAt(0);
+      server.members[occasion]!.removeAt(0);
 
       await tester.tap(find.widgetWithText(TextButton, 'Remove').first);
       await tester.pumpAndSettle();
-      server.hold = Completer();
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
           matching: find.widgetWithText(TextButton, 'Remove'),
         ),
       );
-      await tester.pump();
-      // The server records the removal all the same, and answers 204.
-      server.removed[occasion]!.add(left);
-      server.hold!.complete();
       await tester.pumpAndSettle();
 
       expect(
