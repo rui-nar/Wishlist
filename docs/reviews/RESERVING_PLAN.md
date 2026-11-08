@@ -84,3 +84,16 @@ the occasion has passed. The recipient-blindness tests (U7) must keep passing.
 - Decision: Fix now (D7)
 - Override: —
 - Outcome: open
+
+## Round 4 — 2026-11-08, unit review of U3 (DELIVERY.md §5 point 3), reviewed at 55544f4
+
+No envelope questions. One finding; decided by the orchestrator from the
+D table (same scores as images R1-7, decided D9 by the triager), no triage pass.
+
+### R4-1 — The deterministic "join waits on the last leave" test does not reach the `_take` retry
+- Trigger: a maintainer drops `_take`'s retry loop → the suite stays green → a join landing between the last participant's lock and delete gets 409 `taken` on a free gift
+- Scores: trigger=plausible, impact=maintainability, detect=silent, later=cheap, fix=S/local, confidence=inferred
+- Decision: Guard (D9)
+- Guard: the deterministic test takes only the claim's `FOR UPDATE` before the join, waits for the join's lock wait, then deletes and commits, so the retry branch is exercised
+- Override: —
+- Outcome: open
