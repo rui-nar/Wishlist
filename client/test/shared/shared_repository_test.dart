@@ -337,6 +337,7 @@ void main() {
       final group = claims.gifts[priced]!;
       expect(group.state, ClaimState.group);
       expect(group.bought, isFalse);
+      expect(group.expired, isFalse);
       expect(group.mine, isTrue);
       expect(group.participants.first.displayName, 'Carol');
       expect(group.participants.first.mine, isFalse);
@@ -356,6 +357,29 @@ void main() {
 
       expect(claims.passed, isTrue);
       expect(claims.gifts, isEmpty);
+    });
+
+    test('passed: my own unbought claim comes back expired, no one else\'s',
+        () async {
+      server
+        ..passed.add(occasion)
+        ..addClaim(priced, occasion, [
+          FakeListsServer.giver('Carol'),
+          FakeListsServer.giver(kAliceName, mine: true),
+        ], group: true)
+        ..addClaim(unpriced, occasion, [FakeListsServer.giver('Carol')]);
+
+      final claims = await shared.claims(occasion);
+
+      expect(claims.gifts.keys, [priced]);
+      final mine = claims.gifts[priced]!;
+      expect(mine.expired, isTrue);
+      expect(mine.bought, isFalse);
+      expect(mine.mine, isTrue);
+      await shared.markBought(occasion, priced);
+      final after = (await shared.claims(occasion)).gifts[priced]!;
+      expect(after.bought, isTrue);
+      expect(after.expired, isFalse);
     });
 
     test('each write: its method and path, a body only for the pledge',

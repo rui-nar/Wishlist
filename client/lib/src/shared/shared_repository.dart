@@ -160,12 +160,14 @@ class GiftClaim {
     required this.state,
     required this.bought,
     required this.participants,
+    this.expired = false,
   });
 
   factory GiftClaim.fromJson(Map<String, dynamic> json) => GiftClaim(
         giftId: json['gift_id'] as String,
         state: ClaimState.values.byName(json['state'] as String),
         bought: json['bought'] as bool,
+        expired: json['expired'] as bool,
         participants: [
           for (final participant in json['participants'] as List<dynamic>)
             ClaimParticipant.fromJson(participant as Map<String, dynamic>),
@@ -177,6 +179,11 @@ class GiftClaim {
 
   /// Final; always false when [state] is [ClaimState.taken].
   final bool bought;
+
+  /// The user's own unbought claim of an occasion that has passed: it no
+  /// longer holds the gift, but they may still mark it bought (D8, review
+  /// R3-1). Nobody else's expired claim is ever read.
+  final bool expired;
 
   /// By when they joined; always empty when [state] is [ClaimState.taken].
   final List<ClaimParticipant> participants;
@@ -198,10 +205,12 @@ class OccasionClaims {
         },
       );
 
-  /// The occasion's date has passed: nothing can be done any more (D8).
+  /// The occasion's date has passed: nothing can be done any more but
+  /// marking bought the user's own [GiftClaim.expired] claims (D8).
   final bool passed;
 
-  /// Gift id → its claim; a gift absent from it is free.
+  /// Gift id → its claim; a gift absent from it is free. Once [passed], it
+  /// also has the user's own unbought claims, [GiftClaim.expired].
   final Map<String, GiftClaim> gifts;
 }
 

@@ -173,6 +173,47 @@ void main() {
       expect(roseChip(tester, 'Socks')!.label, 'Group gift · 1');
     });
 
+    testWidgets('after the date, only their own claim can be marked bought',
+        (tester) async {
+      server
+        ..passed.add(occasion)
+        ..addClaim(headphones, occasion, [alice]);
+      await startApp(tester, server, '/lists/$list/occasions/$occasion');
+
+      // Carol's reservation expired with the occasion (D8).
+      expect(roseChip(tester, 'Book'), isNull);
+      expect(roseChip(tester, 'Headphones')!.label, 'Reserved by you');
+      await tester.tap(find.widgetWithText(GiftCard, 'Headphones'));
+      await tester.pumpAndSettle();
+      final sheetButtons = find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is FilledButton || widget is OutlinedButton,
+        ),
+      );
+      expect(sheetButtons, findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text('Mark as bought'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Mark as bought'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        server.calls,
+        contains('POST /api/occasions/$occasion/gifts/$headphones/bought'),
+      );
+      expect(roseChip(tester, 'Headphones')!.label, 'Bought by you');
+    });
+
     testWidgets('/shared/:id still sends an owner to the list',
         (tester) async {
       await startApp(tester, server, '/shared/$occasion');

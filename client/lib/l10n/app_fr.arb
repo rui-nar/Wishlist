@@ -142,6 +142,8 @@
   "claimYou": "Vous",
   "pledgeTotal": "{total} promis sur {price}",
   "occasionPassed": "Cette occasion est passée : plus rien ne peut être réservé.",
+  "claimExpiredExplanation": "Cette occasion est passée : ce cadeau ne vous est plus réservé. Si vous l'avez offert, marquez-le comme acheté pour que personne d'autre ne l'offre.",
+  "claimActionInFlight": "Un instant : votre dernière modification est en cours d'enregistrement.",
   "claimReserve": "Réserver",
   "claimStartGroup": "Lancer un cadeau commun",
   "claimMarkBought": "Marquer comme acheté",

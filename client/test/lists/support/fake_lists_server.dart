@@ -274,7 +274,9 @@ class FakeListsServer {
   bool _live(Map<String, dynamic> claim) =>
       claim['bought'] == true || !passed.contains(claim['occasion_id']);
 
-  /// The claim as a giver of [occasionId] sees it (`GiftClaimOut`).
+  /// The claim as a giver of [occasionId] sees it (`GiftClaimOut`);
+  /// `expired` when it is no longer live, which only Alice's own claims of
+  /// this occasion are when read (review R3-1).
   Map<String, dynamic> _claimOut(
     String occasionId,
     String giftId,
@@ -285,12 +287,14 @@ class FakeListsServer {
               'gift_id': giftId,
               'state': claim['kind'] == 'group' ? 'group' : 'reserved',
               'bought': claim['bought'],
+              'expired': !_live(claim),
               'participants': claim['participants'],
             }
           : {
               'gift_id': giftId,
               'state': 'taken',
               'bought': false,
+              'expired': false,
               'participants': const <Object>[],
             };
 
@@ -321,8 +325,11 @@ class FakeListsServer {
       return json({
         'passed': passed.contains(occasionId),
         'gifts': [
+          // Live claims, and Alice's own of this occasion once expired: she
+          // may still mark those bought (D8, review R3-1).
           for (final gift in ofList)
-            if (claims[gift['id']] case final claim? when _live(claim))
+            if (claims[gift['id']] case final claim?
+                when _live(claim) || _aliceIn(occasionId, claim))
               _claimOut(occasionId, gift['id'] as String, claim),
         ],
       });

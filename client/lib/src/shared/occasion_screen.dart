@@ -70,7 +70,8 @@ class _OccasionScreenState extends State<OccasionScreen>
   OccasionClaims? _claims;
   bool _leaving = false;
 
-  /// An action on a gift is on its way: no second one meanwhile.
+  /// An action on a gift is on its way: a progress bar shows it, and no
+  /// second one starts meanwhile (review R3-3).
   bool _acting = false;
 
   @override
@@ -140,13 +141,23 @@ class _OccasionScreenState extends State<OccasionScreen>
     context.canPop() ? context.pop() : context.go('/shared');
   }
 
-  /// The gift's sheet, then the action chosen there.
+  /// The gift's sheet, then the action chosen there; while one is on its
+  /// way, a tap says to wait rather than doing nothing.
   Future<void> _openSheet(
     SharedGift gift,
     GiftClaim? claim,
     bool passed,
   ) async {
-    if (_acting) return;
+    if (_acting) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context).claimActionInFlight),
+          ),
+        );
+      return;
+    }
     final action = await showGiftSheet(
       context,
       gift: gift,
@@ -158,6 +169,8 @@ class _OccasionScreenState extends State<OccasionScreen>
 
   /// Confirms [action] on [gift], or asks for the pledge, sends it, then
   /// loads the claims again, after a refusal too (D13: no optimistic state).
+  /// Left meanwhile, the write's own failure is still said; nothing is
+  /// loaded again (review R3-2).
   Future<void> _act(
     SharedGift gift,
     GiftClaim? claim,
@@ -217,14 +230,14 @@ class _OccasionScreenState extends State<OccasionScreen>
     setState(() => _acting = true);
     try {
       await send();
-      await _reloadClaims(say);
+      if (mounted) await _reloadClaims(l10n, say);
     } on ClaimConflict catch (conflict) {
       say(switch (conflict.code) {
         ClaimConflictCode.taken => l10n.claimTakenNow,
         ClaimConflictCode.bought => l10n.claimBoughtNow,
         ClaimConflictCode.passed => l10n.claimPassedNow,
       });
-      await _reloadClaims(say);
+      if (mounted) await _reloadClaims(l10n, say);
     } catch (error) {
       if (error is ApiException &&
           (error.statusCode == 404 || error.statusCode == 422)) {
@@ -245,8 +258,11 @@ class _OccasionScreenState extends State<OccasionScreen>
   }
 
   /// The claims, loaded again; a failure says so and keeps what is shown.
-  Future<void> _reloadClaims(void Function(String) say) async {
-    final l10n = AppLocalizations.of(context);
+  /// [l10n] comes from before the write: no context is read after it.
+  Future<void> _reloadClaims(
+    AppLocalizations l10n,
+    void Function(String) say,
+  ) async {
     try {
       final claims = await _repository.claims(widget.occasionId);
       if (mounted) setState(() => _claims = claims);
@@ -289,29 +305,42 @@ class _OccasionScreenState extends State<OccasionScreen>
                 ),
             ],
           ),
-          body: PageFrame(
-            child: SafeArea(
-              child: snapshot.hasError
-                  ? listId == null
-                      ? LoadFailure(
-                          error: snapshot.error,
-                          onRetry: reload,
-                          notFound: l10n.occasionNoLongerShared,
-                          backLocation: '/shared',
-                          backLabel: l10n.backToSharedWithMe,
-                        )
-                      : LoadFailure(
-                          error: snapshot.error,
-                          onRetry: reload,
-                          notFound: l10n.occasionNotFound,
-                          backLocation: '/lists/$listId',
-                          backLabel: l10n.backToList,
-                        )
-                  : view == null
-                      // Loading, or on the way elsewhere.
-                      ? const Center(child: CircularProgressIndicator())
-                      : _content(context, _header(l10n, view), claims!),
-            ),
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              PageFrame(
+                child: SafeArea(
+                  child: snapshot.hasError
+                      ? listId == null
+                          ? LoadFailure(
+                              error: snapshot.error,
+                              onRetry: reload,
+                              notFound: l10n.occasionNoLongerShared,
+                              backLocation: '/shared',
+                              backLabel: l10n.backToSharedWithMe,
+                            )
+                          : LoadFailure(
+                              error: snapshot.error,
+                              onRetry: reload,
+                              notFound: l10n.occasionNotFound,
+                              backLocation: '/lists/$listId',
+                              backLabel: l10n.backToList,
+                            )
+                      : view == null
+                          // Loading, or on the way elsewhere.
+                          ? const Center(child: CircularProgressIndicator())
+                          : _content(context, _header(l10n, view), claims!),
+                ),
+              ),
+              // An action on its way, under the app bar (review R3-3).
+              if (_acting)
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: LinearProgressIndicator(),
+                ),
+            ],
           ),
         );
       },

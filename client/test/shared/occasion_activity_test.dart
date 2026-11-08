@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishlist/src/design/widgets/gift_card.dart';
 import 'package:wishlist/src/design/widgets/status_chip.dart';
 import 'package:wishlist/src/lists/list_detail_screen.dart';
+import 'package:wishlist/src/shared/shared_with_me_screen.dart';
 
 import '../lists/support/fake_lists_server.dart';
 
@@ -183,6 +186,43 @@ void main() {
         },
         [],
       ),
+      // Expired: the user's own may still be marked bought (D8, R3-1);
+      // anyone else's is gone.
+      'passed, reserved by me': (
+        (gift) {
+          server.passed.add(occasion);
+          server.addClaim(gift, occasion, [alice]);
+        },
+        ['Mark as bought'],
+      ),
+      'passed, group with me': (
+        (gift) {
+          server.passed.add(occasion);
+          server.addClaim(gift, occasion, [carol, alice], group: true);
+        },
+        ['Mark as bought'],
+      ),
+      'passed, bought by me': (
+        (gift) {
+          server.passed.add(occasion);
+          server.addClaim(gift, occasion, [alice], bought: true);
+        },
+        [],
+      ),
+      'passed, reserved by another': (
+        (gift) {
+          server.passed.add(occasion);
+          server.addClaim(gift, occasion, [carol]);
+        },
+        [],
+      ),
+      'passed, group without me': (
+        (gift) {
+          server.passed.add(occasion);
+          server.addClaim(gift, occasion, [carol], group: true);
+        },
+        [],
+      ),
     };
     for (final MapEntry(key: state, value: (arrange, actions))
         in table.entries) {
@@ -191,10 +231,18 @@ void main() {
         await startApp(tester, server, '/shared/$occasion');
         await openSheet(tester, 'Headphones');
 
+        final passed = state.startsWith('passed');
         expect(sheetActions(tester), actions);
         expect(
           find.text('This occasion has passed: nothing can be reserved any more.'),
-          state.startsWith('passed') ? findsOneWidget : findsNothing,
+          passed && actions.isEmpty ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.text(
+            'This occasion has passed, so this gift is no longer held for '
+            'you. If you gave it, mark it as bought so nobody else gives it.',
+          ),
+          passed && actions.isNotEmpty ? findsOneWidget : findsNothing,
         );
       });
     }
@@ -438,6 +486,142 @@ void main() {
       );
       expect(claimReads(), reads + 1);
       expect(roseChip(tester, 'Headphones'), isNull);
+    });
+  });
+
+  group('passed: my own expired claim can still be marked bought', () {
+    for (final (kind, group, chip, bought) in [
+      ('a reservation', false, 'Reserved by you', 'Bought by you'),
+      ('a group gift', true, 'Group gift · 2', 'Group gift · bought'),
+    ]) {
+      testWidgets(kind, (tester) async {
+        final gift = priced('Headphones');
+        server
+          ..passed.add(occasion)
+          ..addClaim(
+            gift,
+            occasion,
+            group ? [carol, alice] : [alice],
+            group: group,
+          );
+        await startApp(tester, server, '/shared/$occasion');
+
+        expect(roseChip(tester, 'Headphones')!.label, chip);
+        await openSheet(tester, 'Headphones');
+        await tapInSheet(tester, 'Mark as bought');
+        expect(find.text('Mark as bought?'), findsOneWidget);
+        final reads = claimReads();
+        await tapInDialog(tester, 'Mark as bought');
+
+        expect(
+          server.calls,
+          contains('POST /api/occasions/$occasion/gifts/$gift/bought'),
+        );
+        expect(claimReads(), reads + 1);
+        expect(roseChip(tester, 'Headphones')!.label, bought);
+        await openSheet(tester, 'Headphones');
+        expect(sheetActions(tester), isEmpty);
+      });
+    }
+
+    testWidgets("someone else's expired claim shows nothing", (tester) async {
+      server
+        ..passed.add(occasion)
+        ..addClaim(priced('Headphones'), occasion, [carol])
+        ..addClaim(priced('Book'), occasion, [carol, dan], group: true)
+        ..addClaim(priced('Lamp'), other, [eve]);
+      await startApp(tester, server, '/shared/$occasion');
+
+      expect(roseChip(tester, 'Headphones'), isNull);
+      expect(roseChip(tester, 'Book'), isNull);
+      expect(roseChip(tester, 'Lamp')!.label, 'Taken');
+    });
+  });
+
+  group('an action on its way', () {
+    /// Taps [label] in the open sheet, the server holding every answer.
+    Future<void> sendHeld(WidgetTester tester, String label) async {
+      server.hold = Completer();
+      await tester.tap(
+        find.descendant(of: find.byType(BottomSheet), matching: find.text(label)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    Future<void> release(WidgetTester tester) async {
+      server.hold!.complete();
+      server.hold = null;
+      await tester.pumpAndSettle();
+    }
+
+    /// The occasion, opened from Shared with me, so that back leaves it.
+    Future<void> openFromShared(WidgetTester tester) async {
+      await startApp(tester, server, '/shared');
+      await tester.tap(find.text('Christmas 2026'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows progress; a tap meanwhile says to wait',
+        (tester) async {
+      final gift = priced('Headphones');
+      priced('Book');
+      await startApp(tester, server, '/shared/$occasion');
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      await openSheet(tester, 'Headphones');
+      await sendHeld(tester, 'Reserve');
+
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      await tester.tap(find.widgetWithText(GiftCard, 'Book'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(
+        find.text('Wait a moment: your last change is still being saved.'),
+        findsOneWidget,
+      );
+      expect(find.byType(BottomSheet), findsNothing);
+
+      await release(tester);
+      expect(
+        server.calls,
+        contains('POST /api/occasions/$occasion/gifts/$gift/reservation'),
+      );
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(roseChip(tester, 'Headphones')!.label, 'Reserved by you');
+    });
+
+    testWidgets('leaving before it is done says nothing of a write that '
+        'went through', (tester) async {
+      final gift = priced('Headphones');
+      await openFromShared(tester);
+      await openSheet(tester, 'Headphones');
+      await sendHeld(tester, 'Reserve');
+      await tester.pageBack();
+      await tester.pump();
+      await release(tester);
+
+      expect(find.byType(SharedWithMeScreen), findsOneWidget);
+      expect(server.claims[gift], isNotNull);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('leaving before it fails still says it failed',
+        (tester) async {
+      final gift = priced('Headphones');
+      server.status['POST /api/occasions/$occasion/gifts/$gift/reservation'] =
+          500;
+      await openFromShared(tester);
+      await openSheet(tester, 'Headphones');
+      await sendHeld(tester, 'Reserve');
+      await tester.pageBack();
+      await tester.pump();
+      await release(tester);
+
+      expect(find.byType(SharedWithMeScreen), findsOneWidget);
+      expect(
+        find.text('The server could not complete the request. Try again.'),
+        findsOneWidget,
+      );
     });
   });
 

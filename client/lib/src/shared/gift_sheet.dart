@@ -22,16 +22,20 @@ enum GiftAction {
   leaveGroup,
 }
 
-/// The actions [claim] allows the user; none once the occasion has
-/// [passed] (D8: its unbought claims are no longer shown, so there is
-/// nothing of the user's left to mark bought either). Changing an amount
-/// needs a gift with a price ([priced], D9).
+/// The actions [claim] allows the user. Once the occasion has [passed],
+/// only marking bought the user's own expired claim, so a gift handed over
+/// on the day is not freed for the next occasion (D8, review R3-1).
+/// Changing an amount needs a gift with a price ([priced], D9).
 List<GiftAction> giftActions(
   GiftClaim? claim, {
   required bool passed,
   required bool priced,
 }) {
-  if (passed) return const [];
+  if (passed) {
+    return claim != null && claim.expired && claim.mine
+        ? const [GiftAction.markBought]
+        : const [];
+  }
   if (claim == null) {
     return const [
       GiftAction.reserve,
@@ -195,7 +199,12 @@ class _GiftSheet extends StatelessWidget {
             ],
             if (passed) ...[
               const SizedBox(height: Spacing.s16),
-              Text(l10n.occasionPassed, style: metadata),
+              Text(
+                actions.isEmpty
+                    ? l10n.occasionPassed
+                    : l10n.claimExpiredExplanation,
+                style: metadata,
+              ),
             ],
             if (actions.isNotEmpty) const SizedBox(height: Spacing.s16),
             for (final (index, action) in actions.indexed) ...[

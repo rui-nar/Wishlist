@@ -76,6 +76,19 @@ String _groupOccasion(FakeListsServer server) {
   return occasion;
 }
 
+/// Bob's occasion joined and passed, Alice's reservation of the headphones
+/// expired: she may still mark it bought (RESERVING_PLAN D8, review R3-1).
+String _passedOccasion(FakeListsServer server) {
+  final occasion = _bobsOccasion(server);
+  server
+    ..joined.add(occasion)
+    ..passed.add(occasion)
+    ..addClaim(server.gifts.first['id'] as String, occasion, [
+      FakeListsServer.giver(kAliceName, mine: true),
+    ]);
+  return occasion;
+}
+
 /// Alice's own list for Léa, its occasion with Carol's reservation and a
 /// group gift Alice is in: her giver view (RESERVING_PLAN D14).
 String _giverOccasion(FakeListsServer server) {
@@ -131,6 +144,8 @@ void main() {
     'occasion_activity': (server) =>
         ('/shared/${_activeOccasion(server)}', null),
     'gift_sheet_group': (server) => ('/shared/${_groupOccasion(server)}', null),
+    'gift_sheet_expired': (server) =>
+        ('/shared/${_passedOccasion(server)}', null),
     'occasion_giver': (server) => (_giverOccasion(server), null),
     'pledge_dialog': (server) => ('/shared/${_groupOccasion(server)}', null),
     'join_confirmation': (server) {
@@ -143,6 +158,10 @@ void main() {
   // What is tapped once the screen is shown.
   final then = <String, Future<void> Function(WidgetTester)>{
     'gift_sheet_group': (tester) async {
+      await tester.tap(find.text('Noise-cancelling headphones'));
+      await tester.pumpAndSettle();
+    },
+    'gift_sheet_expired': (tester) async {
       await tester.tap(find.text('Noise-cancelling headphones'));
       await tester.pumpAndSettle();
     },

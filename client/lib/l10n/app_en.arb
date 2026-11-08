@@ -712,6 +712,14 @@
   "@occasionPassed": {
     "description": "The gift sheet: the occasion's date has passed, so no action is offered."
   },
+  "claimExpiredExplanation": "This occasion has passed, so this gift is no longer held for you. If you gave it, mark it as bought so nobody else gives it.",
+  "@claimExpiredExplanation": {
+    "description": "The gift sheet: the occasion's date has passed and the user's reservation or group gift was not marked bought; they may still mark it bought."
+  },
+  "claimActionInFlight": "Wait a moment: your last change is still being saved.",
+  "@claimActionInFlight": {
+    "description": "A message when the user taps a gift while their previous action on a gift is still on its way to the server."
+  },
   "claimReserve": "Reserve",
   "@claimReserve": {
     "description": "The gift sheet: the button reserving the gift."
