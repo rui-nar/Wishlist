@@ -8,7 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:wishlist/main.dart';
+import 'package:wishlist/src/version_screen.dart';
+
+import 'support/fakes.dart';
 
 // Goldens render on Linux only (DESIGN_SYSTEM_PLAN D10): .\goldens.ps1
 // regenerates them there.
@@ -17,7 +19,7 @@ final Object _skip = Platform.isLinux
     : r'goldens render on Linux only: run .\goldens.ps1';
 
 void main() {
-  // The whole app, as a phone shows it: the device's language and brightness
+  // The screen in the app's theme, as a phone shows it: the device's language and brightness
   // pick the locale and the theme, as they do in use (D8, D9).
   const brightnesses = {'light': Brightness.light, 'dark': Brightness.dark};
   const locales = {'en': Locale('en', 'GB'), 'fr': Locale('fr', 'FR')};
@@ -50,15 +52,15 @@ void main() {
             WidgetsApp.debugAllowBannerOverride = false;
             addTearDown(() => WidgetsApp.debugAllowBannerOverride = true);
 
-            await tester.pumpWidget(WishlistApp(
+            await tester.pumpWidget(localizedApp(VersionScreen(
               httpClient: client,
               apiBaseUrl: 'http://api.test',
               appVersion: 'v1.2.3',
-            ));
+            )));
             await tester.pumpAndSettle();
 
             await expectLater(
-              find.byType(WishlistApp),
+              find.byType(MaterialApp),
               matchesGoldenFile(
                 'goldens/version_screen_${state}_${language}_$mode.png',
               ),

@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 
 import '../l10n/app_localizations.dart';
 import 'design/tokens.dart';
+import 'error_line.dart';
 import 'server_version.dart';
 
 /// Shows the app's version and the server's version and env, or why the
@@ -56,7 +57,7 @@ class _VersionScreenState extends State<VersionScreen> {
                       future: _server,
                       builder: (context, snapshot) {
                         if (snapshot.hasError) {
-                          return _ServerError(
+                          return ErrorLine(
                             _failureText(l10n, snapshot.error!),
                           );
                         }
@@ -80,37 +81,6 @@ class _VersionScreenState extends State<VersionScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Why the server's version could not be read, in the `error` colour behind
-/// an error icon.
-class _ServerError extends StatelessWidget {
-  const _ServerError(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final error = Theme.of(context).colorScheme.error;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Decorative: the message says it all.
-        ExcludeSemantics(
-          child: Icon(Icons.error_outline, size: Spacing.s20, color: error),
-        ),
-        const SizedBox(width: Spacing.s8),
-        Expanded(
-          child: Text(
-            message,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: error,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -41,9 +41,29 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.6.0
 
+  # Routing with the sign-in guard, and the auth state (ACCOUNTS_PLAN D10).
+  go_router: ^18.1.3
+  provider: ^6.1.5+1
+  # The path URL strategy on the web: /account, not /#/account.
+  flutter_web_plugins:
+    sdk: flutter
+
+  # Google sign-in (D11): the web part is the vendored google_sign_in_web,
+  # through dependency_overrides below.
+  google_sign_in: ^7.2.0
+  google_sign_in_web: ^1.1.3
+
+  # The session token: the platform's secure storage on Android and iOS, the
+  # browser's local storage on the web (D10).
+  flutter_secure_storage: ^11.2.0
+  shared_preferences: ^2.5.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Referenced directly by the tests, which stand in for Google's platform
+  # implementation to see when and how sign-in is initialised.
+  google_sign_in_platform_interface: ^3.1.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -51,6 +71,13 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+# google_sign_in_web 1.1.3 with Google's script loaded in init() instead of at
+# plugin registration, so only the sign-in screen fetches it (ACCOUNTS_PLAN
+# D11, flutter/flutter#194640). See third_party/google_sign_in_web/README.md.
+dependency_overrides:
+  google_sign_in_web:
+    path: third_party/google_sign_in_web
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

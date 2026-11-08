@@ -6,5 +6,22 @@
   "serverUnreachable": "Serveur injoignable",
   "serverTimedOut": "Serveur injoignable (délai dépassé)",
   "serverHttpError": "Le serveur a répondu HTTP {status}",
-  "serverUnexpectedAnswer": "Réponse inattendue du serveur"
+  "serverUnexpectedAnswer": "Réponse inattendue du serveur",
+  "signInPrompt": "Connectez-vous pour voir vos listes et celles qu'on partage avec vous.",
+  "signInWithGoogle": "Continuer avec Google",
+  "signInNotConfigured": "La connexion n'est pas encore disponible sur ce serveur.",
+  "signInRejected": "La connexion Google n'a pas pu être vérifiée. Réessayez.",
+  "signInGoogleFailed": "La connexion Google n'a pas abouti. Réessayez.",
+  "serverError": "Le serveur n'a pas pu traiter la demande. Réessayez.",
+  "retry": "Réessayer",
+  "homeSignedInAs": "Connecté en tant que {name}",
+  "accountTitle": "Compte",
+  "aboutApp": "À propos de l'application",
+  "signOut": "Se déconnecter",
+  "deleteAccount": "Supprimer le compte",
+  "deleteAccountTitle": "Supprimer votre compte ?",
+  "deleteAccountBody": "Votre compte est supprimé et vous êtes déconnecté sur tous vos appareils. Cette action est définitive.",
+  "deleteAccountConfirm": "Supprimer",
+  "cancel": "Annuler",
+  "deleteAccountFailed": "Votre compte n'a pas pu être supprimé. Réessayez."
 }
