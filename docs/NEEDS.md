@@ -70,7 +70,12 @@ First-release properties:
 - one or more links to shop websites;
 - an indicative price, with its currency;
 - an image: fetched from a shop link when possible, otherwise uploaded by the
-  owner.
+  owner. The owner adds it in one of three ways (owner, 2026-11-08): **select
+  an image** from the device, give an **image URL**, or **paste an image** from
+  the clipboard. One image per gift; it can be replaced or removed. An image
+  from a URL is downloaded once by the server and kept as a copy, so the
+  shop's site never learns who looks at the list and the image survives the
+  shop changing it. Reading the image from a shop page link is later.
 
 Later: priority, quantity (with partial reservations).
 
@@ -83,7 +88,26 @@ Later: priority, quantity (with partial reservations).
   they settle up happens outside the app; no money moves through it.
 - **The owner edits or deletes a reserved gift:** the change goes through
   exactly as for any other gift; the invitees who reserved, bought or pledged
-  on it are notified and decide what to do.
+  on it are notified and decide what to do. (Notifications come with the
+  notifications feature; until then the change simply shows.)
+- Decided 2026-11-08 (owner's instruction to proceed with recommendations):
+  - A gift is either reserved by one invitee or a group gift, never both.
+    Whoever reserved it, or any participant of the group gift, can mark it
+    bought. Bought is final in the app.
+  - A participant can leave a group gift (their pledge goes); when the last
+    one leaves, the gift is available again.
+  - **Several occasions of one list at once** (e.g. family for Christmas,
+    friends for a birthday): a gift reserved, in a group gift or bought in
+    another occasion that has not passed shows to this occasion's invitees as
+    "taken" (not by whom, nor in which occasion) and cannot be reserved, so it
+    is not bought twice.
+  - **After an occasion's date** its reservations and group gifts that were
+    not bought end, and the gift is available again for the next occasion. A
+    gift bought in a past occasion stays "taken" until the owner marks it
+    received or deletes it.
+  - An invitee who leaves an occasion is treated like a removed one: their
+    reservations not bought are released, what they bought stays bought,
+    their pledges are removed.
 
 ### Hidden gifts
 
