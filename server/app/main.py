@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +16,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.convertors import PathConvertor, register_url_convertor
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.accounts import sessions
+from app.accounts.google import GoogleVerifier
+from app.accounts.router import router as accounts_router
 from app.db import create_db_engine, create_session_factory
+from app.lists.router import router as lists_router
 from app.settings import Settings
 
 # The Flutter web build. The image puts it in /app/web, next to /app/server;
@@ -58,6 +63,11 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
+    # Both replaced by tests: no test calls Google or waits for the clock.
+    app.state.google_verifier = (
+        GoogleVerifier(settings.google_audiences) if settings.google_audiences else None
+    )
+    app.state.clock = sessions.utc_now
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.
@@ -71,6 +81,18 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     @app.get("/api/version")
     def version() -> dict[str, str]:
         return {"version": settings.app_version, "env": settings.app_env}
+
+    @app.get("/api/config")
+    def config() -> dict[str, str | None]:
+        # Read by the clients at start, so one build serves every environment
+        # (accounts plan D6). The first client ID is the web client's.
+        audiences = settings.google_audiences
+        # Without its trailing slash: the client appends /join#<token>.
+        public_base_url = settings.public_base_url.strip().rstrip("/")
+        return {
+            "google_client_id": audiences[0] if audiences else None,
+            "public_base_url": public_base_url or None,
+        }
 
     @app.get("/api/health")
     def health() -> JSONResponse:
@@ -87,6 +109,10 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
                 "media": media,
             },
         )
+
+    app.include_router(accounts_router)
+    app.include_router(lists_router)
+    app.add_exception_handler(RequestValidationError, _validation_error)
 
     # Registered last, so every /api route above takes precedence.
     if web_dir.is_dir():
@@ -117,6 +143,22 @@ def _serve_web_client(app: FastAPI, web_dir: Path) -> None:
         # instead; the ETag makes an unchanged file a cheap 304.
         response.headers["Cache-Control"] = "no-cache"
         return response
+
+
+async def _validation_error(request: Request, exc: Exception) -> JSONResponse:
+    # FastAPI's default 422 body quotes each invalid value back, and a value
+    # may be a token (an oversized ID token, a password later): only where and
+    # why a value was refused goes out.
+    assert isinstance(exc, RequestValidationError)
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": [
+                {"type": error["type"], "loc": error["loc"], "msg": error["msg"]}
+                for error in exc.errors()
+            ]
+        },
+    )
 
 
 def _database_ok(engine: Engine) -> bool:

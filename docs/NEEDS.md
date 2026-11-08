@@ -113,9 +113,25 @@ Later: priority, quantity (with partial reservations).
   others join.
 - **Revoking the link** stops new people from joining; invitees who already
   joined keep access.
-- **Removing an invitee:** their reserved-but-not-bought gifts become
-  available again; gifts they bought stay bought; their pledges are removed and
-  the other participants of those group gifts are notified.
+- **Removing an invitee:** they lose access at once and cannot rejoin the
+  occasion through any link, current or old, until the owner allows them
+  again; allowing them again does not rejoin them, they need a link. Their
+  reserved-but-not-bought gifts become available again; gifts they bought
+  stay bought; their pledges are removed and the other participants of those
+  group gifts are notified. An invitee who leaves on their own can rejoin with
+  a current link, unless the owner removes them afterwards: an owner's removal
+  is recorded even if the person had already left.
+
+### Deleting an account
+
+An account can be deleted (GDPR). Then:
+
+- the lists they own alone are deleted, with their gifts;
+- as an invitee: gifts they reserved but did not buy become available again;
+  gifts they bought stay bought; their pledges are removed and the other
+  participants of those group gifts are notified;
+- their comments stay, signed "Deleted user": the thread keeps its sense and
+  nothing identifies them.
 
 ### Notifications
 
@@ -155,6 +171,12 @@ Later candidates: group gift activity, occasion reminders.
 - **Offline (mobile):** owners can add and edit gifts offline, synced later;
   invitees can read what they already viewed, and every invitee action needs a
   connection.
+- **Look:** direction "Lagoon", built on TraxJourney's design foundations
+  (Inter, 8-point grid, 6/8/12/16 px radii, flat bordered cards, slate greys,
+  sentence case, no emoji): deep teal primary `#0F766E`, rose `#E11D48` for
+  invitee activity, Space Grotesk for titles. Light and dark themes. Mock-ups:
+  https://claude.ai/artifact/PSc8n5pwZLeVxvLCPHNVmi (private to the owner).
+- **Email:** Brevo, as TraxJourney (password reset and notifications).
 - **Hosting:** the server side runs on the owner's existing VPS (OVH, France),
   next to TraxJourney.
 - **Stack (agreed ahead of the needs, see
@@ -172,12 +194,10 @@ Later candidates: group gift activity, occasion reminders.
 
 | Question | Affects |
 |---|---|
-| Who can add co-owners, and can they remove each other? | Roles, access control |
+| Who can add co-owners, and can they remove each other? What happens to a co-owned list when one co-owner deletes their account? | Roles, access control, account deletion |
 | Hidden gifts: at what moment exactly is the occasion's date reached (whose time zone; start or end of the day)? | Reveal timing |
 | Hidden gifts nobody bought: does the author keep them for a later occasion, or do they expire with the occasion? | Hidden gifts lifecycle |
 | Can invitees also add hidden gifts to a "for someone else" list, where nobody is blind until a handover? | Hidden gifts, handover |
 | Offline edits by two co-owners on the same gift: last write wins, or a conflict shown? | Sync design |
-| Account deletion: an owner's lists, an invitee's reservations and comments (GDPR) | Data model, billing (withdrawal) |
-| Email provider for password reset and notifications (Brevo, as TraxJourney?) | Operations, envelope |
 | Comment moderation: can invitees edit or delete comments; can anyone report one? | Comments design |
 | Image limits: size, count per gift, storage per account | VPS disk, backups, premium |

@@ -8,6 +8,7 @@ the code. Plans and review ledgers are the record of how it got there.
 | Doc | What it covers |
 |---|---|
 | [NEEDS](NEEDS.md) | Need description: problem, users, use cases, constraints |
+| [DESIGN](DESIGN.md) | The client's design system: tokens, typography, components, the invitee colour, localisation |
 
 ## Running it
 

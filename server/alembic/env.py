@@ -2,6 +2,8 @@ from logging.config import fileConfig
 
 from alembic import context
 
+import app.accounts.models  # noqa: F401
+import app.lists.models  # noqa: F401
 from app.db import Base, create_db_engine
 from app.settings import Settings
 
@@ -12,8 +14,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-# Models must be imported before this line once they exist, so that their
-# tables are registered on Base.metadata for autogenerate and `alembic check`.
+# Every models module is imported above, so that its tables are registered on
+# Base.metadata for autogenerate and `alembic check`.
 target_metadata = Base.metadata
 
 # Always the URL the app uses (DATABASE_URL), never a value from alembic.ini.

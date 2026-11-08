@@ -1,0 +1,671 @@
+{
+  "@@locale": "en",
+  "appTitle": "Wishlist",
+  "@appTitle": {
+    "description": "The app's name, in the window or tab title and the app bar."
+  },
+  "appVersion": "App {version}",
+  "@appVersion": {
+    "description": "The version of the app the user runs.",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "v1.2.3"
+      }
+    }
+  },
+  "serverVersion": "Server {version} ({env})",
+  "@serverVersion": {
+    "description": "The server's version and the environment it runs in.",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "v1.2.0"
+      },
+      "env": {
+        "type": "String",
+        "example": "validation"
+      }
+    }
+  },
+  "serverUnreachable": "Server unreachable",
+  "@serverUnreachable": {
+    "description": "The server's version could not be read: the server could not be reached."
+  },
+  "serverTimedOut": "Server unreachable (timed out)",
+  "@serverTimedOut": {
+    "description": "The server's version could not be read: the server took too long to answer."
+  },
+  "serverHttpError": "Server answered HTTP {status}",
+  "@serverHttpError": {
+    "description": "The server's version could not be read: the server answered with an HTTP error status.",
+    "placeholders": {
+      "status": {
+        "type": "int",
+        "example": "503"
+      }
+    }
+  },
+  "serverUnexpectedAnswer": "Unexpected answer from the server",
+  "@serverUnexpectedAnswer": {
+    "description": "The server's version could not be read: its answer was not in the expected form."
+  },
+  "signInPrompt": "Sign in to see your lists and the lists shared with you.",
+  "@signInPrompt": {
+    "description": "The sign-in screen: the line under the app's name."
+  },
+  "signInWithGoogle": "Continue with Google",
+  "@signInWithGoogle": {
+    "description": "The sign-in screen on Android and iOS: the button that opens Google's account picker."
+  },
+  "signInNotConfigured": "Sign-in is not available on this server yet.",
+  "@signInNotConfigured": {
+    "description": "The sign-in screen: the server has no Google sign-in configured, so there is no button."
+  },
+  "signInRejected": "Google sign-in could not be verified. Try again.",
+  "@signInRejected": {
+    "description": "The sign-in screen: the server refused the Google sign-in."
+  },
+  "signInGoogleFailed": "Google sign-in did not complete. Try again.",
+  "@signInGoogleFailed": {
+    "description": "The sign-in screen: Google's own sign-in flow failed before reaching the server."
+  },
+  "serverError": "The server could not complete the request. Try again.",
+  "@serverError": {
+    "description": "Any screen: the server answered with an error."
+  },
+  "retry": "Try again",
+  "@retry": {
+    "description": "Button that retries a call to the server that failed."
+  },
+  "accountTitle": "Account",
+  "@accountTitle": {
+    "description": "The account screen's title, and the tooltip of the home screen's button that opens it."
+  },
+  "aboutApp": "About this app",
+  "@aboutApp": {
+    "description": "The account screen: opens the screen with the app's and the server's versions."
+  },
+  "signOut": "Sign out",
+  "@signOut": {
+    "description": "The account screen: the button that signs out of this device."
+  },
+  "deleteAccount": "Delete account",
+  "@deleteAccount": {
+    "description": "The account screen: the button that asks to delete the account."
+  },
+  "deleteAccountTitle": "Delete your account?",
+  "@deleteAccountTitle": {
+    "description": "The title of the dialog confirming an account deletion."
+  },
+  "deleteAccountBody": "Your account and the lists you own, with their gifts and occasions, are deleted. Everyone you shared them with loses access, and you are signed out on every device. This cannot be undone.",
+  "@deleteAccountBody": {
+    "description": "The dialog confirming an account deletion: what goes with the account (owned lists, their gifts and occasions), who loses access, and that it cannot be undone."
+  },
+  "deleteAccountConfirm": "Delete",
+  "@deleteAccountConfirm": {
+    "description": "The dialog confirming an account deletion: the button that deletes."
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "A dialog's button that closes it and does nothing."
+  },
+  "deleteAccountFailed": "Your account could not be deleted. Try again.",
+  "@deleteAccountFailed": {
+    "description": "A message after the server did not delete the account; the user is still signed in."
+  },
+  "myListsTitle": "My lists",
+  "@myListsTitle": {
+    "description": "Home: the title of the screen listing the lists the user owns."
+  },
+  "myListsEmpty": "You have no lists yet. Create one for yourself or for someone else.",
+  "@myListsEmpty": {
+    "description": "My lists: shown when the user owns no list."
+  },
+  "newList": "New list",
+  "@newList": {
+    "description": "My lists: the button that opens the form creating a list, and that form's title."
+  },
+  "listGiftCount": "{count, plural, =0{No gifts} =1{1 gift} other{{count} gifts}}",
+  "@listGiftCount": {
+    "description": "My lists: how many gifts a list holds.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "listCardLine": "{recipient} · {gifts}",
+  "@listCardLine": {
+    "description": "My lists: the line under a list's title, who it is for and how many gifts it holds.",
+    "placeholders": {
+      "recipient": {
+        "type": "String",
+        "example": "For Léa"
+      },
+      "gifts": {
+        "type": "String",
+        "example": "3 gifts"
+      }
+    }
+  },
+  "listForMe": "For me",
+  "@listForMe": {
+    "description": "Who a list is for: the user themself. A choice in the list form, and a line under a list's title."
+  },
+  "listForSomeoneElse": "For someone else",
+  "@listForSomeoneElse": {
+    "description": "The list form: the choice of a list for another person."
+  },
+  "listForName": "For {name}",
+  "@listForName": {
+    "description": "A line under a list's title: who the list is for.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "listTitleLabel": "List title",
+  "@listTitleLabel": {
+    "description": "The list form: the label of the list's title field."
+  },
+  "listTitleRequired": "Enter a title",
+  "@listTitleRequired": {
+    "description": "The list form: the title field was left empty."
+  },
+  "listRecipientChoice": "Who is this list for?",
+  "@listRecipientChoice": {
+    "description": "The list form: the question above the For me / For someone else choice."
+  },
+  "listRecipientKindFixed": "This cannot be changed later.",
+  "@listRecipientKindFixed": {
+    "description": "The list form, when creating: under the For me / For someone else choice."
+  },
+  "recipientNameLabel": "Their name",
+  "@recipientNameLabel": {
+    "description": "The list form: the label of the field naming the person a list is for."
+  },
+  "recipientNameRequired": "Enter their name",
+  "@recipientNameRequired": {
+    "description": "The list form: the recipient's name was left empty."
+  },
+  "renameList": "Rename",
+  "@renameList": {
+    "description": "List detail: the menu entry that opens the form renaming the list."
+  },
+  "renameListTitle": "Rename list",
+  "@renameListTitle": {
+    "description": "The title of the form renaming a list."
+  },
+  "deleteList": "Delete list",
+  "@deleteList": {
+    "description": "List detail: the menu entry that asks to delete the list."
+  },
+  "deleteListTitle": "Delete this list?",
+  "@deleteListTitle": {
+    "description": "The title of the dialog confirming a list's deletion."
+  },
+  "deleteListBody": "The list and all its gifts are deleted. This cannot be undone.",
+  "@deleteListBody": {
+    "description": "The dialog confirming a list's deletion: what deleting does."
+  },
+  "delete": "Delete",
+  "@delete": {
+    "description": "A confirmation dialog's button that deletes a list or a gift."
+  },
+  "create": "Create",
+  "@create": {
+    "description": "A form's button that creates what it describes."
+  },
+  "save": "Save",
+  "@save": {
+    "description": "A form's button that saves the changes."
+  },
+  "giftsEmpty": "No gifts yet. Add the first one.",
+  "@giftsEmpty": {
+    "description": "List detail: shown when the list has no gift."
+  },
+  "addGift": "Add a gift",
+  "@addGift": {
+    "description": "List detail: the button that opens the form adding a gift, and that form's title."
+  },
+  "editGift": "Edit gift",
+  "@editGift": {
+    "description": "The title of the form editing a gift."
+  },
+  "giftTitleLabel": "What is it?",
+  "@giftTitleLabel": {
+    "description": "The gift form: the label of the gift's title field."
+  },
+  "giftTitleRequired": "Enter what the gift is",
+  "@giftTitleRequired": {
+    "description": "The gift form: the title field was left empty."
+  },
+  "giftDescriptionLabel": "Details (size, colour, model...)",
+  "@giftDescriptionLabel": {
+    "description": "The gift form: the label of the description field."
+  },
+  "giftLinksLabel": "Shop links",
+  "@giftLinksLabel": {
+    "description": "The gift form: the heading above the links."
+  },
+  "giftLinkLabel": "Link {number}",
+  "@giftLinkLabel": {
+    "description": "The gift form: the label of one link field.",
+    "placeholders": {
+      "number": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "addLink": "Add a link",
+  "@addLink": {
+    "description": "The gift form: the button adding a link field."
+  },
+  "removeLink": "Remove this link",
+  "@removeLink": {
+    "description": "The gift form: the tooltip of the button removing a link field."
+  },
+  "linkInvalid": "Enter a web address starting with http:// or https://",
+  "@linkInvalid": {
+    "description": "The gift form: a link is not an http or https address."
+  },
+  "priceLabel": "Price (indicative)",
+  "@priceLabel": {
+    "description": "The gift form: the label of the price amount field."
+  },
+  "priceInvalid": "Enter an amount such as 149.90",
+  "@priceInvalid": {
+    "description": "The gift form: the price is not an amount of at most 10 digits and 2 decimals."
+  },
+  "currencyLabel": "Currency",
+  "@currencyLabel": {
+    "description": "The gift form: the label of the currency code field."
+  },
+  "currencyRequired": "Enter a currency code such as EUR",
+  "@currencyRequired": {
+    "description": "The gift form: a price was given without a currency."
+  },
+  "currencyUnknown": "Unknown currency code",
+  "@currencyUnknown": {
+    "description": "The gift form: the currency code is not one the app knows."
+  },
+  "deleteGift": "Delete gift",
+  "@deleteGift": {
+    "description": "The gift form: the button that asks to delete the gift."
+  },
+  "deleteGiftTitle": "Delete this gift?",
+  "@deleteGiftTitle": {
+    "description": "The title of the dialog confirming a gift's deletion."
+  },
+  "deleteGiftBody": "The gift is removed from the list. This cannot be undone.",
+  "@deleteGiftBody": {
+    "description": "The dialog confirming a gift's deletion: what deleting does."
+  },
+  "giftLinkCount": "{count, plural, =1{1 link} other{{count} links}}",
+  "@giftLinkCount": {
+    "description": "List detail: a chip on a gift saying how many shop links it has.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "openLink": "Open the link",
+  "@openLink": {
+    "description": "List detail: the tooltip of the button opening a gift's only link."
+  },
+  "openLinks": "Open a link",
+  "@openLinks": {
+    "description": "List detail: the tooltip of the button listing a gift's links to open one."
+  },
+  "linkOpenFailed": "The link could not be opened.",
+  "@linkOpenFailed": {
+    "description": "A message after a gift's link could not be opened."
+  },
+  "listNotFound": "This list no longer exists.",
+  "@listNotFound": {
+    "description": "List detail or a form: the list was deleted, or is not the user's."
+  },
+  "giftNotFound": "This gift no longer exists.",
+  "@giftNotFound": {
+    "description": "The gift form: the gift was deleted."
+  },
+  "backToMyLists": "Back to my lists",
+  "@backToMyLists": {
+    "description": "The button leaving a list or a gift that no longer exists."
+  },
+  "saveFailed": "Your changes could not be saved. Try again.",
+  "@saveFailed": {
+    "description": "A form: the server did not save it."
+  },
+  "deleteFailed": "It could not be deleted. Try again.",
+  "@deleteFailed": {
+    "description": "A message after the server did not delete a list or a gift."
+  },
+  "occasionsTitle": "Occasions",
+  "@occasionsTitle": {
+    "description": "List detail: the heading of the occasions section."
+  },
+  "occasionsIntro": "Share an occasion's link to invite people. Invitees see this list and its gifts.",
+  "@occasionsIntro": {
+    "description": "List detail: under the occasions heading."
+  },
+  "newOccasion": "New occasion",
+  "@newOccasion": {
+    "description": "List detail: the button creating an occasion; the occasion form's title when creating."
+  },
+  "occasionLine": "{date} · {invitees}",
+  "@occasionLine": {
+    "description": "List detail: an occasion's date and invitee count.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "24 Dec 2026"
+      },
+      "invitees": {
+        "type": "String",
+        "example": "2 invitees"
+      }
+    }
+  },
+  "inviteeCount": "{count, plural, =0{No invitees} =1{1 invitee} other{{count} invitees}}",
+  "@inviteeCount": {
+    "description": "List detail: how many people joined an occasion.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "linkActive": "Anyone with the link can join",
+  "@linkActive": {
+    "description": "List detail: the occasion has a link."
+  },
+  "linkNone": "No link: nobody new can join",
+  "@linkNone": {
+    "description": "List detail: the occasion has no link."
+  },
+  "occasionActions": "Occasion actions",
+  "@occasionActions": {
+    "description": "List detail: the tooltip of an occasion's menu."
+  },
+  "createLink": "Create a link",
+  "@createLink": {
+    "description": "List detail: creates an occasion's link."
+  },
+  "regenerateLink": "Replace the link",
+  "@regenerateLink": {
+    "description": "List detail: an occasion's menu item regenerating its link."
+  },
+  "revokeLink": "Revoke the link",
+  "@revokeLink": {
+    "description": "List detail: an occasion's menu item revoking its link."
+  },
+  "copyLink": "Copy link",
+  "@copyLink": {
+    "description": "List detail: copies an occasion's link."
+  },
+  "shareLink": "Share",
+  "@shareLink": {
+    "description": "List detail: shares an occasion's link through the platform's share sheet."
+  },
+  "linkCopied": "Link copied",
+  "@linkCopied": {
+    "description": "A message after an occasion's link was copied."
+  },
+  "seeInvitees": "Invitees",
+  "@seeInvitees": {
+    "description": "List detail: opens an occasion's invitees."
+  },
+  "editOccasion": "Rename or change the date",
+  "@editOccasion": {
+    "description": "List detail: an occasion's menu item opening its form."
+  },
+  "deleteOccasion": "Delete occasion",
+  "@deleteOccasion": {
+    "description": "List detail: an occasion's menu item deleting it."
+  },
+  "regenerateLinkTitle": "Replace the link?",
+  "@regenerateLinkTitle": {
+    "description": "The dialog before regenerating an occasion's link."
+  },
+  "regenerateLinkBody": "The current link stops working. People who already joined keep their access.",
+  "@regenerateLinkBody": {
+    "description": "The dialog before regenerating an occasion's link."
+  },
+  "regenerateLinkConfirm": "Replace",
+  "@regenerateLinkConfirm": {
+    "description": "The dialog's button regenerating an occasion's link."
+  },
+  "revokeLinkTitle": "Revoke the link?",
+  "@revokeLinkTitle": {
+    "description": "The dialog before revoking an occasion's link."
+  },
+  "revokeLinkBody": "Nobody new can join with it. People who already joined keep their access.",
+  "@revokeLinkBody": {
+    "description": "The dialog before revoking an occasion's link."
+  },
+  "revokeLinkConfirm": "Revoke",
+  "@revokeLinkConfirm": {
+    "description": "The dialog's button revoking an occasion's link."
+  },
+  "deleteOccasionTitle": "Delete this occasion?",
+  "@deleteOccasionTitle": {
+    "description": "The dialog before deleting an occasion."
+  },
+  "deleteOccasionBody": "Its invitees lose access to the list through it, and its link stops working. This cannot be undone.",
+  "@deleteOccasionBody": {
+    "description": "The dialog before deleting an occasion."
+  },
+  "occasionNotFound": "This occasion no longer exists.",
+  "@occasionNotFound": {
+    "description": "An owner's screen or message: the occasion was deleted."
+  },
+  "editOccasionTitle": "Edit occasion",
+  "@editOccasionTitle": {
+    "description": "The occasion form's title when editing."
+  },
+  "occasionNameLabel": "Occasion",
+  "@occasionNameLabel": {
+    "description": "The occasion form: the name field."
+  },
+  "occasionNameHint": "Christmas, birthday...",
+  "@occasionNameHint": {
+    "description": "The occasion form: the name field's hint."
+  },
+  "occasionNameRequired": "Enter the occasion",
+  "@occasionNameRequired": {
+    "description": "The occasion form: the name is empty."
+  },
+  "occasionDateLabel": "Date",
+  "@occasionDateLabel": {
+    "description": "The occasion form: the date field."
+  },
+  "occasionDateRequired": "Choose a date",
+  "@occasionDateRequired": {
+    "description": "The occasion form: no date chosen."
+  },
+  "inviteesTitle": "Invitees",
+  "@inviteesTitle": {
+    "description": "The invitees screen's title."
+  },
+  "inviteesEmpty": "Nobody has joined yet. Share the link to invite people.",
+  "@inviteesEmpty": {
+    "description": "The invitees screen: nobody joined."
+  },
+  "removeInvitee": "Remove",
+  "@removeInvitee": {
+    "description": "The invitees screen: removes an invitee; the dialog's button."
+  },
+  "removeInviteeTitle": "Remove {name}?",
+  "@removeInviteeTitle": {
+    "description": "The dialog before removing an invitee.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "removeInviteeBody": "{name} loses access to this occasion at once, and cannot join it again, through any link, until you allow them again.",
+  "@removeInviteeBody": {
+    "description": "The dialog before removing an invitee.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "removedTitle": "Removed",
+  "@removedTitle": {
+    "description": "The invitees screen: the heading of the people removed."
+  },
+  "removedIntro": "They cannot join again, through any link, until you allow them. Allowing them does not add them back: they need a current link.",
+  "@removedIntro": {
+    "description": "The invitees screen: under the heading of the people removed."
+  },
+  "allowAgain": "Allow again",
+  "@allowAgain": {
+    "description": "The invitees screen: allows a removed person again."
+  },
+  "allowedAgain": "{name} can join again with a current link.",
+  "@allowedAgain": {
+    "description": "A message after a removed person was allowed again.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "backToList": "Back to the list",
+  "@backToList": {
+    "description": "The button leaving an occasion that no longer exists, to its list."
+  },
+  "unnamedPerson": "Unnamed person",
+  "@unnamedPerson": {
+    "description": "Stands for a person whose account has no name."
+  },
+  "sharedWithMeTitle": "Shared with me",
+  "@sharedWithMeTitle": {
+    "description": "The title of the occasions shared with the user; the navigation bar's second destination."
+  },
+  "sharedWithMeEmpty": "Nothing is shared with you yet. Open an occasion link someone sent you to join it.",
+  "@sharedWithMeEmpty": {
+    "description": "Shared with me: no occasion joined."
+  },
+  "sharedOccasionLine": "{date} · {list}",
+  "@sharedOccasionLine": {
+    "description": "Shared with me: an occasion's date and its list's title.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "24 Dec 2026"
+      },
+      "list": {
+        "type": "String",
+        "example": "Christmas"
+      }
+    }
+  },
+  "sharedForBy": "For {recipient} · shared by {owners}",
+  "@sharedForBy": {
+    "description": "Shared with me and an occasion: who the gifts are for, and who shared the list.",
+    "placeholders": {
+      "recipient": {
+        "type": "String",
+        "example": "Léa"
+      },
+      "owners": {
+        "type": "String",
+        "example": "Alice Martin"
+      }
+    }
+  },
+  "recipientDoesNotSee": "{name} doesn't see what you do here",
+  "@recipientDoesNotSee": {
+    "description": "An occasion shared with the user: the privacy banner.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "sharedGiftsEmpty": "No gifts on this list yet.",
+  "@sharedGiftsEmpty": {
+    "description": "An occasion shared with the user: its list has no gifts."
+  },
+  "giftDetails": "Details",
+  "@giftDetails": {
+    "description": "An occasion shared with the user: the chip of a gift with details; tapping the gift shows them."
+  },
+  "leaveOccasion": "Leave the occasion",
+  "@leaveOccasion": {
+    "description": "An occasion shared with the user: the menu item leaving it."
+  },
+  "leaveOccasionTitle": "Leave this occasion?",
+  "@leaveOccasionTitle": {
+    "description": "The dialog before leaving an occasion."
+  },
+  "leaveOccasionBody": "You no longer see this list. You can join again with a current link.",
+  "@leaveOccasionBody": {
+    "description": "The dialog before leaving an occasion."
+  },
+  "leaveOccasionConfirm": "Leave",
+  "@leaveOccasionConfirm": {
+    "description": "The dialog's button leaving an occasion."
+  },
+  "leaveFailed": "You could not leave the occasion. Try again.",
+  "@leaveFailed": {
+    "description": "A message after the server did not let the user leave an occasion."
+  },
+  "occasionNoLongerShared": "This occasion is no longer shared with you.",
+  "@occasionNoLongerShared": {
+    "description": "An occasion that was deleted, or that the user left or was removed from."
+  },
+  "backToSharedWithMe": "Back to shared with me",
+  "@backToSharedWithMe": {
+    "description": "The button leaving an occasion no longer shared with the user."
+  },
+  "joinTitle": "Join an occasion",
+  "@joinTitle": {
+    "description": "The join screen's title."
+  },
+  "joinInvited": "You are invited to",
+  "@joinInvited": {
+    "description": "The join screen: above the occasion's name."
+  },
+  "joinListLabel": "List",
+  "@joinListLabel": {
+    "description": "The join screen: the label of the list's title."
+  },
+  "joinRecipientLabel": "For",
+  "@joinRecipientLabel": {
+    "description": "The join screen: the label of who the gifts are for."
+  },
+  "joinOwnersLabel": "Shared by",
+  "@joinOwnersLabel": {
+    "description": "The join screen: the label of the list's owners."
+  },
+  "joinExplanation": "Join to see this list and its gifts.",
+  "@joinExplanation": {
+    "description": "The join screen: what joining does."
+  },
+  "join": "Join",
+  "@join": {
+    "description": "The join screen: the button joining the occasion."
+  },
+  "joinLinkInvalid": "This link is no longer valid. Ask the person who shared it for a new one.",
+  "@joinLinkInvalid": {
+    "description": "The join screen: the link is unknown, was replaced or revoked, or the user may not join."
+  }
+}

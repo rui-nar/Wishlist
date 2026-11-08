@@ -29,6 +29,9 @@ RUN flutter config --no-analytics --no-cli-animations \
 WORKDIR /client
 # The pub files first, so the dependency layer is cached across code changes.
 COPY client/pubspec.yaml client/pubspec.lock ./
+# pubspec.yaml depends on the vendored packages in third_party/ by path, so
+# pub get needs them present; they change rarely, so the layer stays cached.
+COPY client/third_party/ third_party/
 RUN flutter pub get --enforce-lockfile
 COPY client/ ./
 
