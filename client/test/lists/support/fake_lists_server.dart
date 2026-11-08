@@ -76,6 +76,14 @@ class FakeListsServer {
   /// The occasions whose owner removed Alice.
   final aliceRemoved = <String>{};
 
+  /// Gift id → its claim (RESERVING_PLAN D1, D2): `occasion_id` (null once
+  /// its occasion was deleted), `kind` (`reservation` or `group`), `bought`
+  /// and `participants`, each as [giver] makes it, by when they joined.
+  final claims = <String, Map<String, dynamic>>{};
+
+  /// The occasions whose date has passed (D8).
+  final passed = <String>{};
+
   final status = <String, int>{};
 
   /// `'<METHOD> <path>'` → the `detail` code of the answer [status] forces
@@ -228,6 +236,181 @@ class FakeListsServer {
 
   Map<String, dynamic>? gift(String id) =>
       gifts.where((gift) => gift['id'] == id).firstOrNull;
+
+  /// A participant of a claim: [name], Alice when [mine], with an optional
+  /// pledge.
+  static Map<String, dynamic> giver(
+    String name, {
+    bool mine = false,
+    String? amount,
+    String? currency,
+  }) =>
+      {
+        'display_name': name,
+        'mine': mine,
+        'pledge_amount': amount,
+        'pledge_currency': currency,
+      };
+
+  /// [giftId] reserved in [occasionId] by [participants] (one), or a group
+  /// gift of theirs when [group].
+  void addClaim(
+    String giftId,
+    String? occasionId,
+    List<Map<String, dynamic>> participants, {
+    bool group = false,
+    bool bought = false,
+  }) {
+    claims[giftId] = {
+      'occasion_id': occasionId,
+      'kind': group ? 'group' : 'reservation',
+      'bought': bought,
+      'participants': [...participants],
+    };
+  }
+
+  /// A claim stops being live when its occasion has passed, unless bought
+  /// (D8).
+  bool _live(Map<String, dynamic> claim) =>
+      claim['bought'] == true || !passed.contains(claim['occasion_id']);
+
+  /// The claim as a giver of [occasionId] sees it (`GiftClaimOut`).
+  Map<String, dynamic> _claimOut(
+    String occasionId,
+    String giftId,
+    Map<String, dynamic> claim,
+  ) =>
+      claim['occasion_id'] == occasionId
+          ? {
+              'gift_id': giftId,
+              'state': claim['kind'] == 'group' ? 'group' : 'reserved',
+              'bought': claim['bought'],
+              'participants': claim['participants'],
+            }
+          : {
+              'gift_id': giftId,
+              'state': 'taken',
+              'bought': false,
+              'participants': const <Object>[],
+            };
+
+  /// Alice is in [claim], of [occasionId].
+  bool _aliceIn(String occasionId, Map<String, dynamic>? claim) =>
+      claim != null &&
+      claim['occasion_id'] == occasionId &&
+      (claim['participants'] as List).any((giver) => giver['mine'] == true);
+
+  /// `/api/occasions/{id}/claims` and `…/gifts/{gift_id}/<action>` for a
+  /// giver of the occasion, with the server's rules (D6, D8, D9); null for
+  /// any other path.
+  http.Response? _claims(
+    http.Request request,
+    String occasionId,
+    String listId,
+    List<String> segments,
+    Map<String, dynamic>? body,
+    http.Response Function(Object body, [int code]) json,
+    http.Response notFound,
+    http.Response noContent,
+  ) {
+    final ofList = [
+      for (final gift in gifts)
+        if (gift['list_id'] == listId) gift,
+    ];
+    if (request.method == 'GET' && segments.length == 4 && segments[3] == 'claims') {
+      return json({
+        'passed': passed.contains(occasionId),
+        'gifts': [
+          for (final gift in ofList)
+            if (claims[gift['id']] case final claim? when _live(claim))
+              _claimOut(occasionId, gift['id'] as String, claim),
+        ],
+      });
+    }
+    if (segments.length != 6 || segments[3] != 'gifts') return null;
+    final gift = ofList.where((gift) => gift['id'] == segments[4]).firstOrNull;
+    final action = (request.method, segments[5]);
+    const actions = {
+      ('POST', 'reservation'),
+      ('DELETE', 'reservation'),
+      ('POST', 'bought'),
+      ('PUT', 'pledge'),
+      ('DELETE', 'pledge'),
+    };
+    if (!actions.contains(action)) return null;
+    if (gift == null) return notFound;
+    final giftId = gift['id'] as String;
+    http.Response conflict(String code) =>
+        json({'detail': 'Refused', 'code': code}, 409);
+    http.Response out() => json(_claimOut(occasionId, giftId, claims[giftId]!));
+    final held = claims[giftId];
+    final live = held != null && _live(held) ? held : null;
+    final mine = _aliceIn(occasionId, live);
+    final alice = giver(kAliceName, mine: true);
+    if (passed.contains(occasionId)) {
+      // The one write allowed: marking bought one's own claim, still there.
+      if (action != ('POST', 'bought') || !_aliceIn(occasionId, held)) {
+        return conflict('passed');
+      }
+      held!['bought'] = true;
+      return out();
+    }
+    switch (action) {
+      case ('POST', 'reservation'):
+        if (live == null) {
+          addClaim(giftId, occasionId, [alice]);
+          return out();
+        }
+        return live['kind'] == 'reservation' && mine ? out() : conflict('taken');
+      case ('DELETE', 'reservation'):
+        if (live?['kind'] == 'reservation' && mine) {
+          if (live!['bought'] == true) return conflict('bought');
+          claims.remove(giftId);
+        }
+        return noContent;
+      case ('POST', 'bought'):
+        if (live == null) {
+          addClaim(giftId, occasionId, [alice], bought: true);
+          return out();
+        }
+        if (!mine) return conflict('taken');
+        live['bought'] = true;
+        return out();
+      case ('PUT', 'pledge'):
+        final amount = body!['amount'] as String?;
+        final currency = gift['price_currency'] as String?;
+        if (amount != null && currency == null) {
+          return json({'detail': 'No currency'}, 422);
+        }
+        final pledge = giver(
+          kAliceName,
+          mine: true,
+          amount: amount,
+          currency: amount == null ? null : currency,
+        );
+        if (live == null) {
+          addClaim(giftId, occasionId, [pledge], group: true);
+          return out();
+        }
+        if (live['occasion_id'] != occasionId || live['kind'] != 'group') {
+          return conflict('taken');
+        }
+        if (live['bought'] == true) return conflict('bought');
+        final givers = live['participants'] as List<Map<String, dynamic>>;
+        final index = givers.indexWhere((giver) => giver['mine'] == true);
+        index < 0 ? givers.add(pledge) : givers[index] = pledge;
+        return out();
+      case ('DELETE', 'pledge'):
+        if (live?['kind'] == 'group' && mine) {
+          if (live!['bought'] == true) return conflict('bought');
+          final givers = live['participants'] as List<Map<String, dynamic>>;
+          givers.removeWhere((giver) => giver['mine'] == true);
+          if (givers.isEmpty) claims.remove(giftId);
+        }
+        return noContent;
+    }
+    return null;
+  }
 
   /// An occasion as its list's owners see it (`OccasionOut`).
   Map<String, dynamic> _ownerOccasion(Map<String, dynamic> occasion) => {
@@ -474,6 +657,9 @@ class FakeListsServer {
       if (request.method == 'GET' && segments.length == 6 && segments[3] == 'images') {
         return _imageResponse(segments[4]);
       }
+      final claims = _claims(request, id, of.list['id'] as String, segments,
+          body, json, notFound, noContent);
+      if (claims != null) return claims;
       switch ((request.method, rest)) {
         case ('GET', ''):
           return json({
@@ -492,6 +678,13 @@ class FakeListsServer {
     }
     if (request.method == 'GET' && segments.length == 6 && segments[3] == 'images') {
       return _imageResponse(segments[4]);
+    }
+    // Owners of a list for someone else give too; a recipient gets the
+    // random-id 404 (RESERVING_PLAN D4).
+    if (of.list['recipient_kind'] == 'other') {
+      final claims = _claims(request, id, of.list['id'] as String, segments,
+          body, json, notFound, noContent);
+      if (claims != null) return claims;
     }
     switch ((request.method, rest)) {
       case ('GET', ''):

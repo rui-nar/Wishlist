@@ -14,16 +14,23 @@ import '../design/widgets/status_chip.dart';
 import '../lists/common.dart';
 import '../lists/gift_link_action.dart';
 import '../lists/price.dart';
+import 'gift_sheet.dart';
 import 'shared_repository.dart';
 
 enum _OccasionAction { leave }
 
-/// An occasion shared with the user, read-only: its list, who the gifts are
-/// for, the privacy banner, and the gifts with their links and prices; a
-/// gift with details shows them when tapped. The menu leaves the occasion. Nothing here edits anything
-/// (LISTS_GIFTS_SHARING_PLAN D8, D11).
+/// The occasion and what its givers did, loaded together; no claims for an
+/// owner, who is sent to the list.
+typedef _Page = ({OccasionView view, OccasionClaims? claims});
+
+/// An occasion shared with the user: its list, who the gifts are for, the
+/// privacy banner, and the gifts with their links, prices and rose activity
+/// chips. Tapping a gift opens its sheet, where the user reserves, joins a
+/// group gift or marks it bought (RESERVING_PLAN D13). The menu leaves the
+/// occasion. Nothing here edits the list (LISTS_GIFTS_SHARING_PLAN D8, D11).
 ///
-/// An owner who opens it is sent to the list, where they manage it.
+/// An owner who opens it is sent to the list, where they manage it; the
+/// occasion's activity is not asked for (RESERVING_PLAN D14).
 class OccasionScreen extends StatefulWidget {
   const OccasionScreen({super.key, required this.occasionId});
 
@@ -36,8 +43,14 @@ class OccasionScreen extends StatefulWidget {
 class _OccasionScreenState extends State<OccasionScreen>
     with ReloadOnReturn<OccasionScreen> {
   late final _repository = SharedRepository.of(context);
-  late Future<OccasionView> _occasion;
+  late Future<_Page> _page;
+
+  /// The claims loaded again after an action, newer than [_page]'s.
+  OccasionClaims? _claims;
   bool _leaving = false;
+
+  /// An action on a gift is on its way: no second one meanwhile.
+  bool _acting = false;
 
   @override
   void initState() {
@@ -49,13 +62,20 @@ class _OccasionScreenState extends State<OccasionScreen>
   void reload() => setState(_load);
 
   void _load() {
-    _occasion = _repository.occasion(widget.occasionId);
-    _occasion.then((view) {
-      if (view is OwnedOccasion && mounted) {
+    _claims = null;
+    _page = _fetch();
+  }
+
+  Future<_Page> _fetch() async {
+    final view = await _repository.occasion(widget.occasionId);
+    if (view is OwnedOccasion) {
+      if (mounted) {
         // In place of this page, so going back does not come here again.
         Router.neglect(context, () => context.go('/lists/${view.listId}'));
       }
-    }, onError: (_) {});
+      return (view: view, claims: null);
+    }
+    return (view: view, claims: await _repository.claims(widget.occasionId));
   }
 
   Future<void> _leave() async {
@@ -85,14 +105,132 @@ class _OccasionScreenState extends State<OccasionScreen>
     context.canPop() ? context.pop() : context.go('/shared');
   }
 
+  /// The gift's sheet, then the action chosen there.
+  Future<void> _openSheet(
+    SharedGift gift,
+    GiftClaim? claim,
+    bool passed,
+  ) async {
+    if (_acting) return;
+    final action = await showGiftSheet(
+      context,
+      gift: gift,
+      claim: claim,
+      passed: passed,
+    );
+    if (action != null && mounted) await _act(gift, claim, action);
+  }
+
+  /// Confirms [action] on [gift], or asks for the pledge, sends it, then
+  /// loads the claims again, after a refusal too (D13: no optimistic state).
+  Future<void> _act(
+    SharedGift gift,
+    GiftClaim? claim,
+    GiftAction action,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final occasionId = widget.occasionId;
+    Future<bool> confirm(String title, String body, String button) =>
+        confirmAction(context, title: title, body: body, action: button);
+    final Future<void> Function() send;
+    switch (action) {
+      case GiftAction.reserve:
+        send = () => _repository.reserve(occasionId, gift.id);
+      case GiftAction.release:
+        final confirmed = await confirm(
+          l10n.releaseTitle,
+          l10n.releaseBody,
+          l10n.claimRelease,
+        );
+        if (!confirmed) return;
+        send = () => _repository.release(occasionId, gift.id);
+      case GiftAction.markBought:
+        final confirmed = await confirm(
+          l10n.markBoughtTitle,
+          l10n.markBoughtBody,
+          l10n.claimMarkBought,
+        );
+        if (!confirmed) return;
+        send = () => _repository.markBought(occasionId, gift.id);
+      case GiftAction.leaveGroup:
+        final confirmed = await confirm(
+          l10n.leaveGroupTitle,
+          l10n.leaveGroupBody,
+          l10n.leaveGroupConfirm,
+        );
+        if (!confirmed) return;
+        send = () => _repository.leaveGroup(occasionId, gift.id);
+      case GiftAction.startGroup ||
+          GiftAction.joinGroup ||
+          GiftAction.changeAmount:
+        final mine = claim?.participants
+            .where((participant) => participant.mine)
+            .firstOrNull;
+        final pledge = await showPledgeDialog(
+          context,
+          action: action,
+          currency: gift.priceCurrency,
+          current: mine?.pledgeAmount,
+        );
+        if (pledge == null) return;
+        send = () => _repository.pledge(occasionId, gift.id, pledge.amount);
+    }
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    void say(String message) =>
+        messenger.showSnackBar(SnackBar(content: Text(message)));
+    setState(() => _acting = true);
+    try {
+      await send();
+      await _reloadClaims(say);
+    } on ClaimConflict catch (conflict) {
+      say(switch (conflict.code) {
+        ClaimConflictCode.taken => l10n.claimTakenNow,
+        ClaimConflictCode.bought => l10n.claimBoughtNow,
+        ClaimConflictCode.passed => l10n.claimPassedNow,
+      });
+      await _reloadClaims(say);
+    } catch (error) {
+      if (error is ApiException &&
+          (error.statusCode == 404 || error.statusCode == 422)) {
+        // The gift was deleted or changed (its price removed), or the
+        // occasion is no longer shared: the page, loaded again, shows which.
+        say(l10n.claimGiftChanged);
+        if (mounted) reload();
+      } else {
+        say(
+          error is ApiUnreachableException
+              ? l10n.claimNeedsConnection
+              : failureMessage(l10n, error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  /// The claims, loaded again; a failure says so and keeps what is shown.
+  Future<void> _reloadClaims(void Function(String) say) async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      final claims = await _repository.claims(widget.occasionId);
+      if (mounted) setState(() => _claims = claims);
+    } catch (error) {
+      if (!mounted) return;
+      isNotFound(error) ? reload() : say(failureMessage(l10n, error));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return FutureBuilder<OccasionView>(
-      future: _occasion,
+    return FutureBuilder<_Page>(
+      future: _page,
       builder: (context, snapshot) {
-        final view = snapshot.data;
+        final page = snapshot.data;
+        final view = page?.view;
         final occasion = view is InviteeOccasion ? view : null;
+        final claims = _claims ?? page?.claims;
         return Scaffold(
           appBar: AppBar(
             title: Text(occasion?.occasion.listTitle ?? ''),
@@ -120,10 +258,10 @@ class _OccasionScreenState extends State<OccasionScreen>
                       backLocation: '/shared',
                       backLabel: l10n.backToSharedWithMe,
                     )
-                  : occasion == null
+                  : occasion == null || claims == null
                       // Loading, or an owner on their way to the list.
                       ? const Center(child: CircularProgressIndicator())
-                      : _content(context, occasion),
+                      : _content(context, occasion, claims),
             ),
           ),
         );
@@ -131,10 +269,13 @@ class _OccasionScreenState extends State<OccasionScreen>
     );
   }
 
-  Widget _content(BuildContext context, InviteeOccasion view) {
+  Widget _content(
+    BuildContext context,
+    InviteeOccasion view,
+    OccasionClaims claims,
+  ) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final locale = Localizations.localeOf(context).toString();
     final occasion = view.occasion;
     final recipient = personName(l10n, occasion.recipientName);
     final metadata = theme.textTheme.bodyLarge?.copyWith(
@@ -167,67 +308,49 @@ class _OccasionScreenState extends State<OccasionScreen>
         ],
         for (final gift in view.gifts) ...[
           const SizedBox(height: Spacing.s12),
-          GiftCard(
-            title: gift.title,
-            image: gift.image == null
-                ? null
-                : ApiImage(context.read<ApiClient>(), gift.image!.thumbUrl),
-            onImageTap: gift.image == null
-                ? null
-                : () => showImageViewer(
-                      context,
-                      ApiImage(context.read<ApiClient>(), gift.image!.url),
-                      semanticLabel: gift.title,
-                    ),
-            metadata: gift.priceAmount == null
-                ? null
-                : formatPrice(gift.priceAmount!, gift.priceCurrency!, locale),
-            chips: [
-              if (gift.description.isNotEmpty)
-                StatusChip(label: l10n.giftDetails, icon: Icons.notes),
-              if (gift.links.isNotEmpty)
-                StatusChip(
-                  label: l10n.giftLinkCount(gift.links.length),
-                  icon: Icons.link,
-                ),
-            ],
-            action: giftLinkAction(gift.links),
-            onTap: gift.description.isEmpty
-                ? null
-                : () => _showDetails(context, gift),
-          ),
+          _card(context, gift, claims.gifts[gift.id], claims.passed),
         ],
       ],
     );
   }
 
-  /// The gift's title and details, which the card has no room for.
-  void _showDetails(BuildContext context, SharedGift gift) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) {
-        final theme = Theme.of(context);
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              Spacing.s24,
-              0,
-              Spacing.s24,
-              Spacing.s24,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(gift.title, style: theme.textTheme.titleLarge),
-                const SizedBox(height: Spacing.s12),
-                Text(gift.description, style: theme.textTheme.bodyLarge),
-              ],
-            ),
+  /// The gift's card: its activity chip first, in rose, when it has a
+  /// claim. Tapping it opens the sheet.
+  Widget _card(
+    BuildContext context,
+    SharedGift gift,
+    GiftClaim? claim,
+    bool passed,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
+    return GiftCard(
+      title: gift.title,
+      image: gift.image == null
+          ? null
+          : ApiImage(context.read<ApiClient>(), gift.image!.thumbUrl),
+      onImageTap: gift.image == null
+          ? null
+          : () => showImageViewer(
+                context,
+                ApiImage(context.read<ApiClient>(), gift.image!.url),
+                semanticLabel: gift.title,
+              ),
+      metadata: gift.priceAmount == null
+          ? null
+          : formatPrice(gift.priceAmount!, gift.priceCurrency!, locale),
+      chips: [
+        if (claim != null) claimChip(l10n, claim),
+        if (gift.description.isNotEmpty)
+          StatusChip(label: l10n.giftDetails, icon: Icons.notes),
+        if (gift.links.isNotEmpty)
+          StatusChip(
+            label: l10n.giftLinkCount(gift.links.length),
+            icon: Icons.link,
           ),
-        );
-      },
+      ],
+      action: giftLinkAction(gift.links),
+      onTap: () => _openSheet(gift, claim, passed),
     );
   }
 }

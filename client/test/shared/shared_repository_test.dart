@@ -6,6 +6,9 @@ import 'package:http/testing.dart';
 import 'package:wishlist/src/api/api_client.dart';
 import 'package:wishlist/src/shared/shared_repository.dart';
 
+import '../lists/support/fake_lists_server.dart';
+import '../support/fakes.dart';
+
 const _shared = {
   'id': 'o1',
   'name': 'Christmas 2026',
@@ -208,5 +211,169 @@ void main() {
 
     expect(seen.single.method, 'DELETE');
     expect(seen.single.url.path, '/api/occasions/a%2F..%2Fb/membership');
+  });
+
+  test('a 409 with a code no client knows stays an ApiException', () async {
+    code = 409;
+    answer = {'detail': 'Something new', 'code': 'later'};
+
+    await expectLater(
+      repository().reserve('o1', 'g1'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 409)),
+    );
+  });
+
+  test('claim ids are one path segment each', () async {
+    code = 204;
+
+    await repository().release('a/b', 'c?d');
+
+    expect(
+      seen.single.url.path,
+      '/api/occasions/a%2Fb/gifts/c%3Fd/reservation',
+    );
+  });
+
+  group('activity, against the fake server (RESERVING_PLAN D6)', () {
+    late FakeListsServer server;
+    late SharedRepository shared;
+    late String occasion;
+    late String other;
+    late String priced;
+    late String unpriced;
+
+    String path(String gift, String action) =>
+        '/api/occasions/$occasion/gifts/$gift/$action';
+
+    setUp(() {
+      server = FakeListsServer();
+      final list = server.addList(
+        'Christmas',
+        recipientName: 'Léa',
+        ownerNames: ['Bob Durand'],
+      );
+      priced = server.addGift(
+        list,
+        'Headphones',
+        priceAmount: '149.00',
+        priceCurrency: 'EUR',
+      );
+      unpriced = server.addGift(list, 'Socks');
+      occasion = server.addOccasion(list, 'Christmas 2026', '2026-12-24');
+      other = server.addOccasion(list, 'Birthday', '2027-03-02');
+      server.joined.add(occasion);
+      shared = SharedRepository(
+        ApiClient(server.client, baseUrl: kApiBase)
+          ..token = server.accounts.addSession(),
+      );
+    });
+
+    test('claims: passed, the states, the participants and their pledges',
+        () async {
+      server
+        ..addClaim(priced, occasion, [
+          FakeListsServer.giver('Carol', amount: '50.00', currency: 'EUR'),
+          FakeListsServer.giver(kAliceName, mine: true),
+        ], group: true)
+        ..addClaim(unpriced, other, [FakeListsServer.giver('Eve')]);
+
+      final claims = await shared.claims(occasion);
+
+      expect(server.calls.single, 'GET /api/occasions/$occasion/claims');
+      expect(claims.passed, isFalse);
+      final group = claims.gifts[priced]!;
+      expect(group.state, ClaimState.group);
+      expect(group.bought, isFalse);
+      expect(group.mine, isTrue);
+      expect(group.participants.first.displayName, 'Carol');
+      expect(group.participants.first.mine, isFalse);
+      expect(group.participants.first.pledgeAmount, '50.00');
+      expect(group.participants.first.pledgeCurrency, 'EUR');
+      expect(group.participants.last.pledgeAmount, isNull);
+      final taken = claims.gifts[unpriced]!;
+      expect(taken.state, ClaimState.taken);
+      expect(taken.participants, isEmpty);
+      expect(taken.mine, isFalse);
+    });
+
+    test('a free gift is absent; a passed occasion says so', () async {
+      server.passed.add(occasion);
+
+      final claims = await shared.claims(occasion);
+
+      expect(claims.passed, isTrue);
+      expect(claims.gifts, isEmpty);
+    });
+
+    test('each write: its method and path, a body only for the pledge',
+        () async {
+      final pledge = 'PUT ${path(priced, 'pledge')}';
+      await shared.reserve(occasion, priced);
+      await shared.release(occasion, priced);
+      await shared.markBought(occasion, unpriced);
+      await shared.pledge(occasion, priced, '50.00');
+      expect(server.bodies[pledge], {'amount': '50.00'});
+      await shared.pledge(occasion, priced, null);
+      expect(server.bodies[pledge], {'amount': null});
+      await shared.leaveGroup(occasion, priced);
+
+      expect(server.calls, [
+        'POST ${path(priced, 'reservation')}',
+        'DELETE ${path(priced, 'reservation')}',
+        'POST ${path(unpriced, 'bought')}',
+        pledge,
+        pledge,
+        'DELETE ${path(priced, 'pledge')}',
+      ]);
+      expect(server.bodies.keys, [pledge]);
+      expect(server.claims.containsKey(priced), isFalse);
+      expect(server.claims[unpriced]!['bought'], isTrue);
+    });
+
+    test('a 409 surfaces its code: taken, bought, passed', () async {
+      server
+        ..addClaim(priced, occasion, [FakeListsServer.giver('Carol')])
+        ..addClaim(
+          unpriced,
+          occasion,
+          [FakeListsServer.giver(kAliceName, mine: true)],
+          bought: true,
+        );
+      Matcher conflict(ClaimConflictCode code) =>
+          throwsA(isA<ClaimConflict>().having((e) => e.code, 'code', code));
+
+      await expectLater(
+        shared.reserve(occasion, priced),
+        conflict(ClaimConflictCode.taken),
+      );
+      await expectLater(
+        shared.pledge(occasion, priced, null),
+        conflict(ClaimConflictCode.taken),
+      );
+      await expectLater(
+        shared.release(occasion, unpriced),
+        conflict(ClaimConflictCode.bought),
+      );
+      server.passed.add(occasion);
+      await expectLater(
+        shared.leaveGroup(occasion, priced),
+        conflict(ClaimConflictCode.passed),
+      );
+    });
+
+    test('release and leave hold nothing: done all the same', () async {
+      await shared.release(occasion, priced);
+      await shared.leaveGroup(occasion, priced);
+
+      expect(server.claims, isEmpty);
+    });
+
+    test('an amount on a gift without a price is an ApiException 422',
+        () async {
+      await expectLater(
+        shared.pledge(occasion, unpriced, '10.00'),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 422)),
+      );
+    });
   });
 }

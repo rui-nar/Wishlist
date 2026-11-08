@@ -1,6 +1,6 @@
 /// What invitees see and do: the occasions shared with them, an occasion's
 /// list and gifts, joining by link and leaving (LISTS_GIFTS_SHARING_PLAN D5,
-/// D6, D8).
+/// D6, D8); reserving, group gifts and marking bought (RESERVING_PLAN D6).
 library;
 
 import 'package:flutter/widgets.dart';
@@ -90,6 +90,118 @@ class InviteeOccasion extends OccasionView {
 
   /// Oldest first.
   final List<SharedGift> gifts;
+}
+
+/// What holds a gift, as a giver of the occasion sees it (RESERVING_PLAN D6).
+enum ClaimState {
+  /// Reserved by one giver of this occasion.
+  reserved,
+
+  /// A group gift of this occasion.
+  group,
+
+  /// Held from another occasion: not by whom, nor where.
+  taken,
+}
+
+/// Someone in a claim. No user id: [mine] says which one is the user.
+class ClaimParticipant {
+  const ClaimParticipant({
+    required this.displayName,
+    required this.mine,
+    this.pledgeAmount,
+    this.pledgeCurrency,
+  });
+
+  factory ClaimParticipant.fromJson(Map<String, dynamic> json) =>
+      ClaimParticipant(
+        displayName: json['display_name'] as String,
+        mine: json['mine'] as bool,
+        pledgeAmount: json['pledge_amount'] as String?,
+        pledgeCurrency: json['pledge_currency'] as String?,
+      );
+
+  final String displayName;
+  final bool mine;
+
+  /// The server's decimal string, in [pledgeCurrency] (the gift's when it
+  /// was pledged, D9); both null without an amount.
+  final String? pledgeAmount;
+  final String? pledgeCurrency;
+}
+
+/// A gift's claim. A gift with none is free.
+class GiftClaim {
+  const GiftClaim({
+    required this.giftId,
+    required this.state,
+    required this.bought,
+    required this.participants,
+  });
+
+  factory GiftClaim.fromJson(Map<String, dynamic> json) => GiftClaim(
+        giftId: json['gift_id'] as String,
+        state: ClaimState.values.byName(json['state'] as String),
+        bought: json['bought'] as bool,
+        participants: [
+          for (final participant in json['participants'] as List<dynamic>)
+            ClaimParticipant.fromJson(participant as Map<String, dynamic>),
+        ],
+      );
+
+  final String giftId;
+  final ClaimState state;
+
+  /// Final; always false when [state] is [ClaimState.taken].
+  final bool bought;
+
+  /// By when they joined; always empty when [state] is [ClaimState.taken].
+  final List<ClaimParticipant> participants;
+
+  /// Whether the user is in it.
+  bool get mine => participants.any((participant) => participant.mine);
+}
+
+/// An occasion's activity (`GET /api/occasions/{id}/claims`).
+class OccasionClaims {
+  const OccasionClaims({required this.passed, required this.gifts});
+
+  factory OccasionClaims.fromJson(Map<String, dynamic> json) => OccasionClaims(
+        passed: json['passed'] as bool,
+        gifts: {
+          for (final gift in json['gifts'] as List<dynamic>)
+            (gift as Map<String, dynamic>)['gift_id'] as String:
+                GiftClaim.fromJson(gift),
+        },
+      );
+
+  /// The occasion's date has passed: nothing can be done any more (D8).
+  final bool passed;
+
+  /// Gift id → its claim; a gift absent from it is free.
+  final Map<String, GiftClaim> gifts;
+}
+
+/// Why the server refused a claim write (a 409).
+enum ClaimConflictCode {
+  /// Someone else holds the gift, here or in another occasion.
+  taken,
+
+  /// The gift is bought, which is final.
+  bought,
+
+  /// The occasion's date has passed.
+  passed,
+}
+
+/// A claim write the server refused with a 409 and its [code].
+class ClaimConflict implements Exception {
+  const ClaimConflict(this.code);
+
+  final ClaimConflictCode code;
+
+  @override
+  String toString() => 'ClaimConflict: ${code.name}';
 }
 
 /// Who opens a link, for the join screen.
@@ -213,6 +325,56 @@ class SharedRepository {
       rethrow;
     }
   }
+
+  /// What the occasion's givers did, for a giver of it; a recipient is never
+  /// asked (RESERVING_PLAN D4, D14).
+  Future<OccasionClaims> claims(String occasionId) async =>
+      OccasionClaims.fromJson(
+        await _api.getJson('/api/occasions/${_segment(occasionId)}/claims'),
+      );
+
+  /// Reserves the gift; mine already is fine. [ClaimConflict] `taken` when
+  /// someone else holds it.
+  Future<void> reserve(String occasionId, String giftId) =>
+      _claim(() => _api.post('${_gift(occasionId, giftId)}/reservation'));
+
+  /// Releases my reservation; holding none is fine. [ClaimConflict]
+  /// `bought` once bought.
+  Future<void> release(String occasionId, String giftId) =>
+      _claim(() => _api.delete('${_gift(occasionId, giftId)}/reservation'));
+
+  /// Marks bought, for good: my reservation, a group gift I am in, or a free
+  /// gift (reserved and bought at once).
+  Future<void> markBought(String occasionId, String giftId) =>
+      _claim(() => _api.post('${_gift(occasionId, giftId)}/bought'));
+
+  /// Joins the group gift, starting it when the gift is free, or changes my
+  /// [amount] (a decimal string in the gift's currency; null for none).
+  Future<void> pledge(String occasionId, String giftId, String? amount) =>
+      _claim(
+        () => _api.putJson('${_gift(occasionId, giftId)}/pledge', {
+          'amount': amount,
+        }),
+      );
+
+  /// Leaves the group gift; not being in it is fine.
+  Future<void> leaveGroup(String occasionId, String giftId) =>
+      _claim(() => _api.delete('${_gift(occasionId, giftId)}/pledge'));
+
+  /// A 409 with a known code becomes a [ClaimConflict]; anything else stays
+  /// [ApiClient]'s.
+  static Future<void> _claim(Future<Object?> Function() call) async {
+    try {
+      await call();
+    } on ApiException catch (error) {
+      final code = ClaimConflictCode.values.asNameMap()[error.body?['code']];
+      if (error.statusCode == 409 && code != null) throw ClaimConflict(code);
+      rethrow;
+    }
+  }
+
+  static String _gift(String occasionId, String giftId) =>
+      '/api/occasions/${_segment(occasionId)}/gifts/${_segment(giftId)}';
 
   /// Ids come from the location bar too: encoded, so one cannot add a path
   /// or a query to the call.

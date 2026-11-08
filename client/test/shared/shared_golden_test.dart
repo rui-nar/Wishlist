@@ -42,6 +42,40 @@ String _bobsOccasion(FakeListsServer server, {bool image = false}) {
   return server.addOccasion(list, 'Christmas 2026', '2026-12-24', token: 'tok');
 }
 
+/// Bob's occasion joined, with a gift in each activity state Alice can see
+/// (RESERVING_PLAN D13); the first is free.
+String _activeOccasion(FakeListsServer server) {
+  final occasion = _bobsOccasion(server);
+  server.joined.add(occasion);
+  final list = server.occasions[occasion]!['list_id'] as String;
+  final elsewhere = server.addOccasion(list, 'Birthday', '2027-03-02');
+  final [_, book, socks] = [for (final gift in server.gifts) gift['id'] as String];
+  String gift(String title) => server.addGift(list, title);
+  final carol = FakeListsServer.giver('Carol Lambert');
+  final alice = FakeListsServer.giver(kAliceName, mine: true);
+  server
+    ..addClaim(book, occasion, [carol])
+    ..addClaim(socks, occasion, [alice])
+    ..addClaim(gift('Scarf'), occasion, [carol], bought: true)
+    ..addClaim(gift('Candle'), occasion, [], bought: true)
+    ..addClaim(gift('Board game'), occasion, [carol, alice], group: true)
+    ..addClaim(gift('Bike lights'), occasion, [carol], group: true, bought: true)
+    ..addClaim(gift('Teapot'), elsewhere, [FakeListsServer.giver('Eve')]);
+  return occasion;
+}
+
+/// Bob's occasion joined, its headphones a group gift with pledges.
+String _groupOccasion(FakeListsServer server) {
+  final occasion = _bobsOccasion(server);
+  server.joined.add(occasion);
+  server.addClaim(server.gifts.first['id'] as String, occasion, [
+    FakeListsServer.giver('Carol Lambert', amount: '50.00', currency: 'EUR'),
+    FakeListsServer.giver('Dan Moreau'),
+    FakeListsServer.giver(kAliceName, mine: true, amount: '30.00', currency: 'EUR'),
+  ], group: true);
+  return occasion;
+}
+
 void main() {
   const brightnesses = {'light': Brightness.light, 'dark': Brightness.dark};
 
@@ -66,6 +100,10 @@ void main() {
       server.joined.add(occasion);
       return ('/shared/$occasion', null);
     },
+    'occasion_activity': (server) =>
+        ('/shared/${_activeOccasion(server)}', null),
+    'gift_sheet_group': (server) => ('/shared/${_groupOccasion(server)}', null),
+    'pledge_dialog': (server) => ('/shared/${_groupOccasion(server)}', null),
     'join_confirmation': (server) {
       _bobsOccasion(server);
       return ('/join', 'tok');
@@ -73,12 +111,30 @@ void main() {
     'join_error': (server) => ('/join', 'gone'),
   };
 
+  // What is tapped once the screen is shown.
+  final then = <String, Future<void> Function(WidgetTester)>{
+    'gift_sheet_group': (tester) async {
+      await tester.tap(find.text('Noise-cancelling headphones'));
+      await tester.pumpAndSettle();
+    },
+    'pledge_dialog': (tester) async {
+      await tester.tap(find.text('Noise-cancelling headphones'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Change my amount'));
+      await tester.pumpAndSettle();
+    },
+  };
+
+  // Every activity chip needs a taller screen.
+  const tall = {'occasion_activity'};
+
   group('goldens', skip: _skip, () {
     for (final MapEntry(key: screen, value: setUp) in screens.entries) {
       for (final MapEntry(key: mode, value: brightness)
           in brightnesses.entries) {
         testWidgets('$screen, $mode', (tester) async {
-          tester.view.physicalSize = const Size(390, 844);
+          tester.view.physicalSize =
+              Size(390, tall.contains(screen) ? 1120 : 844);
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.reset);
           tester.platformDispatcher.localesTestValue = const [
@@ -99,6 +155,7 @@ void main() {
             pendingJoin: PendingJoin(MemoryJoinBrowser(), token),
           );
           if (screen == 'occasion_view_image') await loadImages(tester);
+          await then[screen]?.call(tester);
 
           await expectLater(
             find.byType(WishlistApp),

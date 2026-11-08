@@ -85,7 +85,7 @@ void main() {
     );
   });
 
-  testWidgets('read-only: no edit control, no link, no invitee',
+  testWidgets('the list is read-only: no edit control, no link, no invitee',
       (tester) async {
     server.addGift(list, 'Headphones', links: ['https://shop.example/h']);
     await startApp(tester, server, '/shared/$occasion');
@@ -104,20 +104,18 @@ void main() {
     }
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(find.byType(TextField), findsNothing);
-    // A gift without details opens nothing.
-    expect(tester.widget<GiftCard>(find.byType(GiftCard)).onTap, isNull);
-
     await tester.tap(find.byTooltip('Show menu'));
     await tester.pumpAndSettle();
     expect(find.text('Leave the occasion'), findsOneWidget);
     expect(find.text('Rename'), findsNothing);
 
-    // Only the invitee's own calls: Shared with me, under this page, and
-    // the occasion.
-    expect(
-      server.calls.toSet(),
-      {'GET /api/shared', 'GET /api/occasions/$occasion'},
-    );
+    // Only the invitee's own calls: Shared with me, under this page, the
+    // occasion and its activity.
+    expect(server.calls.toSet(), {
+      'GET /api/shared',
+      'GET /api/occasions/$occasion',
+      'GET /api/occasions/$occasion/claims',
+    });
   });
 
   testWidgets('a gift with details shows them when tapped', (tester) async {

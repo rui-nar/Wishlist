@@ -51,6 +51,32 @@ void main() {
     expect(jsonDecode(seen.single.body), {'title': 'Book'});
   });
 
+  test('putJson sends a PUT with a JSON body and reads the object', () async {
+    final seen = <http.Request>[];
+    final api = ApiClient(
+      MockClient((request) async {
+        seen.add(request);
+        return http.Response('{"gift_id": "g1"}', 200);
+      }),
+      baseUrl: 'http://api.test',
+    )..token = 'secret';
+
+    final answer = await api.putJson(
+      '/api/occasions/o1/gifts/g1/pledge',
+      {'amount': null},
+    );
+
+    expect(answer, {'gift_id': 'g1'});
+    expect(seen.single.method, 'PUT');
+    expect(
+      seen.single.url,
+      Uri.parse('http://api.test/api/occasions/o1/gifts/g1/pledge'),
+    );
+    expect(seen.single.headers['Authorization'], 'Bearer secret');
+    expect(seen.single.headers['Content-Type'], startsWith('application/json'));
+    expect(jsonDecode(seen.single.body), {'amount': null});
+  });
+
   test('getJsonList reads an array; an object where an array is expected '
       'is not a usable answer, nor the reverse', () async {
     ApiClient answering(String body) => ApiClient(

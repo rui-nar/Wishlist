@@ -628,6 +628,186 @@
   "@leaveFailed": {
     "description": "A message after the server did not let the user leave an occasion."
   },
+  "claimReservedBy": "Reserved by {name}",
+  "@claimReservedBy": {
+    "description": "An occasion shared with the user: the chip of a gift another giver reserved.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Ana"
+      }
+    }
+  },
+  "claimReservedByYou": "Reserved by you",
+  "@claimReservedByYou": {
+    "description": "An occasion shared with the user: the chip of a gift the user reserved."
+  },
+  "claimReserved": "Reserved",
+  "@claimReserved": {
+    "description": "An occasion shared with the user: the chip of a reserved gift whose giver is no longer known."
+  },
+  "claimBoughtBy": "Bought by {name}",
+  "@claimBoughtBy": {
+    "description": "An occasion shared with the user: the chip of a gift another giver bought.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Ana"
+      }
+    }
+  },
+  "claimBoughtByYou": "Bought by you",
+  "@claimBoughtByYou": {
+    "description": "An occasion shared with the user: the chip of a gift the user bought."
+  },
+  "claimBought": "Bought",
+  "@claimBought": {
+    "description": "An occasion shared with the user: the chip of a bought gift whose giver deleted their account."
+  },
+  "claimGroup": "Group gift · {count}",
+  "@claimGroup": {
+    "description": "An occasion shared with the user: the chip of a group gift, with how many people are in it.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "claimGroupBought": "Group gift · bought",
+  "@claimGroupBought": {
+    "description": "An occasion shared with the user: the chip of a group gift that was bought."
+  },
+  "claimTaken": "Taken",
+  "@claimTaken": {
+    "description": "An occasion shared with the user: the chip of a gift someone gives for another occasion; who and where are not said."
+  },
+  "claimTakenExplanation": "Someone else is already giving this gift.",
+  "@claimTakenExplanation": {
+    "description": "The gift sheet: a gift taken by someone the user cannot see."
+  },
+  "claimYou": "You",
+  "@claimYou": {
+    "description": "The gift sheet: the user, in the list of people in a reservation or group gift."
+  },
+  "pledgeTotal": "{total} pledged of {price}",
+  "@pledgeTotal": {
+    "description": "The gift sheet: the pledges of a group gift added up, against the gift's price.",
+    "placeholders": {
+      "total": {
+        "type": "String",
+        "example": "€80.00"
+      },
+      "price": {
+        "type": "String",
+        "example": "€149.00"
+      }
+    }
+  },
+  "occasionPassed": "This occasion has passed: nothing can be reserved any more.",
+  "@occasionPassed": {
+    "description": "The gift sheet: the occasion's date has passed, so no action is offered."
+  },
+  "claimReserve": "Reserve",
+  "@claimReserve": {
+    "description": "The gift sheet: the button reserving the gift."
+  },
+  "claimStartGroup": "Start a group gift",
+  "@claimStartGroup": {
+    "description": "The gift sheet: the button starting a group gift; also the title of its dialog."
+  },
+  "claimMarkBought": "Mark as bought",
+  "@claimMarkBought": {
+    "description": "The gift sheet: the button marking the gift bought; also the button of its confirmation."
+  },
+  "claimRelease": "Release",
+  "@claimRelease": {
+    "description": "The gift sheet: the button releasing the user's reservation; also the button of its confirmation."
+  },
+  "claimJoinGroup": "Join the group gift",
+  "@claimJoinGroup": {
+    "description": "The gift sheet: the button joining a group gift; also the title of its dialog."
+  },
+  "claimChangeAmount": "Change my amount",
+  "@claimChangeAmount": {
+    "description": "The gift sheet: the button changing the user's pledge in a group gift; also the title of its dialog."
+  },
+  "claimLeaveGroup": "Leave the group gift",
+  "@claimLeaveGroup": {
+    "description": "The gift sheet: the button leaving a group gift."
+  },
+  "releaseTitle": "Release this gift?",
+  "@releaseTitle": {
+    "description": "The dialog before releasing a reservation."
+  },
+  "releaseBody": "Someone else can then reserve it.",
+  "@releaseBody": {
+    "description": "The dialog before releasing a reservation."
+  },
+  "leaveGroupTitle": "Leave the group gift?",
+  "@leaveGroupTitle": {
+    "description": "The dialog before leaving a group gift."
+  },
+  "leaveGroupBody": "Your pledge is removed. When the last person leaves, the gift is free again.",
+  "@leaveGroupBody": {
+    "description": "The dialog before leaving a group gift."
+  },
+  "leaveGroupConfirm": "Leave",
+  "@leaveGroupConfirm": {
+    "description": "The dialog's button leaving a group gift."
+  },
+  "markBoughtTitle": "Mark as bought?",
+  "@markBoughtTitle": {
+    "description": "The dialog before marking a gift bought."
+  },
+  "markBoughtBody": "This is final: it can't be undone, and nobody else can take this gift.",
+  "@markBoughtBody": {
+    "description": "The dialog before marking a gift bought: it is final."
+  },
+  "pledgeExplanation": "The others giving for this occasion see your name and your amount. The amount is optional.",
+  "@pledgeExplanation": {
+    "description": "The group gift dialog, for a gift with a price."
+  },
+  "pledgeExplanationNoPrice": "The others giving for this occasion see your name. This gift has no price, so there is no amount to give.",
+  "@pledgeExplanationNoPrice": {
+    "description": "The group gift dialog, for a gift without a price."
+  },
+  "pledgeAmountLabel": "My amount (optional)",
+  "@pledgeAmountLabel": {
+    "description": "The group gift dialog: the label of the amount field, in the gift's currency."
+  },
+  "pledgeInvalid": "Enter an amount such as 50 or 49.90",
+  "@pledgeInvalid": {
+    "description": "The group gift dialog: the amount is not a positive amount of at most 10 digits and 2 decimals."
+  },
+  "pledgeStart": "Start",
+  "@pledgeStart": {
+    "description": "The group gift dialog's button starting the group gift."
+  },
+  "pledgeJoin": "Join",
+  "@pledgeJoin": {
+    "description": "The group gift dialog's button joining the group gift."
+  },
+  "claimTakenNow": "Someone else has just taken this gift.",
+  "@claimTakenNow": {
+    "description": "A message after the server refused an action: someone else holds the gift."
+  },
+  "claimBoughtNow": "This gift is bought now, which is final.",
+  "@claimBoughtNow": {
+    "description": "A message after the server refused an action: the gift was bought meanwhile."
+  },
+  "claimPassedNow": "This occasion has passed: nothing can be changed any more.",
+  "@claimPassedNow": {
+    "description": "A message after the server refused an action: the occasion's date has passed."
+  },
+  "claimGiftChanged": "This gift changed meanwhile. Check it and try again.",
+  "@claimGiftChanged": {
+    "description": "A message after the server refused an action because the gift changed or is gone."
+  },
+  "claimNeedsConnection": "That didn't go through: it needs a connection. Try again.",
+  "@claimNeedsConnection": {
+    "description": "A message after an action on a gift could not reach the server."
+  },
   "occasionNoLongerShared": "This occasion is no longer shared with you.",
   "@occasionNoLongerShared": {
     "description": "An occasion that was deleted, or that the user left or was removed from."
