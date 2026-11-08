@@ -179,6 +179,9 @@ Later candidates: group gift activity, occasion reminders.
 - **Email:** Brevo, as TraxJourney (password reset and notifications).
 - **Hosting:** the server side runs on the owner's existing VPS (OVH, France),
   next to TraxJourney.
+- **Domain:** for now, PROD and VAL are subdomains of TraxJourney's domain
+  (hostnames in the owner's VPS notes, not in this public repository); Wishlist
+  gets its own domain later.
 - **Stack (agreed ahead of the needs, see
   [`plans/DEVOPS_FOUNDATION_PLAN.md`](plans/DEVOPS_FOUNDATION_PLAN.md)):**
   Flutter; FastAPI, Alembic, PostgreSQL.

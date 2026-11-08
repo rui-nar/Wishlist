@@ -69,7 +69,7 @@ Both are written into the plan's envelope, D5 and D8.
 - Decision: Defer (D10)
 - Revisit when: the VAL/PROD domain is decided, or a mobile build targeting VAL or PROD goes to testers: then set `PUBLIC_BASE_URL` in the deployment env and runbook, and hide share actions on mobile while it is empty
 - Override: —
-- Outcome: open
+- Outcome: partly fixed (chore/housekeeping-hosts): `PUBLIC_BASE_URL` in both `.env.example` and the runbook (step 6); the owner sets it on VAL and PROD. Still open: hiding share actions on mobile while it is empty, due before a mobile build goes to testers
 
 ## Round 2 — 2026-11-08, reviewed at dcf2593
 
