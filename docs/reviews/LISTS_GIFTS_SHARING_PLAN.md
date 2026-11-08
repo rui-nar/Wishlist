@@ -152,3 +152,23 @@ the owner allows them again. Recorded in `docs/NEEDS.md` (Access) and the plan
 - Revisit when: a StaleDataError, NoResultFound or IntegrityError 500 from `/api/occasions/*`, `/api/join/preview` or `/api/join` appears in VAL or PROD logs, or a later plan adds co-owners or offline sync; fix R4-1 and R5-1 together with one mapping of these errors to 404
 - Override: —
 - Outcome: open
+
+## Round 6 — 2026-11-08, U4 unit review (DELIVERY.md §5 point 3), reviewed at 57adb31
+
+Envelope question: when an owner removes an invitee who left a moment earlier,
+is the removal recorded? Answer (orchestrator, standing instruction): yes, the
+owner's explicit decision wins. Recorded in `docs/NEEDS.md` (Access).
+
+### R6-1 — After joining from a signed-out start, Back shows "This link is no longer valid"
+- Trigger: a signed-out invitee opens `/join#<token>`, signs in, joins, presses Back → `/sign-in?from=/join` forwards to `/join` with nothing pending → "no longer valid", repeatedly
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/shared, confidence=verified
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: open (fix unit F3)
+
+### R6-2 — Removing an invitee who just left is not recorded, and the owner is told the occasion is gone
+- Trigger: an owner removes someone who left a moment earlier → the server answers 404 before recording the removal → the client says "This occasion no longer exists" → the person can rejoin with the current link
+- Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=M/shared, confidence=verified
+- Decision: Fix now (D3, floor F3)
+- Override: —
+- Outcome: open (fix unit F2; allow-again made idempotent in the same unit)

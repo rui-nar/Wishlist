@@ -119,7 +119,8 @@ Later: priority, quantity (with partial reservations).
   reserved-but-not-bought gifts become available again; gifts they bought
   stay bought; their pledges are removed and the other participants of those
   group gifts are notified. An invitee who leaves on their own can rejoin with
-  a current link.
+  a current link, unless the owner removes them afterwards: an owner's removal
+  is recorded even if the person had already left.
 
 ### Deleting an account
 
