@@ -2,11 +2,12 @@
 
 One scenario: a "for me" list and a "for someone else" list, each with its
 owner, a gift with an image, a second gift the invitee of the first occasion
-reserved and bought there, and two occasions dated in the future and shared
-by link, an invitee who joined the first occasion and another who joined the
-second; someone who joined the first occasion of both lists and was removed
-from them; and a stranger who has nothing to do with either. Every endpoint
-is called by every actor on every list, and checked for:
+reserved and bought there, a third that is a group gift of the second
+occasion, and two occasions dated in the future and shared by link, an
+invitee who joined the first occasion and another who joined the second;
+someone who joined the first occasion of both lists and was removed from
+them; and a stranger who has nothing to do with either. Every endpoint is
+called by every actor on every list, and checked for:
 
 - access: what each relation to the list and its first occasion gets
   (`expected`); the owner of the "for me" list, its recipient, gets 404 from
@@ -18,7 +19,7 @@ is called by every actor on every list, and checked for:
 - probing: whatever a refused caller gets for a real id, they get for a random
   one;
 - no effect: a refused call leaves both lists as their owners see them, and
-  the first occasion's activity as its invitee sees it.
+  each occasion's activity as its invitee sees it.
 
 The routes that name no object of a list (my lists, creating a list, shared
 with me, the join endpoints, uploading an image or giving its URL) have their
@@ -82,6 +83,13 @@ INVITEES = {
     FOR_ME: {FIRST: ME_INVITEE, SECOND: ME_INVITEE_ELSEWHERE},
     FOR_SOMEONE: {FIRST: OTHER_INVITEE, SECOND: OTHER_INVITEE_ELSEWHERE},
 }
+# Who pledges on each list's group gift, in its second occasion, and how
+# much: on the "for me" list its only giver there, the owner being the
+# recipient; on the "for someone else" list its owner too (review R1-2).
+PLEDGES = {
+    FOR_ME: [(ME_INVITEE_ELSEWHERE, "40.00")],
+    FOR_SOMEONE: [(OTHER_OWNER, "25.00"), (OTHER_INVITEE_ELSEWHERE, None)],
+}
 
 # An actor's relation to a list, and to its first occasion (the one the
 # occasion endpoints are called on), decides what they get.
@@ -97,9 +105,9 @@ class Scenario:
     accounts: dict[str, Any]
     # Per list: the ids of what it holds, by name ("list_id", "gift_id",
     # "image_id", the gift's image, "claimed_gift_id", the gift bought in the
-    # first occasion, "occasion_id", "other_occasion_id", "user_id", the
-    # invitee of the first occasion, and "removed_id", the person removed
-    # from it).
+    # first occasion, "group_gift_id", the group gift of the second occasion,
+    # "occasion_id", "other_occasion_id", "user_id", the invitee of the first
+    # occasion, and "removed_id", the person removed from it).
     lists: dict[str, dict[str, str]]
     # Per list: each occasion's join token, by the name of its id.
     tokens: dict[str, dict[str, str]]
@@ -150,6 +158,7 @@ class Scenario:
                     ids["gift_id"],
                     ids["image_id"],
                     ids["claimed_gift_id"],
+                    ids["group_gift_id"],
                 }
         return everything - visible
 
@@ -193,11 +202,17 @@ def scenario(client, make_account) -> Scenario:
         claimed = client.post(
             f"/api/lists/{list_id}/gifts", json={"title": "Scarf"}, headers=headers
         ).json()
+        group = client.post(
+            f"/api/lists/{list_id}/gifts",
+            json={"title": "Bike", "price_amount": 480, "price_currency": "EUR"},
+            headers=headers,
+        ).json()
         ids = {
             "list_id": list_id,
             "gift_id": gift["id"],
             "image_id": image["id"],
             "claimed_gift_id": claimed["id"],
+            "group_gift_id": group["id"],
         }
         tokens[list_key] = {}
         for occasion, name in ((FIRST, "Birthday 2026"), (SECOND, "Christmas 2026")):
@@ -226,6 +241,14 @@ def scenario(client, make_account) -> Scenario:
                 headers=giver,
             )
             assert done.status_code == 200, done.text
+        # And a group gift in the second occasion (reserving plan D6, D9).
+        for pledger, amount in PLEDGES[list_key]:
+            pledged = client.put(
+                f"/api/occasions/{ids[SECOND]}/gifts/{group['id']}/pledge",
+                json={"amount": amount},
+                headers=accounts[pledger].headers,
+            )
+            assert pledged.status_code == 200, pledged.text
         removed = accounts[REMOVED_INVITEE]
         client.post(
             "/api/join",
@@ -339,6 +362,22 @@ ENDPOINTS = [
         200,
         recipient=404,
     ),
+    Endpoint(
+        "PUT",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/pledge",
+        {"amount": "20.00"},
+        200,
+        200,
+        recipient=404,
+    ),
+    Endpoint(
+        "DELETE",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/pledge",
+        None,
+        204,
+        204,
+        recipient=404,
+    ),
 ]
 
 # What only a giver may read (reserving plan D6): never a key of a response
@@ -440,7 +479,7 @@ def test_an_activity_key_is_caught_for_the_recipient_only():
 def owners_view(client, scenario: Scenario) -> dict[str, Any]:
     """Both lists as their owners see them: their gifts, their occasions with
     links and member counts, and who joined or was removed from the first;
-    and the first occasion's activity, as its invitee sees it."""
+    and each occasion's activity, as its invitee sees it."""
     view = {}
     for list_key, ids in scenario.lists.items():
         headers = scenario.headers(LISTS[list_key][0])
@@ -450,10 +489,11 @@ def owners_view(client, scenario: Scenario) -> dict[str, Any]:
         view[list_key, FIRST] = client.get(
             f"/api/occasions/{ids[FIRST]}/members", headers=headers
         ).json()
-        view[list_key, FIRST, "claims"] = client.get(
-            f"/api/occasions/{ids[FIRST]}/claims",
-            headers=scenario.headers(INVITEES[list_key][FIRST]),
-        ).json()
+        for occasion in (FIRST, SECOND):
+            view[list_key, occasion, "claims"] = client.get(
+                f"/api/occasions/{ids[occasion]}/claims",
+                headers=scenario.headers(INVITEES[list_key][occasion]),
+            ).json()
     return view
 
 

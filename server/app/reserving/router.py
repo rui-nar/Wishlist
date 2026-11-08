@@ -1,5 +1,5 @@
-"""The claims endpoints: an occasion's activity, reserving, releasing and
-marking bought (reserving plan D6).
+"""The claims endpoints: an occasion's activity, reserving, releasing,
+marking bought, and joining or leaving a group gift (reserving plan D6).
 
 Every route resolves its occasion through `giving_occasion`, so a recipient
 gets the random-id 404 for every route and every state of their gifts (D4).
@@ -16,8 +16,10 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import exists, select
 from sqlalchemy.dialects.postgresql import insert
@@ -28,6 +30,7 @@ from app.accounts.models import User
 from app.db import DbSession
 from app.lists.access import giving_occasion, not_found
 from app.lists.models import Gift, Occasion
+from app.reserving.models import GROUP as GROUP_KIND
 from app.reserving.models import RESERVATION, ClaimParticipant, GiftClaim
 from app.reserving.rules import has_passed, is_live, purge_expired, remove_participant
 from app.reserving.schemas import (
@@ -41,6 +44,7 @@ from app.reserving.schemas import (
     GiftClaimOut,
     OccasionClaims,
     ParticipantOut,
+    PledgeIn,
 )
 
 router = APIRouter(prefix="/api", tags=["reserving"])
@@ -171,6 +175,95 @@ def mark_bought(
     return _gift_claim_out(db, gift_id, occasion.id, user)
 
 
+@router.put(
+    "/occasions/{occasion_id}/gifts/{gift_id}/pledge",
+    response_model=GiftClaimOut,
+    responses=_CONFLICT_RESPONSE,
+)
+def pledge(
+    occasion_id: uuid.UUID,
+    gift_id: uuid.UUID,
+    body: PledgeIn,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> GiftClaimOut | JSONResponse:
+    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    now = request.app.state.clock()
+    if has_passed(occasion.date, now):
+        return _conflict(PASSED)
+    # The gift's currency now, stored with the amount: an owner changing it
+    # later does not change what was pledged (D9).
+    currency = db.scalar(select(Gift.price_currency).where(Gift.id == gift_id))
+    if body.amount is not None and currency is None:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("body", "amount"),
+                    "msg": "a gift with no price takes no amount",
+                }
+            ]
+        )
+    pledged = {
+        "pledge_amount": body.amount,
+        "pledge_currency": None if body.amount is None else currency,
+    }
+    # A free gift becomes a group gift with me in it.
+    created, claim = _take(
+        db, gift_id, occasion.id, user, now, bought_at=None, kind=GROUP_KIND, **pledged
+    )
+    if created:
+        return _gift_claim_out(db, gift_id, occasion.id, user)
+    # A reservation, mine included (release it first), or anything held from
+    # another occasion.
+    if claim is None or claim.occasion_id != occasion.id or claim.kind != GROUP_KIND:
+        return _conflict(TAKEN)
+    # Its composition is frozen once bought (Open decisions).
+    if claim.bought_at is not None:
+        return _conflict(BOUGHT)
+    # Joining, or changing my amount: the claim is locked, so participants
+    # of one group gift take turns (D7 step 4).
+    db.execute(
+        insert(ClaimParticipant)
+        .values(gift_id=gift_id, user_id=user.id, **pledged)
+        .on_conflict_do_update(
+            index_elements=[ClaimParticipant.gift_id, ClaimParticipant.user_id],
+            set_=pledged,
+        )
+    )
+    return _gift_claim_out(db, gift_id, occasion.id, user)
+
+
+@router.delete(
+    "/occasions/{occasion_id}/gifts/{gift_id}/pledge",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=_CONFLICT_RESPONSE,
+)
+def leave_group(
+    occasion_id: uuid.UUID,
+    gift_id: uuid.UUID,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> Response:
+    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    if has_passed(occasion.date, request.app.state.clock()):
+        return _conflict(PASSED)
+    claim = _locked_claim(db, gift_id)
+    # Not in it is the outcome asked for: nothing to do (D6). The last one out
+    # frees the gift.
+    if (
+        claim is not None
+        and claim.kind == GROUP_KIND
+        and _is_mine(db, claim, occasion.id, user)
+    ):
+        if claim.bought_at is not None:
+            return _conflict(BOUGHT)
+        remove_participant(db, gift_id, user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 def _conflict(code: ConflictCode) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
@@ -207,9 +300,13 @@ def _take(
     user: User,
     now: datetime,
     bought_at: datetime | None,
+    kind: str = RESERVATION,
+    pledge_amount: Decimal | None = None,
+    pledge_currency: str | None = None,
 ) -> tuple[bool, GiftClaim | None]:
     """Reserves the gift for the user in the occasion, bought at once when
-    `bought_at` is given (D7 step 3).
+    `bought_at` is given, or starts a group gift with the user's pledge when
+    `kind` is a group (D7 step 3).
 
     Answers (True, None) when it did. Otherwise the gift is held: (False, the
     claim holding it, locked `FOR UPDATE`). The primary key decides between
@@ -224,7 +321,7 @@ def _take(
             .values(
                 gift_id=gift_id,
                 occasion_id=occasion_id,
-                kind=RESERVATION,
+                kind=kind,
                 bought_at=bought_at,
             )
             .on_conflict_do_nothing(index_elements=[GiftClaim.gift_id])
@@ -232,7 +329,12 @@ def _take(
         )
         if created is not None:
             db.execute(
-                insert(ClaimParticipant).values(gift_id=gift_id, user_id=user.id)
+                insert(ClaimParticipant).values(
+                    gift_id=gift_id,
+                    user_id=user.id,
+                    pledge_amount=pledge_amount,
+                    pledge_currency=pledge_currency,
+                )
             )
             return True, None
         held = _locked_claim(db, gift_id)

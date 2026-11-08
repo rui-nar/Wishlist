@@ -1,4 +1,4 @@
-"""Response bodies of the claims endpoints (reserving plan D6).
+"""Request and response bodies of the claims endpoints (reserving plan D6).
 
 Givers only ever get these; no owner response carries any of them (D5).
 Fields are listed explicitly, and no user id appears: `mine` says which
@@ -7,9 +7,11 @@ participant is the caller.
 
 import uuid
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.lists.models import PRICE_PRECISION, PRICE_SCALE
 
 RESERVED = "reserved"
 GROUP = "group"
@@ -18,6 +20,19 @@ TAKEN = "taken"
 BOUGHT = "bought"
 PASSED = "passed"
 ConflictCode = Literal["taken", "bought", "passed"]
+
+# Bounded as prices are, to numeric(12,2), and never zero (D9).
+PledgeAmount = Annotated[
+    Decimal, Field(gt=0, max_digits=PRICE_PRECISION, decimal_places=PRICE_SCALE)
+]
+
+
+class PledgeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # In the gift's currency; none when the gift has no price (D9). Null
+    # joins without saying how much.
+    amount: PledgeAmount | None = None
 
 
 class ParticipantOut(BaseModel):
