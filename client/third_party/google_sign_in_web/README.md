@@ -2,23 +2,27 @@
 
 A copy of [`google_sign_in_web` 1.1.3](https://pub.dev/packages/google_sign_in_web/versions/1.1.3)
 (BSD-3-Clause, see `LICENSE`), wired in through `dependency_overrides` in
-`flutter_client/pubspec.yaml`.
+`client/pubspec.yaml`. It comes from TraxJourney, which wrote the patch
+(TraxJourney #611); Wishlist takes it as it is (`docs/plans/ACCOUNTS_PLAN.md`
+D11).
 
-## The patch (#611)
+## The patch
 
 Upstream's `GoogleSignInPlugin` constructor starts loading
 `https://accounts.google.com/gsi/client`. The constructor runs from the web
-plugin registrant, before `main()`, so every page of the web app fetched
+plugin registrant, before `main()`, so every page of the web app would fetch
 Google's script, share links included, whether or not the visitor signs in.
 
 Here the load starts in `init()` instead, and the app calls
-`GoogleSignIn.instance.initialize()` only from the login screen
-(`lib/src/auth/google_sign_in_init.dart`). Every other plugin API already
-waits for `init()`, so nothing else changes.
+`GoogleSignIn.instance.initialize()` only from the sign-in screen
+(`client/lib/src/auth/google_sign_in_init.dart`). Every other plugin API
+already waits for `init()`, so nothing else changes. The code comments still
+say "TraxJourney patch": that is where it was written.
 
-The patch is the second commit that touched this folder; the first is the
-verbatim upstream copy, so `git log -p -- flutter_client/third_party/google_sign_in_web`
-shows exactly what differs.
+In TraxJourney's history the patch is the second commit that touched this
+folder, after the verbatim upstream copy. Here the first commit is a verbatim
+copy of TraxJourney's patched folder, and the second adapts only this README.
+To see the patch itself, diff this folder against upstream 1.1.3.
 
 Reported upstream as flutter/flutter#194640.
 
