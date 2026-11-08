@@ -66,6 +66,21 @@ void main() {
     return updates;
   }
 
+  /// The browser going back to the history entry at [location].
+  Future<void> browserBack(WidgetTester tester, String location) async {
+    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      SystemChannels.navigation.name,
+      SystemChannels.navigation.codec.encodeMethodCall(
+        MethodCall(
+          'pushRouteInformation',
+          {'location': location, 'state': null},
+        ),
+      ),
+      (_) {},
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('signed out: through sign-in, back to the confirmation',
       (tester) async {
     final pending = opened('https://app.example/join#tok');
@@ -88,6 +103,42 @@ void main() {
     expect(find.text('Christmas 2026'), findsOneWidget);
     expect(server.bodies['POST /api/join/preview'], {'token': 'tok'});
     expect(server.calls, isNot(contains('POST /api/join')));
+  });
+
+  testWidgets('signed out, joined: back to sign-in goes home, not invalid',
+      (tester) async {
+    final pending = opened('https://app.example/join#tok');
+    final updates = historyUpdates(tester);
+    final app = await startApp(
+      tester,
+      server,
+      '/join',
+      signedIn: false,
+      pendingJoin: pending,
+    );
+    await app.auth.signInWithGoogle(kValidIdToken);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Join'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OccasionScreen), findsOneWidget);
+
+    // The browser's history: the sign-in entry, then the occasion in place
+    // of /join. Back returns to the sign-in entry.
+    expect(
+      [for (final (uri, replace) in updates) if (!replace) uri],
+      ['/join'],
+    );
+    expect(updates.first, ('/sign-in?from=%2Fjoin', true));
+    await browserBack(tester, updates.first.$1);
+
+    expect(find.text(_invalid), findsNothing);
+    expect(find.byType(JoinScreen), findsNothing);
+    expect(location(tester).path, '/');
+    expect(updates.last, ('/', true));
+    expect(
+      server.calls.where((call) => call == 'POST /api/join/preview'),
+      hasLength(1),
+    );
   });
 
   testWidgets('a reload during sign-in keeps the pending token',
