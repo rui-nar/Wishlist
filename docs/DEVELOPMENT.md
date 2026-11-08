@@ -64,6 +64,66 @@ docker compose -f docker-compose.dev.yml stop
 After pulling a change that adds a migration, run `.\dev.ps1` again: it
 applies the migrations before starting the API.
 
+## Google sign-in in DEV
+
+Everything except signing in works without it. With `GOOGLE_CLIENT_IDS`
+empty, `/api/config` returns `{"google_client_id":null}`, the client says
+Google sign-in is not configured, and `POST /api/auth/google` answers 503. The
+server tests need none of this: they never call Google.
+
+To sign in locally, the owner creates a web OAuth client once, in the Google
+Cloud console (<https://console.cloud.google.com>). VAL and PROD use the same
+project and the same client, with their own origins added
+([DEPLOYMENT](DEPLOYMENT.md), step 11).
+
+1. **The project.** Create one (or reuse the one already made for Wishlist).
+   A project id can never be changed afterwards, so choose it as if it were
+   public; only the display name can change.
+2. **The consent screen**, under Google Auth Platform:
+   - **Branding**: app name `Wishlist`, a support email, a developer contact
+     email. No logo: a logo makes Google review the branding first.
+   - **Audience**: user type **External** (anyone with a Google account).
+     While the publishing status is **Testing**, only the accounts listed
+     under Test users can sign in: add your own.
+   - **Data access**: no scope to add. Sign-in asks only for `openid`,
+     `email` and `profile`, which need no review.
+3. **The web client**, under Google Auth Platform → Clients → Create client:
+   - Application type: **Web application**, name `Wishlist web`.
+   - Authorised JavaScript origins: `http://localhost:5500`, the client's
+     fixed port in `dev.ps1` (see [Daily use](#daily-use)). If you change
+     the port, change it here too, or Google refuses the button with an
+     origin error.
+   - Authorised redirect URIs: none. The client gets an ID token from the
+     Google button and sends it to the server (accounts plan D2); nothing
+     redirects.
+
+   Google shows a client ID ending in `.apps.googleusercontent.com`, and a
+   client secret. The secret is not used anywhere: do not copy it.
+4. **`.env`**: put the client ID in, then stop both panes and run
+   `.\dev.ps1` again: `dev.ps1` loads `.env` only when it starts, and
+   `--reload` watches the code, not `.env`.
+
+   ```text
+   GOOGLE_CLIENT_IDS=<google-web-client-id>
+   ```
+
+   `<google-web-client-id>` is the client ID from step 3. It is public, but
+   `.env` is the only place it goes: never in a committed file.
+
+Check it:
+
+```powershell
+curl.exe -s http://localhost:8000/api/config   # {"google_client_id":"<google-web-client-id>"}
+```
+
+A new consent screen or origin can take a few minutes to reach Google's
+sign-in servers; until then the button may fail with an origin error.
+
+Android builds take their server client ID from `/api/config` too, but signing
+in on a device also needs an Android OAuth client registered with the app's
+package name and signing key, and the package name is still a placeholder:
+see [DEPLOYMENT](DEPLOYMENT.md#android-oauth-client).
+
 ## Tests
 
 ```powershell
