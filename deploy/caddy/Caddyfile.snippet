@@ -1,0 +1,24 @@
+# Wishlist's sites, appended to /etc/caddy/Caddyfile on the VPS, which also
+# serves TraxJourney. Replace <prod-host> and <val-host> with the real
+# hostnames (plan D13), and run
+#   caddy validate --config /etc/caddy/Caddyfile
+# before every reload: a reload that fails takes down every site on the host.
+# Each hostname needs its DNS record live before the first request, or the
+# certificate challenge fails and Caddy backs off.
+
+<prod-host> {
+	reverse_proxy 127.0.0.1:8010
+}
+
+<val-host> {
+	# The VAL auto-deploy webhook (plan D7). handle_path strips /gh-webhook, so
+	# the webhook sees its own /hooks/<id>. The path-matched block is tried
+	# before the catch-all, so neither the app's /api/* nor its client routes
+	# can take the hook's path. It is on VAL's site only: PROD never exposes it.
+	handle_path /gh-webhook/* {
+		reverse_proxy 127.0.0.1:9998
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8011
+	}
+}

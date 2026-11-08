@@ -1,0 +1,28 @@
+[Unit]
+Description=adnanh/webhook for Wishlist: GitHub workflow_run listener (auto-deploy VAL)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+# Wishlist's own instance (plan D7): its own hooks file and secret, and port
+# 9998 (plan D8), so TraxJourney's `webhook` unit on 9999 is never touched.
+# Loopback only: Caddy is the public side (/gh-webhook/* on the VAL host).
+ExecStart=/usr/bin/webhook -hooks /opt/wishlist-val/webhook/hooks.yaml -ip 127.0.0.1 -port 9998 -verbose
+Restart=on-failure
+RestartSec=5
+# The deploy user deploy.ps1 connects as. It must be in the `docker` group
+# (systemd applies the user's groups), own /opt/wishlist-val/webhook, and hold
+# the GHCR login in ~/.docker/config.json. A placeholder: the repository is
+# public, and the runbook writes the real name in while installing the unit.
+# systemd refuses to start it as is.
+User=<deploy-user>
+# Safe with the docker CLI: it is not setuid and talks to /run/docker.sock.
+# ProtectHome would hide ~/.docker (the GHCR login) and ProtectSystem=strict
+# would make the log and lock read-only. Being in the `docker` group is
+# root-equivalent anyway, so those would not contain a compromise.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

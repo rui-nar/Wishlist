@@ -32,12 +32,13 @@ for the user, decided once — not a finding.
 
 **Default envelope**
 
-> Provisional: the tech stack is not chosen yet. E1 and E4 are revised in a
-> dedicated commit once it is (§8).
-
-- **E1 — Deployment.** A single small deployment sized for a few hundred
-  users and their wishlists. Failures that need horizontal scaling or data
-  volumes well beyond that are out.
+- **E1 — Deployment.** One self-hosted VPS shared with TraxJourney
+  (`docs/DEPLOYMENT.md`). Per environment (PROD, VAL): one API process and
+  one PostgreSQL container. Sized for a few hundred users and their lists.
+  Failures that need several API hosts, horizontal scaling or data volumes
+  well beyond that are out. Concurrent requests on one process and one
+  database are in: two invitees acting on the same gift at the same moment is
+  a normal case, not a race to dismiss.
 - **E2 — Untrusted input.** Everything a client sends (web, Android, iOS),
   including requests that arrive through public share links, and every
   response from a third party (Google sign-in, link previews, shops). These
@@ -45,8 +46,9 @@ for the user, decided once — not a finding.
   anything only the client enforces is not enforced.
 - **E3 — Trusted.** Data our own code wrote to our database, the server or
   project config, and the admin.
-- **E4 — Validated shapes.** Only what the backend validates (schema,
-  security rules) may be assumed; ownership, limits and state may not.
+- **E4 — Validated shapes.** FastAPI validates request bodies against their
+  Pydantic models before handler code runs. Handlers may assume the shape;
+  they may not assume the values are allowed (ownership, role, limits, state).
 - **E5 — Clients in the wild.** Installed mobile builds cannot be forced to
   update, so older clients keep reading and writing after a backend change.
 
@@ -77,7 +79,9 @@ is sent back once, then dropped.
 These categories are never argued away by triage.
 
 - **F1 — Security.** Access to another user's data, an authorization bypass,
-  injection, a leaked secret or token.
+  injection, a leaked secret or token. This includes **breaking the
+  surprise**: a recipient able to see or infer invitee activity on their own
+  list, directly or indirectly (`docs/NEEDS.md`, Core rules).
 - **F2 — Data loss or corruption** of persisted data.
 - **F3 — Silent wrong result.** `impact: silent-wrong` — the user gets a wrong
   answer and nothing tells them.

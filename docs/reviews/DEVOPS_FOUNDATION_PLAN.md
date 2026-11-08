@@ -1,0 +1,216 @@
+# Review ledger — DevOps foundation
+
+Subject: docs/plans/DEVOPS_FOUNDATION_PLAN.md
+Envelope: plan section "Review envelope", plus REVIEW.md defaults
+
+## Round 1 — 2026-11-07, reviewed at ee8523e + uncommitted plan
+
+Envelope question to the user: RAM budget for Wishlist's containers on the
+shared 4 GB VPS, and whether a TraxJourney peak may OOM-kill a Wishlist
+container (and vice versa).
+Answer (user): about 1 GB in total; written into the plan's Review envelope.
+
+### R1-3 — Flutter dev client is cross-origin and no unit adds CORS
+- Trigger: owner runs `.\dev.ps1` → client on its own port calls `localhost:8000` → browser blocks the response → screen shows "server unreachable"
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: fixed (in plan)
+
+### R1-8 — U5 acceptance needs a CI run its triggers never create
+- Trigger: implementer pushes U5's branch → `test.yml` runs only on push to master and pull requests → no run, acceptance cannot be checked
+- Scores: trigger=concrete, impact=maintainability, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan)
+
+### R1-9 — U7 depends on U6 inside wave 3 (DELIVERY.md W1)
+- Trigger: orchestrator runs wave 3 in parallel → U7's dependency on U6 cannot be met
+- Scores: trigger=concrete, impact=maintainability, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan)
+
+### R1-1 — Backup failures have no observer
+- Trigger: password rotation, OOM kill or full disk → backup sidecar stops dumping → nobody notices until a restore is needed
+- Scores: trigger=plausible, impact=maintainability (triager: was data-loss; no data stored yet and loss needs a second failure), detect=silent (was logged), later=cheap, fix=S/local, confidence=inferred
+- Decision: Guard (D9) — floor re-score flagged to the user
+- Guard: (to add) healthcheck on the `backup` service failing when no dump is newer than 26 h, `restart: unless-stopped`; the runbook's backup check reads it
+- Override: user: Fix now — every finding is small and local; fix them all in the plan now
+- Outcome: fixed (in plan)
+
+### R1-2 — Seeding VAL from a prod dump fails when VAL is ahead or uses another role
+- Trigger: VAL migrated ahead of PROD, owner runs `seed-from-prod.yml` → leftover tables or ALTER OWNER errors → VAL crash-loops
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: the first table-changing migration reaches VAL before PROD, VAL's DB role differs from PROD's, or a seed fails with "already exists"/ALTER OWNER errors
+- Override: user: Fix now — every finding is small and local; fix them all in the plan now
+- Outcome: fixed (in plan)
+
+### R1-4 — `pg_isready` healthy during first-boot init
+- Trigger: first `up` on a fresh volume → healthcheck passes on the init server's socket → `alembic upgrade head` refused over TCP
+- Scores: trigger=plausible (triager: was concrete; needs a timing window), impact=wrong-visible, detect=logged, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: a fresh `.\dev.ps1` or first VAL/PROD `up` fails at `alembic upgrade head` with connection refused, or an app container stays stopped after a crash
+- Override: user: Fix now — every finding is small and local; fix them all in the plan now
+- Outcome: fixed (in plan)
+
+### R1-5 — Bind-mount ownership on Linux never exercised
+- Trigger: owner creates `/opt/wishlist/{db,backups}` as deploy user → a non-root sidecar or db gets "Permission denied"
+- Scores: trigger=plausible, impact=wrong-visible, detect=logged, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: the first-night dump check finds no dump, or a container logs "Permission denied" on those directories
+- Override: user: Fix now — every finding is small and local; fix them all in the plan now
+- Outcome: fixed (in plan)
+
+### R1-6 — Rollback to an older image ignores migrations
+- Trigger: release with a schema change rolled back to the previous image → old code fails against the newer schema; host compose left on the old tag blocks the next deploy
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: the first release after v0.1.0 with a migration changing existing tables, or before the runbook's rollback is first used on PROD
+- Override: user: Fix now — every finding is small and local; fix them all in the plan now
+- Outcome: fixed (in plan)
+
+### R1-7 — No procedure for a Postgres major-version bump
+- Trigger: Dependabot or the owner moves the pinned Postgres image across a major → data directory incompatible → db will not start
+- Scores: trigger=plausible, impact=wrong-visible, detect=logged, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: Dependabot proposes a Postgres major bump, or a major upgrade is planned
+- Override: user: Fix now — every finding is small and local; fix them all in the plan now
+- Outcome: fixed (in plan)
+
+### R1-10 — `.gitignore` owned by a later wave than the units producing caches
+- Trigger: U1 runs pytest → `__pycache__` untracked → committed by hand
+- Scores: trigger=plausible (triager: was concrete; U1 can add `server/.gitignore`, tools ship their own ignores), impact=maintainability, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: a unit's diff or the integrated diff contains `__pycache__` or other cache/build artefacts
+- Override: user: Fix now — every finding is small and local; fix them all in the plan now
+- Outcome: fixed (in plan)
+
+## Round 2 — 2026-11-07, reviewed at 04085b9
+
+Subject: the round 1 fixes and the media storage decision (D18).
+
+### R2-1 — Nothing pins `MEDIA_DIR` to the bind-mounted `/app/media`
+- Trigger: image built with a WORKDIR other than `/app` and the default `MEDIA_DIR=./media` → health check and smoke test pass → uploads land in the container layer and vanish on the next `up -d`
+- Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D3, floor F2)
+- Override: —
+- Outcome: fixed (in plan)
+
+### R2-3 — Hard-linking PROD media into VAL fails under `fs.protected_hardlinks=1`
+- Trigger: owner runs `seed-from-prod.sh` as the deploy user once uid-10001 files exist → `Operation not permitted` → script stops after VAL's database was replaced, VAL left down
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: fixed (in plan)
+
+### R2-4 — DEV media directory created by no unit and not ignored
+- Trigger: owner runs `.\dev.ps1` from a fresh clone → `/api/health` 503 `media: not writable`; a hand-made `media/` shows as untracked
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: fixed (in plan)
+
+### R2-2 — Rolled-back image stops on a migration revision it does not know
+- Trigger: rollback to an image older than the database's Alembic revision (or VAL seeded while its image is behind PROD's) → `alembic upgrade head` fails "Can't locate revision" → app restarts in a loop
+- Scores: trigger=plausible (triager: was concrete; a rollback follows a bad release, as scored in R1-6), impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: the first migration after the baseline is written (before it reaches PROD), before the runbook's rollback is first used on PROD, or VAL is seeded while its image is behind PROD's
+- Override: —
+- Outcome: open
+
+### R2-5 — Media purge counted in days, dump retention in number of dumps
+- Trigger: backup outage of several nights → 30 kept dumps span more than 30 days → restoring the oldest finds a purged image missing
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: the gifts feature plan implements the purge (state the rule relative to the oldest kept dump), or the backup healthcheck stays unhealthy for more than one night
+- Override: —
+- Outcome: open
+
+## Round 3 — 2026-11-07, reviewed at e543c77
+
+Subject: the round 2 fixes (R2-1, R2-3, R2-4). The reviewer traced all three
+end to end and found them sound; one leftover below.
+
+### R3-1 — "Boundaries crossed" still lists two `/opt` directories, not three
+- Trigger: owner or U8's implementer reads "Boundaries crossed" for what Wishlist adds to the VPS → it omits `/opt/wishlist-media`, which D18, U6 and U8 create
+- Scores: trigger=concrete, impact=maintainability, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan)
+
+## Round 4 — 2026-11-07, reviewed at 5525e7f
+
+Subject: the integrated diff of `feat/devops-foundation` against 7f67d95, the
+delivered implementation of the plan (DELIVERY.md §5 point 2). Generated
+Flutter platform files and lock files excluded from close reading. R4-1 and
+R4-2 come from the reviewer; R4-3 was entered by the orchestrator from U8's
+implementer report (triage only).
+
+### R4-2 — A Postgres major bump without the procedure starts an empty cluster, not a refused one
+- Trigger: owner changes `postgres:18.6` to a newer major in a VPS compose file and runs `up -d` instead of the runbook's upgrade procedure → the new image's PGDATA (`/var/lib/postgresql/<major>/docker`) is empty in the same volume, initdb runs, the app migrates an empty schema, health is 200 → PROD serves an empty database; users' new writes land in the new cluster and are lost when the old one is switched back in; the runbook (DEPLOYMENT.md:996-1002, :939) says the new major refuses to start
+- Scores: trigger=plausible, impact=wrong-visible (orchestrator: data-loss, see Decision), detect=user-visible, later=cheap, fix=S/local, confidence=inferred (mechanism verified by the triager in the compose files)
+- Decision: Fix now (D3) — orchestrator enforcement (skill step 7): the triager deferred it (D10), reasoning that the old cluster stays intact; but writes made while PROD runs on the empty cluster are persisted data that the only recovery (back to the old cluster) discards, so F2 applies
+- Override: —
+- Outcome: fixed (db7c724, U9)
+
+### R4-1 — No concurrency group on the image build: overlapping `validation` builds can leave VAL on the older commit
+- Trigger: owner pushes the `validation` tag twice within one build's duration and the first run finishes last → `:validation` holds the older commit, the webhook deploys it and logs success → VAL serves the older commit; the next `deploy.ps1 -Target Val` stops and says so
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred (missing `concurrency:` verified by the triager)
+- Decision: Defer (D10)
+- Revisit when: VAL serves an older commit than the `validation` tag, `deploy.ps1 -Target Val` reports a still-running build after it finished, or the release flow starts pushing two tags close together
+- Override: —
+- Outcome: open
+
+### R4-3 — Rolling PROD back across a migration crash-loops, contradicting D15
+- Trigger: owner rolls PROD back one version after a release that added a migration → the older image's entrypoint runs `alembic upgrade head`, cannot locate the database's revision, exits → the app restarts in a loop
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap (triager: was proposed as expensive; released images are not a §3 boundary, and the host compose file can override the entrypoint), fix=S/local, confidence=inferred
+- Decision: Duplicate (D2) of R2-2 — its trigger and its revisit trigger ("before the runbook's rollback is first used on PROD") already cover this; the runbook now forbids rolling back across a migration (DEPLOYMENT.md:958-968). Noted by the triager: the entrypoint.sh:3-5 comment ("a rollback needs no downgrade") overstates D15 while R2-2 is open
+- Override: —
+- Outcome: open (with R2-2)
+
+## Delivery
+
+Delivered on `feat/devops-foundation` from 2026-11-07 to 2026-11-08, from
+a1fba9f to db7c724.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Server skeleton: version, health, CORS, Alembic baseline | Opus | S2 | 1 | — | yes | — |
+| U2 | Flutter client skeleton showing both versions | Opus | S2 | 1 | — | yes | — |
+| U3 | Local DEV: Postgres, `dev.ps1`, `.env.example`, DEVELOPMENT.md | Opus | S2 | 2 | — | no | — |
+| U4 | Production image and entrypoint | Opus | S2 | 1 | — | yes | R4-3 (→ R2-2) |
+| U5 | CI: tests, image publishing, Dependabot | Opus | S2 | 1 | — | yes | R4-1 |
+| U6 | PROD/VAL compose, backup, smoke test | Opus | S2 | 2 | X2 → U6b | no | R4-2 |
+| U6b | Dump mode set explicitly (fix unit after U6's second failure) | Opus | S5 | 1 | — | yes | — |
+| U7 | Webhook, `deploy.ps1` | Opus | S2 | 1 | — | yes | — |
+| U8 | Deployment runbook | Opus | S2 | 1 | — | yes | R4-2 |
+| U9 | Runbook: what a Postgres major bump does (fixes R4-2) | Sonnet | — | 1 | — | yes | — |
+
+Notes:
+
+- Every plan unit failed S2: the plan's examples were TraxJourney files, and
+  this repository had no code. The user kept them all on Opus.
+- Scope changes: `Load-DotEnv.ps1` moved from U7 to U3 before delivery (U3's
+  `dev.ps1` needed it a wave earlier); U7's Scope was widened in advance to
+  one `deploy.env` line in the root `.gitignore` (X3).
+- Plan change during delivery, owner's decision: images are pushed with the
+  workflow's `GITHUB_TOKEN`, not a stored `GHCR_TOKEN`.
+- U3's second attempt came from integration, not its verifier: `localhost` in
+  `.env.example` made every test connection wait 5 s on Windows (164 s vs
+  8 s).
+- U6 failed the GitHub smoke test twice: a glob the non-root runner could not
+  expand, then a dump created 666 under the runner's default ACL on `/opt`
+  (confirmed by `getfacl` in the passing run). Local runs as root had hidden
+  both.
+- Delivery mechanics: agent worktrees started from `master`, so each brief
+  told the implementer to reset to the feature branch first; PowerShell is
+  blocked for worktree agents, so verifiers ran `dev.ps1` and `deploy.ps1`;
+  two session interruptions (U3/U4, U6b) were resumed from the agents'
+  uncommitted work.
+- `dev.ps1`'s interactive start failed on the owner's first run (pane titles
+  split by `Start-Process`, then panes started by wt with a broken PATH); fixed
+  after delivery, and the owner confirmed the client shows the server's version.
+- Not yet checked: the image build on a `validation` tag, and everything on
+  the VPS (owner steps, `docs/DEPLOYMENT.md`).
