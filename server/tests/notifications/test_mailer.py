@@ -73,6 +73,20 @@ def test_the_request_is_the_one_brevo_documents():
     }
 
 
+@pytest.mark.parametrize("name", ["", " \n"])
+def test_an_empty_sender_name_is_left_out(name):
+    requests: list[httpx.Request] = []
+
+    def record(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(201, json=ACCEPTED)
+
+    mailer = BrevoMailer(KEY, SENDER, name, transport=httpx.MockTransport(record))
+
+    assert mailer.send(TO, "Ana", MESSAGE) is Outcome.SENT
+    assert json.loads(requests[0].content)["sender"] == {"email": SENDER}
+
+
 def test_the_timeouts_are_five_seconds_to_connect_and_ten_to_read():
     mailer, requests = mailer_with(answer(201, json=ACCEPTED))
 

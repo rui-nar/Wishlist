@@ -50,10 +50,10 @@ class BrevoMailer:
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._api_key = api_key
-        self._sender = {
-            "name": single_line(sender_name),
-            "email": single_line(sender_address),
-        }
+        self._sender = {"email": single_line(sender_address)}
+        name = single_line(sender_name)
+        if name:
+            self._sender["name"] = name
         self._transport = transport
         self._timeout = httpx.Timeout(
             connect=CONNECT_TIMEOUT,
