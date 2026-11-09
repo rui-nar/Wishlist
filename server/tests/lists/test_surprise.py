@@ -148,9 +148,10 @@ TWINS = [("G1", "G2"), ("img1", "img2"), ("up1", "up2")]
 ENDINGS = ["gifts first", "occasions first", "list first"]
 # Each state is run for the owner and for the co-owner, with the endings in
 # turn, so that it meets two of the three: every combination would take
-# minutes, at tens of milliseconds a request.
+# minutes, at tens of milliseconds a request. Stepping by two puts the
+# co-owner's runs of the states left unbought (`UNBOUGHT`) on all three.
 RUNS = [
-    (state, actor, ENDINGS[(number + turn) % len(ENDINGS)])
+    (state, actor, ENDINGS[(2 * number + turn) % len(ENDINGS)])
     for number, state in enumerate(STATES)
     for turn, actor in enumerate((OWNER, CO_OWNER))
 ]
@@ -292,6 +293,21 @@ def holder(state: str) -> tuple[str, str]:
         if occasion != "D":
             return who, occasion
     return "ana", "A"
+
+
+def holders(state: str) -> set[str]:
+    """Everyone in G1's activity who is still an invitee."""
+    return {who for who, occasion, _, _ in STATES[state] if occasion != "D"}
+
+
+# The states whose claim on G1 is not bought: the co-owner's runs keep their
+# holders until after the deletions, which would otherwise only ever meet
+# bought claims, removal releasing the others (review R7-1).
+UNBOUGHT = {
+    state
+    for state, done in STATES.items()
+    if done and all(action != "bought" for _, _, action, _ in done)
+}
 
 
 def build(client, make_account, engine, state: str, kind: str = "self") -> World:
@@ -453,9 +469,10 @@ def activity(rec: Recorder) -> None:
     rec.call("GET", CLAIMS, occasion_id="nowhere")
 
 
-def edits(rec: Recorder, state: str) -> None:
+def edits(rec: Recorder, state: str, keep_holders: bool) -> None:
     """Every change the recipient can make short of deleting their gifts,
-    occasions and list."""
+    occasions and list; the holders of G1's activity stay invitees when
+    `keep_holders`."""
     rec.call("PATCH", "/api/lists/{list_id}", json={"title": "Big day"}, list_id="list")
     rec.register(
         "new list",
@@ -516,13 +533,21 @@ def edits(rec: Recorder, state: str) -> None:
         key="join_token",
     )
     rec.call("DELETE", "/api/occasions/{occasion_id}/link", occasion_id="B")
-    # The invitee who holds the activity, against one who holds none (D10).
     who, where = holder(state)
     member = "/api/occasions/{occasion_id}/members/{user_id}"
-    rec.twin("DELETE", member, {"occasion_id": (where, "A"), "user_id": (who, "ben")})
+    if keep_holders:
+        # Not removed: the deletions meet their claim (review R7-1).
+        kept = holders(state)
+    else:
+        # The invitee who holds the activity, against one who holds none
+        # (D10).
+        rec.twin(
+            "DELETE", member, {"occasion_id": (where, "A"), "user_id": (who, "ben")}
+        )
+        kept = {who, "ben"}
     for occasion_name, (_, invitees) in OCCASIONS.items():
         for invitee in invitees:
-            if invitee not in (who, "ben"):
+            if invitee not in kept:
                 rec.call("DELETE", member, occasion_id=occasion_name, user_id=invitee)
     rec.call(
         "DELETE",
@@ -599,13 +624,32 @@ def assert_shows_no_activity(answers: Iterable[Answer]) -> None:
             assert not [n for n in INVITEE_NAMES if n in answer.body], answer.call
 
 
-def run(client, engine, built: World, actor: str, state: str, ending: str) -> Recorder:
-    """The recipient's calls, in order."""
+def run(
+    client,
+    engine,
+    built: World,
+    actor: str,
+    state: str,
+    ending: str,
+    unbought: int | None = None,
+) -> Recorder:
+    """The recipient's calls, in order. The co-owner keeps the holders of
+    G1's activity in place (review R7-1); `unbought`, when given, is how many
+    unbought claims G1 must still have when the deletions start."""
     rec = Recorder(client, built.accounts[actor].headers, built.ids)
     reads(rec, ("G1", "G2"), ("img1", "img2"))
     activity(rec)
-    edits(rec, state)
+    edits(rec, state, keep_holders=actor == CO_OWNER)
     reads(rec, ("G1", "G2", "G3"), ("up1", "up2"))
+    if unbought is not None:
+        with engine.connect() as connection:
+            assert unbought == connection.scalar(
+                text(
+                    "SELECT count(*) FROM gift_claims"
+                    " WHERE gift_id = :gift AND bought_at IS NULL"
+                ),
+                {"gift": built.ids["G1"]},
+            )
     deletions(rec, ending, second_session(engine, built.ids[actor]))
     return rec
 
@@ -621,8 +665,11 @@ def test_the_recipient_sees_nothing(
     url_fetcher.result = (png(), "image/png")
     control = build(client, make_account, engine, "none")
     world = build(client, make_account, engine, state)
+    meets_unbought = actor == CO_OWNER and state in UNBOUGHT
     theirs = run(client, engine, control, actor, state, ending)
-    ours = run(client, engine, world, actor, state, ending)
+    ours = run(
+        client, engine, world, actor, state, ending, 1 if meets_unbought else None
+    )
 
     # Whatever the activity, the same answers, from the first call of the
     # setup to the account's deletion.
@@ -646,6 +693,17 @@ def test_the_recipient_sees_nothing(
         [*world.setup.answers, *ours.answers, *control.setup.answers, *theirs.answers]
     )
     assert_claims_consistent(engine)
+
+
+def test_the_recipients_deletions_meet_unbought_claims_in_every_ending():
+    """Guard for review R7-1: the runs whose deletions meet an unbought
+    claim on G1 (checked in the database before they start) end in every
+    way."""
+    assert {
+        ending
+        for state, actor, ending in RUNS
+        if actor == CO_OWNER and state in UNBOUGHT
+    } == set(ENDINGS)
 
 
 def test_every_route_is_called(client, make_account, engine, url_fetcher):
