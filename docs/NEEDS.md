@@ -167,9 +167,12 @@ Later: priority, quantity (with partial reservations).
     hidden gift is revealed once the latest date the occasion ever had has
     passed. Otherwise a recipient could move the date into the past, read
     the reveals and move it back.
-  - A hidden gift whose author leaves, is removed or deletes their account
-    stays, with their name (no name after an account deletion); nobody can
-    edit it any more.
+  - A hidden gift whose author leaves or deletes their account stays, with
+    their name (no name after an account deletion); nobody can edit it any
+    more. When the owner removes its author, their hidden gifts nobody
+    bought are deleted: the owner's remedy against an abusive invitee.
+  - Moving an occasion's date earlier shows the same warning on every
+    occasion: hidden gifts are revealed after the later date anyway.
   - Revealed gifts, with the three choices, also show to the owners of a
     "for someone else" list.
 
@@ -253,7 +256,9 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
 - A first email waits about a minute, so a quick correction or a burst of
   comments arrives as one email.
 - Not notified for now: a gift marked received, an occasion or list
-  deleted, a hidden gift edited or deleted by its author.
+  deleted, a hidden gift edited or deleted by its author, and anything the
+  recipient does with a revealed gift (received, dismiss, keep, or editing
+  it first): the hidden gift's story ended with the reveal.
 
 ### Free and premium (from the first release)
 
