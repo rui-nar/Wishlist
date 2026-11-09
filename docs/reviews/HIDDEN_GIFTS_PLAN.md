@@ -59,3 +59,12 @@ that the gift was removed (recorded in NEEDS, Notifications).
 - Decision: Defer (D8)
 - Override: orchestrator, under the standing instruction: Fix now — the notification is now a NEEDS requirement, and a failing fan-out would also drop the notifications about the leaver's other group gifts
 - Outcome: open
+
+## Round 3 — 2026-11-09, unit review of U1, reviewed at 29ec85f
+
+### R3-1 — Dismissing a revealed hidden gift can deadlock with its author's account deletion
+- Trigger: the author of a hidden gift who bought it deletes their account while the recipient dismisses it → `delete_gift` holds the gift and waits on the claim; `delete_me` holds the claim (release) and waits on the gift (`hidden_by` SET NULL) → deadlock, one 500
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/shared, confidence=verified
+- Decision: Defer (D10)
+- Override: orchestrator, under the standing instruction: Fix now — D10's lock order (user → occasions → gifts → claims) is a stated invariant of the plan and the fix is one helper in `lifecycle.py`; account deletion answering 500 is what RESERVING R9-3 was fixed for
+- Outcome: open
