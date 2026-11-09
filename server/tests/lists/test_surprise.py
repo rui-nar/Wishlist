@@ -34,7 +34,9 @@ Hidden gifts are activity too (hidden gifts plan D11). `HIDDEN_STATES` are
 built on the `none` state of G1: only the world has the hidden gift, whose id
 and image's id are random in the control, and the recipient's calls name them
 in both. `test_a_revealed_gift_shows_as_the_gift_alone` is the decided
-exception, once the occasion has passed.
+exception, once the occasion has passed. Comments and following are activity
+too (comments plan D5): the "commented" state on G1, whose comment's id is
+random in the control, and the recipient's calls name it in both.
 """
 
 import io
@@ -124,6 +126,16 @@ STATES = {
     # Expired: no giver but its own sees it any more (D8, review R3-1).
     "claim of the passed occasion, expired": [("pia", "P", "reservation", None)],
     "bought for an occasion since deleted": [("dan", "D", "bought", None)],
+    # A thread with an edited comment, a comment by a since-removed invitee,
+    # and a follower (comments plan D5); the owner's removal happens in both
+    # worlds.
+    "commented": [
+        ("ana", "A", "comment", None),
+        ("ana", "A", "edit comment", None),
+        ("ben", "A", "comment", None),
+        ("eve", "A", "follow", None),
+        ("ben", "A", "remove", None),
+    ],
 }
 
 ADD = ("ana", "A", "add", None)
@@ -172,6 +184,8 @@ HIDDEN_STATES = {
 # The steps of a state, of either kind.
 STEPS = STATES | HIDDEN_STATES
 
+COMMENTS = "/api/occasions/{occasion_id}/gifts/{gift_id}/comments"
+FOLLOW = "/api/occasions/{occasion_id}/gifts/{gift_id}/follow"
 # The activity routes but the claims read, each with its body (D6).
 ACTIVITY = [
     ("POST", "/api/occasions/{occasion_id}/gifts/{gift_id}/reservation", None),
@@ -188,6 +202,13 @@ ACTIVITY = [
         {"title": "Renamed"},
     ),
     ("DELETE", "/api/occasions/{occasion_id}/hidden-gifts/{gift_id}", None),
+    # The thread and following (comments plan D5).
+    ("GET", COMMENTS, None),
+    ("POST", COMMENTS, {"body": "Hello"}),
+    ("PATCH", COMMENTS + "/{comment_id}", {"body": "Edited"}),
+    ("DELETE", COMMENTS + "/{comment_id}", None),
+    ("PUT", FOLLOW, None),
+    ("DELETE", FOLLOW, None),
 ]
 CLAIMS = "/api/occasions/{occasion_id}/claims"
 HIDDEN_GIFTS = "/api/occasions/{occasion_id}/hidden-gifts"
@@ -216,6 +237,10 @@ ACTIVITY_KEYS = {
     "taken",
     "author",
     "mine",
+    "comments",
+    "following",
+    "author_name",
+    "edited",
 }
 
 # The twins of a world, by the names of their ids: swapped, each answer about
@@ -448,6 +473,10 @@ def build(
         OWNER: owner.id,
         "nowhere": str(uuid.uuid4()),
         "nowhere gift": str(uuid.uuid4()),
+        "nowhere comment": str(uuid.uuid4()),
+        # Replaced by the state's first comment, when it has one: the
+        # recipient's calls name it in every world.
+        "comment": str(uuid.uuid4()),
     }
     setup = Recorder(client, owner.headers, ids)
     body = {"title": "My birthday", "recipient_kind": kind}
@@ -515,6 +544,8 @@ def build(
             continue
         elif action == "add":
             add_hidden(client, ids, accounts[who], occasion, "H", GIFT["title"])
+        elif action in ("comment", "edit comment", "follow"):
+            thread_step(client, ids, headers, occasion, action, who == "ana")
         else:
             gift = ids["H" if hidden else "G1"]
             path = f"/api/occasions/{ids[occasion]}/gifts/{gift}/{action}"
@@ -549,6 +580,8 @@ def build(
     # was bought in the deleted occasion (D6, D8, review R3-1).
     if hidden and not control:
         assert_hidden_gift_is_there(client, engine, state, accounts, ids)
+    elif state == "commented" and not control:
+        assert_thread_is_there(client, accounts, ids)
     elif not hidden and not control and STATES[state]:
         who, occasion = holder(state)
         seen = client.get(
@@ -556,6 +589,44 @@ def build(
         )
         assert ids["G1"] in [gift["gift_id"] for gift in seen.json()["gifts"]]
     return World(accounts=accounts, ids=ids, setup=setup)
+
+
+def thread_step(client, ids, headers, occasion, action, named) -> None:
+    """A step of the "commented" state on G1 (comments plan D5). A `named`
+    comment's id is the one the recipient's calls name."""
+    thread = f"/api/occasions/{ids[occasion]}/gifts/{ids['G1']}"
+    if action == "comment":
+        done = client.post(
+            f"{thread}/comments", json={"body": "Who has it?"}, headers=headers
+        )
+        assert done.status_code == 201, done.text
+        if named:
+            ids["comment"] = done.json()["id"]
+    elif action == "edit comment":
+        done = client.patch(
+            f"{thread}/comments/{ids['comment']}",
+            json={"body": "Who has the receipt?"},
+            headers=headers,
+        )
+        assert done.status_code == 200, done.text
+    else:
+        done = client.put(f"{thread}/follow", headers=headers)
+        assert done.status_code == 204, done.text
+
+
+def assert_thread_is_there(client, accounts, ids) -> None:
+    """The thread of the "commented" state, as a giver sees it: the edited
+    comment, and the comment of an invitee since removed, with their name."""
+    seen = client.get(
+        f"/api/occasions/{ids['A']}/gifts/{ids['G1']}/comments",
+        headers=accounts["eve"].headers,
+    )
+    assert seen.status_code == 200, seen.text
+    assert seen.json()["following"] is True
+    assert [
+        (comment["author_name"], comment["edited"])
+        for comment in seen.json()["comments"]
+    ] == [(NAMES["ana"], True), (NAMES["ben"], False)]
 
 
 # The hidden states whose gift no longer exists once the world is built (D8,
@@ -657,10 +728,20 @@ def activity(rec: Recorder) -> None:
     """Every activity route on G1 in every occasion, hidden gifts included,
     and every activity route on ids that exist nowhere. `reads` reads each
     occasion's claims."""
-    targets = [(occasion, "G1") for occasion in OCCASIONS]
-    for occasion, gift in [*targets, ("nowhere", "nowhere gift")]:
+    targets = [(occasion, "G1", "comment") for occasion in OCCASIONS]
+    for occasion, gift, comment in [
+        *targets,
+        ("nowhere", "nowhere gift", "nowhere comment"),
+    ]:
         for method, route, body in ACTIVITY:
-            rec.call(method, route, json=body, occasion_id=occasion, gift_id=gift)
+            rec.call(
+                method,
+                route,
+                json=body,
+                occasion_id=occasion,
+                gift_id=gift,
+                comment_id=comment,
+            )
     rec.call("GET", CLAIMS, occasion_id="nowhere")
 
 
@@ -670,7 +751,14 @@ def hidden_routes(rec: Recorder, gift: str, image: str) -> None:
     for occasion in OCCASIONS:
         for method, route, body in ACTIVITY:
             if "{gift_id}" in route:
-                rec.call(method, route, json=body, occasion_id=occasion, gift_id=gift)
+                rec.call(
+                    method,
+                    route,
+                    json=body,
+                    occasion_id=occasion,
+                    gift_id=gift,
+                    comment_id="comment",
+                )
         for variant in VARIANTS:
             rec.call(
                 "GET",
@@ -983,6 +1071,8 @@ def test_a_giving_owner_sees_the_activity(client, make_account, engine, state):
         if state in HIDDEN_STATES:
             for occasion in OCCASIONS:
                 rec.call("GET", HIDDEN_GIFTS, occasion_id=occasion)
+        for occasion in OCCASIONS:
+            rec.call("GET", COMMENTS, occasion_id=occasion, gift_id="G1")
         recorders.append(rec)
     ours, theirs = recorders
 
@@ -992,7 +1082,10 @@ def test_a_giving_owner_sees_the_activity(client, make_account, engine, state):
         for line in differences(ours.answers, theirs.answers, mapping)
     }
     claims = {f"GET {CLAIMS.format(occasion_id=name)}" for name in OCCASIONS}
-    if state in STATES:
+    if state == "commented":
+        # Through the thread alone: no claim is involved (comments plan D5).
+        assert differing == {f"GET {COMMENTS.format(occasion_id='A', gift_id='G1')}"}
+    elif state in STATES:
         assert differing <= claims
     else:
         # Through the hidden gift's occasion alone, its claim included (D7).

@@ -29,9 +29,9 @@ from sqlalchemy.orm import Session
 from app.accounts.deps import CurrentUser
 from app.accounts.models import User
 from app.db import DbSession
-from app.lists.access import giving_occasion, not_found
-from app.lists.models import Gift, Occasion
-from app.lists.visibility import in_occasion, lock_gift_in_occasion
+from app.lists.access import giving_gift, giving_occasion
+from app.lists.models import Gift
+from app.lists.visibility import in_occasion
 from app.reserving.models import GROUP as GROUP_KIND
 from app.reserving.models import RESERVATION, ClaimParticipant, GiftClaim
 from app.reserving.rules import has_passed, is_live, purge_expired, remove_participant
@@ -114,7 +114,7 @@ def reserve(
     user: CurrentUser,
     db: DbSession,
 ) -> GiftClaimOut | JSONResponse:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     now = request.app.state.clock()
     if has_passed(occasion.date, now):
         return _conflict(PASSED)
@@ -142,7 +142,7 @@ def release(
     user: CurrentUser,
     db: DbSession,
 ) -> Response:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     if has_passed(occasion.date, request.app.state.clock()):
         return _conflict(PASSED)
     claim = _locked_claim(db, gift_id)
@@ -170,7 +170,7 @@ def mark_bought(
     user: CurrentUser,
     db: DbSession,
 ) -> GiftClaimOut | JSONResponse:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     now = request.app.state.clock()
     if has_passed(occasion.date, now):
         # The one write a passed occasion allows: recording a gift handed
@@ -207,7 +207,7 @@ def pledge(
     user: CurrentUser,
     db: DbSession,
 ) -> GiftClaimOut | JSONResponse:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     now = request.app.state.clock()
     if has_passed(occasion.date, now):
         return _conflict(PASSED)
@@ -266,7 +266,7 @@ def leave_group(
     user: CurrentUser,
     db: DbSession,
 ) -> Response:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     if has_passed(occasion.date, request.app.state.clock()):
         return _conflict(PASSED)
     claim = _locked_claim(db, gift_id)
@@ -288,24 +288,6 @@ def _conflict(code: ConflictCode) -> JSONResponse:
         status_code=status.HTTP_409_CONFLICT,
         content={"detail": _CONFLICTS[code], "code": code},
     )
-
-
-def _giving_gift(
-    db: Session, user: User, occasion_id: uuid.UUID, gift_id: uuid.UUID
-) -> Occasion:
-    """The occasion, if the user gives in it and its givers see the gift (on
-    its list or one of its hidden gifts, not received); otherwise 404 (D6,
-    hidden gifts plan D4).
-
-    The gift is locked `FOR KEY SHARE` (D7 step 2): its deletion at the same
-    moment either committed before (404) or waits for this request, while an
-    owner's edit of it, or its receipt, is not blocked. Only its id is read,
-    so the gift row is never in the session to be written back (D3).
-    """
-    occasion = giving_occasion(db, user, occasion_id)
-    if not lock_gift_in_occasion(db, gift_id, occasion):
-        raise not_found()
-    return occasion
 
 
 def _take(
