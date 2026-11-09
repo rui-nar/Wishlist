@@ -122,6 +122,40 @@ def giving_occasion(
     return occasion
 
 
+def giving_gift(
+    db: Session,
+    user: User,
+    occasion_id: uuid.UUID,
+    gift_id: uuid.UUID,
+    lock: bool = True,
+) -> Occasion:
+    """The occasion, if the user gives in it and its givers see the gift (on
+    its list or one of its hidden gifts, not received); otherwise 404
+    (reserving plan D6, hidden gifts plan D4, comments plan D6).
+
+    For a write, the gift is locked `FOR KEY SHARE` (reserving plan D7 step
+    2): its deletion at the same moment either committed before (404) or
+    waits for this request, while an owner's edit of it, or its receipt, is
+    not blocked. A read passes `lock=False`, which locks neither the occasion
+    nor the gift. Only the gift's id is read, so the row is never in the
+    session to be written back (reserving plan D3).
+    """
+    occasion = giving_occasion(db, user, occasion_id, lock=lock)
+    if lock:
+        found = visibility.lock_gift_in_occasion(db, gift_id, occasion)
+    else:
+        found = bool(
+            db.scalar(
+                select(
+                    exists().where(Gift.id == gift_id, visibility.in_occasion(occasion))
+                )
+            )
+        )
+    if not found:
+        raise not_found()
+    return occasion
+
+
 def owned_occasion(db: Session, user: User, occasion_id: uuid.UUID) -> Occasion:
     """The occasion, if the user owns its list; 404 for its invitees too."""
     occasion, role = visible_occasion(db, user, occasion_id)
