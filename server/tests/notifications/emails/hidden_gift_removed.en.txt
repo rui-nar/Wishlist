@@ -1,0 +1,29 @@
+Subject: The hidden gift “Blue scarf” was removed (Birthday 2026)
+List-Unsubscribe: <https://app.example.test/api/unsubscribe/v1.dXNlcg.c2lnbmF0dXJl>
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+
+=== text ===
+Hello Ana,
+
+The hidden gift “Blue scarf” was removed from the occasion Birthday 2026.
+
+Open the occasion: https://app.example.test/shared/11111111-1111-1111-1111-111111111111
+
+--
+You are receiving this email because you are giving or following a gift in this occasion.
+Stop email notifications: https://app.example.test/unsubscribe#v1.dXNlcg.c2lnbmF0dXJl
+Email settings: https://app.example.test/account
+
+=== html ===
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>The hidden gift “Blue scarf” was removed (Birthday 2026)</title></head>
+<body style="font-family:sans-serif;color:#1E293B;line-height:1.5">
+<p>Hello Ana,</p>
+<p>The hidden gift “Blue scarf” was removed from the occasion Birthday 2026.</p>
+<p><a href="https://app.example.test/shared/11111111-1111-1111-1111-111111111111" style="color:#0F766E">Open the occasion</a></p>
+<hr style="border:0;border-top:1px solid #E2E8F0">
+<p style="font-size:12px;color:#64748B">You are receiving this email because you are giving or following a gift in this occasion.<br>
+<a href="https://app.example.test/unsubscribe#v1.dXNlcg.c2lnbmF0dXJl" style="color:#64748B">Stop email notifications</a> · <a href="https://app.example.test/account" style="color:#64748B">Email settings</a></p>
+</body>
+</html>
