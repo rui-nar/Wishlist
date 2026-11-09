@@ -124,3 +124,19 @@ occasions before the user row (R6-1).
 - Revisit when: an IntegrityError on a users foreign key is logged, or account deletion gains a grace period or asynchronous processing
 - Override: —
 - Outcome: open
+
+## Round 7 — 2026-11-09, unit review of U7 (DELIVERY.md §5 point 3), reviewed at 33adb49
+
+Table approved by the orchestrator under the owner's standing instruction of
+2026-11-08 (floors enforced; none applies). Envelope question answered with
+the recommendation: a co-owner holding a claim made before she became an
+owner is outside this plan (no endpoint adds co-owners, D4); the co-owners
+plan must release such claims when the owner row is added.
+
+### R7-1 — The recipient's deletions are only compared with bought claims
+- Trigger: a maintainer changes a deletion route so an unbought claim alters the recipient's answer → test_surprise.py stays green, since member removal releases every unbought claim before `deletions()` runs
+- Scores: trigger=plausible, impact=maintainability, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Guard (D9)
+- Guard: the co-owner run of each state keeps the holder in place until after `deletions()`, so the recipient's deletions (including the twinned `DELETE /api/gifts/{id}`) meet the unbought reservation or group gift; an assertion checks that at least one run reaches `deletions()` with an unbought claim on G1
+- Override: —
+- Outcome: open
