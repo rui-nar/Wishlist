@@ -680,7 +680,11 @@ concurrency, time), and these additions:
 - Response models list their fields explicitly; no user id in a comment or
   thread response.
 - No email address, display name, comment text, token or API key in any log
-  line or exception message.
+  line or exception message. One exception: the unsubscribe token reaches
+  the access log, because RFC 8058 puts it in the URL of `POST
+  /api/unsubscribe/{token}`; it can only turn one account's email off, the
+  account screen turns it back on, and only the admin reads that log
+  (ledger round 5).
 - Tests never reach Brevo: `app.state.mailer` is a fake in every test, and
   `make_client` sets `notifications_worker=False`. Worker tests call
   `run_once` with an explicit clock.

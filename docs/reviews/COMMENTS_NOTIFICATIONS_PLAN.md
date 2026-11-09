@@ -85,3 +85,11 @@ No findings.
 - Decision: Fix now (D7)
 - Override: —
 - Outcome: fixed (in plan: D11)
+
+## Round 5 — 2026-11-10, unit review of U5, reviewed at 27a75be
+
+No findings. Envelope question, answered by the orchestrator: the unsubscribe
+token reaches uvicorn's access log, because RFC 8058 puts it in the URL.
+Accepted and recorded as the one exception in the plan's Conventions: the
+token can only turn one account's email off, the account screen turns it back
+on, and only the admin reads that log. Unlike a join token, it grants nothing.
