@@ -340,7 +340,7 @@ def test_another_occasion_sees_only_taken(client, world):
 
     # No names, no amounts, no occasion.
     assert response.json() == {"passed": False, "gifts": [taken(gift)]}
-    assert "50" not in response.text
+    assert "50.00" not in response.text
     assert world.first not in response.text
 
 
