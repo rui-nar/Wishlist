@@ -63,7 +63,18 @@ out of scope for the first release (NEEDS, Out of scope).
   migration is the Alembic head this plan's first migration follows.
 - **Owner's gift writes:** `server/app/lists/router.py` `update_gift`
   (`PATCH /api/gifts/{id}`, image changes included through `image_id`) and
-  `delete_gift` (`DELETE /api/gifts/{id}`; claims go by cascade).
+  `delete_gift` (`DELETE /api/gifts/{id}`; today its claims go by the
+  foreign key's cascade; D13 ends that). HIDDEN_GIFTS_PLAN D15: every path
+  of that plan that deletes or replaces a gift row (keep, dismiss, an
+  author's delete, an occasion's deletion, an author's removal) calls one
+  hook, `drop_gift_activity(db, gift_ids)` in
+  `server/app/reserving/release.py`, whose contract is "no activity of
+  those ids is reachable once the transaction commits"; today it deletes
+  their claims, and this plan owns its body from here on. Keep replaces the
+  revealed row by a new one with a new id. `visibility.in_occasion(occasion)`
+  decides whether an occasion's givers see a gift. Its tests
+  `server/tests/lists/test_received.py` and `test_hidden_gifts.py` assert
+  unreachability through the API.
   `leave_occasion`, `remove_member`, `delete_occasion`, `delete_list`, and
   `server/app/accounts/router.py` `delete_me` call `release.py`.
 - **Accounts:** `users` has `email` (from Google, refreshed at each sign-in)
@@ -185,10 +196,14 @@ out of scope for the first release (NEEDS, Out of scope).
   (RESERVING D3). A removal or leave racing a comment either committed first
   (404) or waits and then finds a comment by a non-member, which keeps its
   name as any removed person's comment does.
-- **D8 — Keeping a revealed hidden gift drops its thread.** NEEDS: a kept
-  revealed gift becomes ordinary "with nothing of its past activity". The
-  hidden-gifts delivery's "keep" action also deletes the gift's `comments`
-  and `gift_follows` rows (one call added to it, U1).
+- **D8 — Keeping a revealed hidden gift drops its thread, by
+  construction.** NEEDS: a kept revealed gift becomes ordinary "with nothing
+  of its past activity". Keep puts a new gift row with a new id on the list
+  and deletes the revealed row through `drop_gift_activity`
+  (HIDDEN_GIFTS_PLAN D6, D15): the thread and follows are keyed on the old
+  id, which answers 404 everywhere, so nothing of them is reachable from the
+  kept gift; their rows go with the sweep (D13). No call is added to the
+  hidden-gifts handlers.
 
 ### Notifications
 
@@ -197,9 +212,14 @@ out of scope for the first release (NEEDS, Out of scope).
   (`gift_changed` | `gift_deleted` | `comment_added` | `participants_left`,
   check constraint), `occasion_id` (UUID, null, no FK), `gift_id` (UUID,
   null, no FK), `actor_id` (FK `users` `ON DELETE SET NULL`, null),
-  `payload` (JSONB), `created_at`, `processed_at` (null until fanned out),
+  `payload` (JSONB), `created_at`, `status` (`pending` | `done` |
+  `failed`, check constraint), `reason` (a fixed word, null), `processed_at`,
   `attempts`, `next_attempt_at`; partial index on `next_attempt_at` where
-  `processed_at IS NULL`. The request that causes the event inserts exactly
+  `status = 'pending'`. A fan-out that raises goes back to `pending` with
+  backoff (1, 5, 30, 120 minutes); the fifth failure sets `failed` with
+  reason `error` and logs the event's id and kind (nothing else). A
+  `failed` event is never retried and counts as processed for the sweep
+  (D13), so nothing is retried forever and nothing waits on it. The request that causes the event inserts exactly
   one row, in its own transaction, so an event exists if and only if its
   cause committed. The payload holds no personal data: names are read from
   `users` at send time, so a deleted account's name is never sent
@@ -211,13 +231,22 @@ out of scope for the first release (NEEDS, Out of scope).
   | Cause | Event | Payload | Written by |
   |---|---|---|---|
   | An owner's `PATCH /api/gifts/{id}` that changes the title, description, links, price (amount or currency) or image | `gift_changed`, `gift_id`, actor the owner | `{"fields": [...]}`, the changed field names | `update_gift` |
-  | An owner's `DELETE /api/gifts/{id}` | `gift_deleted`, `gift_id`, actor the owner | `{"title": "…"}`, the title at deletion (the owner's own data) | `delete_gift` |
+  | An owner's `DELETE /api/gifts/{id}` | `gift_deleted`, `gift_id`, actor the owner | `{"title": "…", "received": bool}`: the title, and whether the gift was received, at deletion (the owner's own data) | `delete_gift` |
   | `POST …/comments` | `comment_added`, `occasion_id`, `gift_id`, actor the author | `{"comment_id": "…"}` | the comment route |
   | `release_activity` (leave, removal, account deletion) | `participants_left`, actor the leaver | `{"gifts": [{"gift_id", "occasion_id"}…]}`: the unbought group gifts they left that still have participants | `release.py` |
 
   The `gift_changed` condition compares the request's values with the gift's
   stored ones, so it depends on the owner's input and the gift alone, never
-  on activity. `participants_left` is written once per `release_activity`
+  on activity. **A revealed gift writes no event** (NEEDS, Notifications:
+  anything the recipient does with a revealed gift notifies nobody):
+  `update_gift` and `delete_gift` skip the event when the gift has
+  `for_list_id` set (`list_id` null). The owner reaches a hidden gift only
+  once it is revealed (an unrevealed one answers 404 through `owned_gift`,
+  HIDDEN_GIFTS_PLAN), so that column, the owner's own data, says
+  "revealed" without reading any activity, and the request does the same
+  work for every revealed gift whatever its claim, thread or followers. A
+  hidden gift edited or deleted by its author, and keep and received on a
+  revealed gift, write no event either (NEEDS). `participants_left` is written once per `release_activity`
   call, also with an empty list, so leave, removal and deletion write the
   same rows whatever was released (D12). Marking a gift received and
   deleting an occasion or a list notify nobody (NEEDS lists only the causes
@@ -230,9 +259,23 @@ out of scope for the first release (NEEDS, Out of scope).
   `email_digests`, `ON DELETE SET NULL`, null); unique (`event_id`,
   `user_id`), so fanning out an event twice inserts nothing twice.
   - `gift_changed`, `gift_deleted`: the participants of the gift's claim,
-    bought ones included, in the claim's occasion. No claim, no one.
-    A `gift_changed` on a gift that is received at fan-out time notifies no
-    one (its invitees no longer see it).
+    bought ones included, in the claim's occasion, **if the claim was live
+    when the event was written**: `rules.is_live(event.created_at)`, the
+    rule every claims read uses, evaluated at the event's time rather than
+    the fan-out's. A deleted gift's claim rows cannot change after the
+    deletion (every claim route answers 404 on its id), so this is the
+    claim as of the deletion, without the owner's request reading it. An
+    expired unbought claim (its occasion passed) notifies no one. **The
+    actor is never a target**: the owner of a "for someone else" list who
+    also gives is not told of their own edit. No claim, no one. A
+    `gift_changed` on a gift received at fan-out time, and a `gift_deleted`
+    whose payload says `received`, notify no one (received is not
+    notified, and its invitees no longer see it).
+  - **A claim with no occasion** (bought for an occasion since deleted,
+    RESERVING D11) has no giver to notify: the event is set `done` with
+    reason `no_occasion` and no notification. Every target must be a giver
+    of an occasion (below), and an email names its occasion; the buyer
+    already saw that occasion go.
   - `comment_added`: the followers (`following = true`) of (occasion, gift),
     except the comment's author; nobody if the comment was deleted before
     fan-out.
@@ -255,24 +298,37 @@ out of scope for the first release (NEEDS, Out of scope).
 - **D12 — The owner's requests do the same work whatever the activity
   (NEEDS, Notifications; F1).**
   - `update_gift` writes at most one event row, decided by D10's
-    comparison. It reads nothing about claims, follows or comments.
-  - `delete_gift` writes exactly one `gift_deleted` row and deletes the gift
-    row. Nothing cascades from `gifts` into activity any more (D13), so the
+    comparison and whether the gift is revealed (both the owner's data). It
+    reads nothing about claims, follows or comments.
+  - `delete_gift` writes exactly one `gift_deleted` row (none for a
+    revealed gift, D10) and deletes the gift row. Nothing cascades from `gifts` into activity any more (D13), so the
     request deletes the same rows whether the gift had a claim, pledges,
     comments and followers, or nothing.
-  - `remove_member` writes exactly one `participants_left` row. Its release
-    of the removed person's claims predates this plan (RESERVING D10) and
-    stays; this plan adds no per-gift work to it.
+  - `remove_member` writes exactly one `participants_left` row, whatever
+    the removed person held. Its release of their claims is per-claim work
+    that predates this plan and that RESERVING accepted (its D10 and
+    envelope); this plan adds nothing per gift to it. Identical statements
+    are not required of it: its floor is that one event row plus that
+    release.
   - Who is notified is decided by the worker (D11), in its own transaction,
     long after the owner's response.
   A test records the SQL statements and row counts of the owner's `PATCH`
-  and `DELETE` on twin gifts, one with each kind of activity and one without,
-  and requires them identical (U3, U9). A schema test fails if any foreign
+  and `DELETE /api/gifts/{id}` on twin gifts, one with each kind of activity
+  and one without, and requires them identical (U3, U9); for
+  `remove_member` it checks exactly one event row with and without group
+  gifts. A schema test fails if any foreign
   key from an activity table (`gift_claims`, `claim_participants`,
   `comments`, `gift_follows`, notification tables) references `gifts`.
 - **D13 — Deleting a gift leaves its activity to the worker.** The foreign
   key `gift_claims.gift_id → gifts` is dropped; `comments`, `gift_follows`
-  and the notification tables never had one. Deleting a gift therefore
+  and the notification tables never had one. `drop_gift_activity`
+  (HIDDEN_GIFTS_PLAN D15) keeps its name, its callers and its contract, and
+  its body stops deleting anything: the contract (nothing reachable once
+  the transaction commits) holds by construction, since the gift rows it is
+  called for are deleted in the same transaction, and the sweep below
+  removes their activity. So keep and dismiss, the recipient's own
+  requests, and a hidden gift's deletion do no work that depends on the
+  gift's activity, as `delete_gift` (D12). Deleting a gift therefore
   leaves its claim, participants, comments and follows in place, unreachable:
   every read of activity already joins `gifts` (`occasion_claims`, `taken`,
   the thread through `giving_gift`), and a deleted gift's id answers 404
@@ -280,19 +336,34 @@ out of scope for the first release (NEEDS, Out of scope).
   1. fans out the `gift_deleted` event, reading the claim's participants
      from those rows;
   2. then deletes the activity of every gift id that no longer exists in
-     `gifts` and has no unprocessed `gift_deleted` event (claims,
+     `gifts` and has no `pending` `gift_deleted` event (claims,
      participants by cascade, comments, follows). The same sweep cleans up
-     after every other way a gift row goes (a hidden gift deleted by its
-     author, an occasion's hidden gifts, a dismissed revealed gift).
-  Consequences handled here:
-  - `delete_gift_claims` (list and account deletion) also deletes the
-    unbought claims whose occasion belongs to the deleted lists, so an
-    orphaned unbought claim never meets the occasions' `SET NULL` and the
-    claims' check constraint (the RESERVING R1-1 failure); tested by
-    deleting a gift, then its list, before the worker runs.
-  - `claims_invariants.py` tolerates orphaned claims only for gift ids with
-    an unprocessed `gift_deleted` event or awaiting the sweep, and checks
-    that no API read returns one.
+     after every other way a gift row goes (keep, dismiss, a hidden gift
+     deleted by its author, an occasion's hidden gifts), and deletes unbought
+     claims with no occasion (below).
+
+  **Orphaned unbought claims and the occasions' `SET NULL`.** An owner
+  deleting a gift with an unbought reservation leaves its claim; deleting
+  the list or the account before the sweep cascades the occasions, whose
+  `SET NULL` would meet the claims' check constraint
+  `ck_gift_claims_occasion_id` (`occasion_id IS NOT NULL OR bought_at IS
+  NOT NULL`): a 500 (the RESERVING R1-1 failure), in this release and in
+  the previous one after a rollback. **The migration drops that check
+  constraint.** An unbought claim with no occasion is then simply expired:
+  `is_live` already answers false for it (it holds its gift only when
+  bought or of an occasion that has not passed), so the gift is free,
+  `purge_expired` deletes it when the gift is claimed again, and the sweep
+  deletes it. Both releases run on this schema without a 500, and rollback
+  stays image-only (DevOps plan D15, DEPLOYMENT.md Rollback). The explicit
+  deletions of RESERVING D11 (`delete_unbought_claims`,
+  `delete_gift_claims`) stay as they are. Rules out a downgrade before
+  every rollback across this release (an operator step against D15's "safe
+  one version back"; forgetting it leaves 500s on list and account
+  deletion) and a trigger on `occasions` (logic outside the code, unseen by
+  `alembic check`).
+  - `claims_invariants.py` tolerates orphaned claims (gift row gone) and
+    unbought claims with no occasion, both not live, and checks that no API
+    read returns one; its other checks are unchanged.
   Rules out capturing the participants into the event in the owner's
   request (per-claim work in the request, on top of the cascade, which is
   itself per-claim work) and soft-deleting gifts (every gift read in the
@@ -352,12 +423,12 @@ out of scope for the first release (NEEDS, Out of scope).
   test apps set it false and call `run_once` directly), stopped before the
   engine is disposed. Every 15 seconds `run_once(session_factory, mailer,
   config, now)`:
-  1. fan-out: up to 100 unprocessed events due, `FOR UPDATE SKIP LOCKED`,
+  1. fan-out: up to 100 `pending` events due, `FOR UPDATE SKIP LOCKED`,
      each in its own transaction (notifications inserted `ON CONFLICT DO
-     NOTHING`, digests attached, `processed_at` set); a failing event goes
-     back with backoff and is logged with its id and kind;
+     NOTHING`, digests attached, `status = done` and `processed_at` set); a
+     failing event backs off and ends `failed` after five attempts (D9);
   2. send: up to 50 due digests, as D15;
-  3. sweep (D13), then retention: events processed, and digests finished
+  3. sweep (D13), then retention: events `done` or `failed`, and digests finished
      (`sent`, `skipped`, `failed`), more than 30 days ago are deleted with
      their notifications.
   `SKIP LOCKED` and the unique keys make two app processes running at once
@@ -477,13 +548,16 @@ concurrency, time), and these additions:
 - **Notifications are part of the surprise floor.** A notification row,
   digest or email that names a recipient as its target, or that a recipient
   can tell apart by any channel (response, timing of their own request,
-  email), is F1. The owner's `PATCH` and `DELETE /api/gifts/{id}` and
-  `DELETE …/members/{user_id}` must do the same statements with the same
-  row counts whatever the activity (D12). Lock waits of a few milliseconds
-  stay out of the envelope, as in RESERVING. Other owner deletions
-  (occasion, list, account), which cause no notification, keep the
-  per-claim work RESERVING accepted; reducing it is not a finding of this
-  plan.
+  email), is F1. The owner's `PATCH` and `DELETE /api/gifts/{id}` (dismiss
+  of a revealed gift included) must do the same statements with the same
+  row counts whatever the activity (D12). For `DELETE
+  …/members/{user_id}` the floor is exactly one `participants_left` event
+  row plus the per-claim release work RESERVING already accepted;
+  identical statements are not required of it. Lock waits of a few
+  milliseconds stay out of the envelope, as in RESERVING. Other owner
+  deletions (occasion, list, account), which cause no notification, keep
+  the per-claim work RESERVING accepted; reducing it is not a finding of
+  this plan.
 - **Comments are givers' content.** Comment text is untrusted (E2): stored
   and returned as plain text, never interpreted by the server, escaped in
   every email.
@@ -519,19 +593,28 @@ concurrency, time), and these additions:
   2. U3: tables `notification_events`, `notifications`, `email_digests`;
      columns `users.language` (default `en`) and `users.email_notifications`
      (default true), added with server defaults so the previous release's
-     inserts still work; the foreign key `gift_claims.gift_id → gifts` is
-     dropped. A previous release running on it deletes gifts without
-     cascading claims; the orphans are invisible to it (its reads join
-     `gifts`) and swept once this release runs again. Downgrade drops the
-     tables and columns and restores the foreign key after deleting orphaned
-     claims.
+     inserts still work; the foreign key `gift_claims.gift_id → gifts` and
+     the check constraint `ck_gift_claims_occasion_id` are dropped (D13).
+     **Rollback stays image-only (DevOps D15).** The previous release
+     running on this schema deletes gifts without cascading their claims;
+     the orphans are invisible to it (its reads join `gifts`), and when it
+     then deletes the list or the account, the occasions' `SET NULL` meets
+     no check constraint, so no 500; the orphans and the unbought claims
+     left with no occasion are not live for it either (its `is_live`) and
+     are swept once this release runs again. Tested by running the previous
+     release's deletion paths (`delete_list`, `delete_me`) against this
+     schema with an orphaned unbought claim (U3). Downgrade deletes orphaned
+     claims and unbought claims with no occasion, then restores the foreign
+     key and the check constraint, and drops the tables and columns.
 - **API contract (F4):** new routes: the six of D5, `GET` and `PATCH
   /api/me/preferences`, `POST /api/unsubscribe/{token}`. No existing
   response changes shape or content. Endpoints whose behaviour grows, with
   the same answers: `PATCH` and `DELETE /api/gifts/{id}` (events),
   `POST …/reservation`, `POST …/bought`, `PUT …/pledge` (auto-follow),
   `DELETE …/membership`, `DELETE …/members/{user_id}`, `DELETE /api/me`
-  (events, follows), `DELETE /api/lists/{id}` (orphaned claims, D13).
+  (events, follows). Through `drop_gift_activity` (D13), keep, dismiss and
+  a hidden gift's deletion no longer delete activity rows in the request;
+  their answers are unchanged.
 - **Emails are a contract with the past:** links in sent emails stay in
   inboxes. These must keep working in every later release:
   `POST /api/unsubscribe/{token}` with `v1` tokens, the client routes
@@ -558,7 +641,11 @@ concurrency, time), and these additions:
   passes). `ACTIVITY_KEYS` in both gains `comments`, `following`,
   `author_name`, `edited`.
 - Activity tables reference gifts by id only, never by foreign key (D13);
-  every read of them joins `gifts` or goes through `giving_gift`.
+  every read of them joins `gifts` or goes through `giving_gift`. Nothing
+  relies on a cascade from `gifts`: a path that deletes a gift row other
+  than `delete_gift` calls `drop_gift_activity` (HIDDEN_GIFTS_PLAN D15),
+  whose activity rows the worker's sweep removes; tests assert
+  unreachability through the API, never that rows were deleted.
 - An owner's request that can cause a notification writes a fixed number of
   event rows decided by the owner's input alone (D12); who is notified is
   only ever computed by the worker.
@@ -584,13 +671,11 @@ concurrency, time), and these additions:
 
 | Decision | Affects | Needed by |
 |---|---|---|
-| Record in `docs/NEEDS.md`: an explicit unfollow sticks (D4); comments allowed after the occasion has passed (D2); a received gift's thread is hidden while received and back with it (D2); the 1-minute settle delay before a first email (D15); what is not notified (received, occasion and list deletion, D10) | NEEDS is the source of features (CLAUDE.md) | Before delivery starts |
-| Does the author of a hidden gift editing or deleting it notify its participants, as an owner's edit does? Default here: no (NEEDS names the owner only); adding it is one event write in the hidden-gifts edit and delete routes, no schema change | Hidden gifts, U3 Scope | Before U3 starts |
 | Brevo account: a key of TraxJourney's Brevo account or Wishlist's own, the sender address and its verified domain (SPF, DKIM) | Deliverability, U8 runbook | Before email is turned on in VAL |
 | Brevo idempotency: if its transactional API accepts an idempotency key, ambiguous outcomes (D15) can be retried instead of failed | Lost emails on timeouts | Revisit if `unknown` failures show in the logs |
 | A cap or rate limit on comments per thread or per person | Abuse by a giver; the owner can remove them today | Revisit on abuse |
 | A comment count or "new" marker on the gift cards of the occasion screen | Client, one more read route | Revisit on user feedback |
-| Notifications when an owner deletes an occasion or a list, or marks a gift received | NEEDS | Revisit on user feedback |
+| Notifications when an owner deletes an occasion or a list, or marks a gift received (not notified for now, NEEDS) | NEEDS | Revisit on user feedback |
 | Push: device tokens and a push delivery table on `notifications` (D11) | Mobile release | The mobile release plan |
 | Retention of 30 days for finished notifications and digests (D16) | Stored data, support questions | Revisit with the data-export plan |
 
@@ -608,8 +693,7 @@ concurrency, time), and these additions:
   (add `giving_gift`), `server/app/reserving/router.py` (use `giving_gift`
   instead of `_giving_gift`, nothing else), `server/app/main.py` (include
   the router), `server/alembic/env.py` (import the models),
-  `server/alembic/versions/**` (one new revision), the hidden-gifts
-  delivery's "keep" handler (one call, D8), `server/tests/lists/**` (new
+  `server/alembic/versions/**` (one new revision), `server/tests/lists/**` (new
   `test_comments.py`, `test_follows.py`, `test_concurrent_comments.py`;
   `test_roles.py` and `test_surprise.py` extended).
 - **Context:** this plan D1–D8, Conventions; RESERVING_PLAN D3, D4, D7;
@@ -632,18 +716,16 @@ concurrency, time), and these additions:
   4. `comments/schemas.py`, `comments/router.py`: D5's six routes; D2's
      validation (422 for empty, too long, NUL and control characters); D7's
      locks; posting follows the author.
-  5. The hidden-gifts "keep" handler deletes the gift's comments and follows
-     (D8).
-  6. `test_roles.py`: rows for the six routes; the scenario gains a comment
+  5. `test_roles.py`: rows for the six routes; the scenario gains a comment
      by the first occasion's invitee on a gift of each list and a follow;
      `owners_view` records the thread as that invitee sees it, so refused
      calls are shown to change nothing; `ACTIVITY_KEYS` per Conventions.
-  7. `test_surprise.py`: `STATES` gains "commented" (a thread with two
+  6. `test_surprise.py`: `STATES` gains "commented" (a thread with two
      comments, one edited, one by a since-removed invitee, followers);
      the recipient calls D5's routes (404, the random-id body) so
      `test_every_route_is_called` passes; the world against control and twin
      comparisons hold for the new state.
-  8. `test_comments.py`: post, read (order, `mine`, `edited`), edit by the
+  7. `test_comments.py`: post, read (order, `mine`, `edited`), edit by the
      author, edit or delete of someone else's → 404, delete → gone; 2000
      code points accepted (including emoji counted as one), 2001 → 422,
      whitespace-only → 422, NUL → 422, `extra` field → 422; a comment of
@@ -652,26 +734,28 @@ concurrency, time), and these additions:
      removed author keeps their name; a deleted account → `author_name`
      null and nothing else changes; a passed occasion accepts comments; a
      received gift → 404, and back with its thread when put back; a hidden
-     gift of this occasion has a thread, of another occasion → 404; "keep"
-     drops the thread; a deleted gift → 404 on every route.
-  9. `test_follows.py`: follow, unfollow, idempotent; posting follows;
+     gift of this occasion has a thread, of another occasion → 404; after
+     "keep", the kept gift's thread is empty and the old id answers 404 on
+     every route (unreachability through the API, D8); a deleted gift → 404
+     on every route.
+  8. `test_follows.py`: follow, unfollow, idempotent; posting follows;
      posting after an explicit unfollow stays unfollowed; the follow state
      in `GiftThread`.
-  10. `test_concurrent_comments.py`: a comment racing the author's removal
-      and the gift's deletion (barrier and held transaction, `locks.py`) →
-      201 or 404, never 500.
+  9. `test_concurrent_comments.py`: a comment racing the author's removal
+     and the gift's deletion (barrier and held transaction, `locks.py`) →
+     201 or 404, never 500.
 - **Acceptance:** `uv run --directory server ruff check`;
   `uv run --directory server alembic upgrade head` then `alembic check`;
-  `uv run --directory server pytest` passes, including the tests of Do 6–10,
-  `test_every_route_is_in_the_matrix` and `test_every_route_is_called`.
+  `uv run --directory server pytest` passes, including the tests of Do 5–9,
+  `test_every_route_is_in_the_matrix`, `test_every_route_is_called`, and the
+  hidden-gifts delivery's `test_hidden_gifts.py` and `test_received.py`.
 - **Out of scope:** auto-follow from claim routes and follows dropped on
   leave (U3), events and notifications (U3, U7), dropping the claims FK
   (U3), any client change.
 - **Latitude:** local design.
 - **Escalate if:** a file outside Scope is needed (X3); the hidden-gifts
   delivery left more than one Alembic head, or no single gift-in-occasion
-  check to move; its "keep" handler needs more than one call; a recipient
-  response would have to change.
+  check to move; a recipient response would have to change.
 - **Depends on:** the hidden-gifts plan delivered on this branch.
 
 #### U2 — Client: the comment thread and follow toggle in the gift sheet
@@ -731,38 +815,45 @@ concurrency, time), and these additions:
 - **Scope:** `server/app/notifications/**` (new: `__init__.py`,
   `models.py`, `events.py`), `server/app/accounts/models.py` (the two
   columns only), `server/app/reserving/models.py` (drop the FK only),
-  `server/app/reserving/release.py`, `server/app/reserving/router.py`
+  `server/app/reserving/release.py` (`release_activity` and the body of
+  `drop_gift_activity`), `server/app/reserving/router.py`
   (auto-follow calls only), `server/app/lists/router.py` (`update_gift`,
   `delete_gift` only), `server/app/comments/router.py` (the event on post
   only), `server/alembic/env.py`, `server/alembic/versions/**` (one new
   revision), `server/tests/lists/claims_invariants.py`,
   `server/tests/lists/**` (new `test_notification_events.py`,
-  `test_owner_work.py`; existing release and deletion tests extended),
-  `server/tests/test_migrations.py` (the downgrade case).
-- **Context:** this plan D9–D14, Conventions; RESERVING D7, D10, D11 and its
-  review R1-1 (the `SET NULL` failure); `server/app/reserving/release.py` as
+  `test_owner_work.py`, `test_previous_release_on_schema.py`; existing
+  release and deletion tests extended; `test_hidden_gifts.py` and
+  `test_received.py` only where a test reads activity rows directly instead
+  of through the API), `server/tests/test_migrations.py` (the downgrade
+  case).
+- **Context:** this plan D8–D14, Conventions; RESERVING D7, D10, D11 and its
+  review R1-1 (the `SET NULL` failure); HIDDEN_GIFTS_PLAN D6, D15 (the
+  hook's contract); DEPLOYMENT.md Rollback (image-only rollback); `server/app/reserving/release.py` as
   the example for writes inside an existing transaction; the revision of
   U1 as the example revision.
 - **Do:**
   1. `notifications/models.py`: `NotificationEvent`, `Notification`,
      `EmailDigest` (D9, D11, D15); `User.language`,
      `User.email_notifications` (D17, D18). One revision: the tables, the
-     columns with server defaults, the FK drop (D13); downgrade per
-     Boundaries crossed.
+     columns with server defaults, the FK and check-constraint drops (D13);
+     downgrade per Boundaries crossed.
   2. `notifications/events.py`: one function per kind, each inserting one
      row.
   3. `update_gift`: compare D10's fields before and after; write
-     `gift_changed` with the changed names when any changed. `delete_gift`:
-     write `gift_deleted` with the title, then delete the gift row.
+     `gift_changed` with the changed names when any changed and the gift is
+     not revealed (`for_list_id` null). `delete_gift`: unless revealed,
+     write `gift_deleted` with the title and `received`; then delete the gift
+     row (D10).
   4. `release.py`: `release_activity` collects the group gifts left that
      still have participants (bought ones too), writes one
      `participants_left` per call (empty list included) and calls
-     `drop_follows`; `delete_gift_claims` also deletes unbought claims of
-     the deleted lists' occasions (D13).
+     `drop_follows`. `drop_gift_activity`: its body deletes nothing (D13);
+     docstring states its contract and that the sweep removes the rows.
   5. Claims routes: `auto_follow` on reserve, mark bought from free, start
      or join a group gift. Comment post: `comment_added`.
-  6. `claims_invariants.py`: orphaned claims allowed per D13; every other
-     check unchanged.
+  6. `claims_invariants.py`: orphaned claims and unbought claims with no
+     occasion allowed per D13; every other check unchanged.
   7. `test_notification_events.py`: each cause writes exactly its row and
      payload; an edit changing no notified field (or only an unnotified
      one) writes none; leave, removal and account deletion each write one
@@ -771,29 +862,46 @@ concurrency, time), and these additions:
      a deleted gift's claim, comments and follows remain, unreachable, and
      every claims and comment read ignores them; a gift deleted, then its
      list deleted (and its owner's account deleted) before any worker run
-     → 204, `assert_claims_consistent`.
+     → 204, `assert_claims_consistent`; a revealed gift edited or dismissed
+     writes no event, with and without a thread and followers; deleting a
+     received gift writes `received: true`; keep, dismiss and a hidden
+     gift's deletion leave the rows and nothing is reachable through the
+     API.
   8. `test_owner_work.py`: a SQLAlchemy `after_cursor_execute` listener
      records statements (parameters stripped of ids, through the twin
      renaming of `test_surprise.py`) and row counts; the owner's `PATCH` and
      `DELETE /api/gifts/{id}` on G1 with each activity (reserved, bought,
      group with pledges, commented and followed, taken elsewhere) and on its
-     twin G2 with none record identical sequences; the same for
-     `DELETE …/members/{user_id}` on an invitee with and without group
-     gifts, comparing the event rows written. A schema test: no foreign key
+     twin G2 with none record identical sequences; the same for a revealed
+     gift's edit and dismissal (twin revealed gifts, one with a thread and
+     followers, one without). `DELETE …/members/{user_id}` on an invitee
+     with and without group gifts writes exactly one event row each time
+     (statements not compared: its release is RESERVING's accepted
+     per-claim work, D12). A schema test: no foreign key
      from `gift_claims`, `claim_participants`, `comments`, `gift_follows`,
      `notification_events`, `notifications`, `email_digests` to `gifts`.
   9. `test_migrations.py`: upgrade then downgrade with an orphaned claim
-     present succeeds.
+     and an unbought claim with no occasion present succeeds.
+  10. `test_previous_release_on_schema.py`: on this schema, an orphaned
+      unbought claim (gift deleted with no worker run), then the list
+      deleted and an account deleted through the code paths as the previous
+      release has them (`delete_gift_claims` and the cascades, with the
+      hook's old body) → no error, and claims reads stay correct (R1-1).
 - **Acceptance:** `ruff check`; `alembic upgrade head` then `alembic check`;
-  `pytest` passes, including the tests of Do 7–9 and every existing
-  reserving, deletion, `test_roles.py` and `test_surprise.py` test.
+  `pytest` passes, including the tests of Do 7–10, every existing
+  reserving, deletion, `test_roles.py` and `test_surprise.py` test, and the
+  hidden-gifts delivery's `test_hidden_gifts.py`, `test_received.py` and
+  `assert_claims_consistent` wherever it is called.
 - **Out of scope:** fan-out, digests, sending, the sweep (U7); preferences
-  and unsubscribe routes (U5); hidden-gift author edits (Open decisions).
+  and unsubscribe routes (U5); events for hidden-gift author edits (not
+  notified, NEEDS).
 - **Latitude:** local design.
 - **Escalate if:** a file outside Scope is needed (X3); a read of
   `gift_claims`, `comments` or `gift_follows` exists that does not join
-  `gifts` or go through `giving_gift`; an owner's request cannot be made to
-  record identical statements; an existing answer would have to change.
+  `gifts` or go through `giving_gift`; a caller of `drop_gift_activity`
+  keeps the gift row it names; an owner's gift edit or deletion cannot be
+  made to record identical statements; an existing answer would have to
+  change.
 - **Depends on:** U1.
 
 #### U4 — Client: email switch, language report, unsubscribe page, deep links, welcome copy
@@ -1009,7 +1117,15 @@ concurrency, time), and these additions:
   6. Tests, with an explicit clock and the fake mailer:
      - fan-out per kind: participants (bought included), followers minus
        the author, other participants after a leave; nobody for a received
-       gift, a deleted comment, a gift without claim; a removed invitee, a
+       gift, a `gift_deleted` whose payload says received, a deleted
+       comment, a gift without claim, an expired unbought claim (its
+       occasion passed before the event, for `gift_changed` and
+       `gift_deleted`; a claim that expires between the event and the
+       fan-out is still notified); the actor never, including the owner of
+       a "for someone else" list who also reserved; a claim with no
+       occasion → event `done`, reason `no_occasion`, no row; an event
+       whose fan-out raises five times → `failed`, logged, not retried, and
+       the sweep proceeds for its gift; a removed invitee, a
        recipient, a co-owner of a "for me" list who was a member, and a
        "for someone else" list's owner (a giver: notified) — no row ever for
        a non-giver; fanning out the same event twice inserts nothing twice;
