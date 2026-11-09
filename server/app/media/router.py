@@ -16,8 +16,8 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.accounts.deps import CurrentUser
-from app.accounts.models import User
+from app.accounts.deps import CurrentUser, UnlockedSession, lock_signed_in
+from app.accounts.models import User, UserSession
 from app.db import DbSession
 from app.lists.access import not_found, owns_list, visible_occasion
 from app.lists.models import Gift
@@ -29,8 +29,10 @@ from app.media.images import (
     ImageBusy,
     ImageRejected,
     ImageTooLarge,
+    Processed,
+    add_image,
     image_path,
-    ingest,
+    process,
 )
 from app.media.models import Image
 from app.media.schemas import ImageFromUrl, ImageOut
@@ -62,7 +64,9 @@ FETCH_SLOTS = threading.BoundedSemaphore(MAX_FETCHES_IN_FLIGHT)
 
 
 @router.post("/images", status_code=status.HTTP_201_CREATED)
-async def upload_image(request: Request, user: CurrentUser, db: DbSession) -> ImageOut:
+async def upload_image(
+    request: Request, session: UnlockedSession, db: DbSession
+) -> ImageOut:
     """The request body is the image's bytes, whatever its Content-Type."""
     try:
         # Taken before the body is read, never waited for: the event loop
@@ -73,9 +77,8 @@ async def upload_image(request: Request, user: CurrentUser, db: DbSession) -> Im
             data = await _read_body(request)
             # Decoding is CPU-bound and may wait for the decode lock: off the
             # event loop.
-            image = await run_in_threadpool(
-                ingest, db, request.app.state.settings.media_dir, user, data
-            )
+            processed = await run_in_threadpool(process, data)
+            image = await run_in_threadpool(_stored, request, db, session, processed)
         finally:
             UPLOAD_SLOTS.release()
     except ImageRejected as exc:
@@ -85,7 +88,7 @@ async def upload_image(request: Request, user: CurrentUser, db: DbSession) -> Im
 
 @router.post("/images/from-url", status_code=status.HTTP_201_CREATED)
 def image_from_url(
-    body: ImageFromUrl, request: Request, user: CurrentUser, db: DbSession
+    body: ImageFromUrl, request: Request, session: UnlockedSession, db: DbSession
 ) -> ImageOut:
     """The image at `url`, downloaded once by the server (D6).
 
@@ -101,7 +104,7 @@ def image_from_url(
             )
             # Whatever the server said the type was, the bytes go through the
             # pipeline exactly as an upload's.
-            image = ingest(db, request.app.state.settings.media_dir, user, data)
+            image = _stored(request, db, session, process(data))
         finally:
             FETCH_SLOTS.release()
     except FetchError as exc:
@@ -179,6 +182,21 @@ def _image_response(request: Request, image: Image, variant: str) -> Response:
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+def _stored(
+    request: Request, db: Session, session: UserSession, processed: Processed
+) -> Image:
+    """The pending image, once the slow work is done (reserving review R9-3).
+
+    Both routes authenticate with `unlocked_session`, so an account deletion
+    does not wait for a body or a fetch: the user is locked only here, before
+    anything is written, and a user deleted (or a session signed out)
+    meanwhile gets the answer of a signed-out token, with no file stored.
+    Nothing else is locked after the user.
+    """
+    user = lock_signed_in(request, db, session)
+    return add_image(db, request.app.state.settings.media_dir, user, processed)
 
 
 async def _read_body(request: Request) -> bytes:

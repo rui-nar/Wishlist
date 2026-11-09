@@ -1,13 +1,15 @@
 """Who is asking (accounts plan D5).
 
-Every endpoint that needs a user depends on `current_user`; none reads the
-Authorization header itself.
+Every endpoint that needs a user depends on `current_user` (the account's
+deletion on `user_to_delete`, an image's upload or download on
+`unlocked_session`); none reads the Authorization header itself.
 """
 
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 
 from app.accounts import sessions
 from app.accounts.models import User, UserSession
@@ -28,28 +30,114 @@ def _not_signed_in() -> HTTPException:
     )
 
 
+def _signed_in(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None,
+    db: DbSession,
+    for_deletion: bool,
+) -> UserSession:
+    """The session the bearer token opens, its user locked, its use recorded
+    (D4).
+
+    The user is locked until the request commits, before any other lock it
+    takes (reserving plan D7): `FOR KEY SHARE` for every request, `FOR UPDATE`
+    for the account's deletion. A deletion waits for the user's requests in
+    flight, then releases what they did; a request that comes during a
+    deletion waits for it, then finds no user and gets the answer of a
+    signed-out token. The deletion's lock is taken here, never upgraded from
+    a share lock: two deletions of one account would deadlock.
+    """
+    session = _found(request, credentials, db)
+    query = select(User).where(User.id == session.user_id)
+    if for_deletion:
+        query = query.with_for_update()
+    else:
+        query = query.with_for_update(read=True, key_share=True)
+    if db.scalar(query) is None:
+        raise _not_signed_in()
+    # Only once the user is locked: the deletion's cascade to the sessions
+    # must not wait on a request that waits on the user.
+    sessions.touch(session, request.app.state.clock())
+    return session
+
+
+def _found(
+    request: Request, credentials: HTTPAuthorizationCredentials | None, db: DbSession
+) -> UserSession:
+    """The session the bearer token opens, nothing locked or written."""
+    if credentials is None:
+        raise _not_signed_in()
+    session = sessions.find(db, credentials.credentials, request.app.state.clock())
+    if session is None:
+        raise _not_signed_in()
+    return session
+
+
 def current_session(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: DbSession,
 ) -> UserSession:
-    """The session the bearer token opens, its use recorded (D4)."""
-    if credentials is None:
-        raise _not_signed_in()
-    now = request.app.state.clock()
-    session = sessions.find(db, credentials.credentials, now)
-    if session is None:
-        raise _not_signed_in()
-    sessions.touch(session, now)
-    return session
+    return _signed_in(request, credentials, db, for_deletion=False)
 
 
 def current_user(
     session: Annotated[UserSession, Depends(current_session)], db: DbSession
 ) -> User:
-    # The foreign key cascades: a session never outlives its user.
+    # Loaded and locked by `current_session`, in this request's session.
     return db.get_one(User, session.user_id)
+
+
+def user_to_delete(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    db: DbSession,
+) -> User:
+    """For `DELETE /api/me` only: the signed-in user, locked `FOR UPDATE`."""
+    session = _signed_in(request, credentials, db, for_deletion=True)
+    return db.get_one(User, session.user_id)
+
+
+def unlocked_session(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    db: DbSession,
+) -> UserSession:
+    """For a route that does slow work before it writes (an image's upload or
+    download, reserving review R9-3): the session the token opens, nothing
+    locked or written yet, so an account deletion meanwhile does not wait for
+    that work. The route calls `lock_signed_in` before its first write."""
+    return _found(request, credentials, db)
+
+
+def lock_signed_in(request: Request, db: DbSession, session: UserSession) -> User:
+    """What `current_session` does after finding the session, for a route
+    that authenticated with `unlocked_session`: the user locked
+    `FOR KEY SHARE`, then the session itself, then its use recorded. Either
+    gone by then (the account deleted, or the session signed out, during the
+    slow work) gets the answer of a signed-out token."""
+    user = db.scalar(
+        select(User)
+        .where(User.id == session.user_id)
+        .with_for_update(read=True, key_share=True)
+    )
+    if user is None:
+        raise _not_signed_in()
+    # After the user, in the order the deletion's cascade takes them; read
+    # again, so a sign-out committed meanwhile is seen here, not by the touch.
+    locked = db.get(
+        UserSession,
+        session.id,
+        with_for_update={"key_share": True},
+        populate_existing=True,
+    )
+    if locked is None:
+        raise _not_signed_in()
+    sessions.touch(locked, request.app.state.clock())
+    return user
 
 
 CurrentSession = Annotated[UserSession, Depends(current_session)]
 CurrentUser = Annotated[User, Depends(current_user)]
+UserToDelete = Annotated[User, Depends(user_to_delete)]
+UnlockedSession = Annotated[UserSession, Depends(unlocked_session)]

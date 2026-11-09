@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
 from app.accounts import sessions
-from app.accounts.deps import CurrentSession, CurrentUser
+from app.accounts.deps import CurrentSession, CurrentUser, UserToDelete
 from app.accounts.google import GoogleIdentity, InvalidGoogleToken
 from app.accounts.models import User, UserIdentity
 from app.accounts.schemas import GoogleSignIn, SignedIn, UserOut
@@ -55,11 +55,14 @@ def me(user: CurrentUser) -> UserOut:
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-def delete_me(user: CurrentUser, db: DbSession) -> Response:
-    # Every occasion they give in or own locked first, then the account, in
-    # the order a claim write takes them (reserving plan D7): a write of
-    # theirs either committed and is released below, or waits and then finds
-    # them gone, never a claim left by no one.
+def delete_me(user: UserToDelete, db: DbSession) -> Response:
+    # The account locked first (`FOR UPDATE`, by its dependency), then every
+    # occasion they give in or own, in the order every request takes them
+    # (reserving plan D7): each request holds its user `FOR KEY SHARE` from
+    # `current_session` on, so their requests in flight finished before this
+    # one went on and are released below, and a later one waits, then finds
+    # no user and answers 401: never a claim, a membership or a session left
+    # by no one. An owner removing them locks them before the occasion too.
     lock_occasions(
         db,
         or_(
@@ -73,7 +76,6 @@ def delete_me(user: CurrentUser, db: DbSession) -> Response:
             ),
         ),
     )
-    db.execute(select(User.id).where(User.id == user.id).with_for_update())
     # Released in every occasion (D10); their name leaves their bought
     # reservations with the user row, below.
     release_activity(db, user.id, None)
@@ -105,7 +107,13 @@ def _user_for(db: Session, identity: GoogleIdentity) -> User:
     Found by Google's `sub`, never by email (D1). Email and name are refreshed
     from the token at each sign-in, for display only.
     """
-    user = db.scalar(_by_google_sub(identity.sub))
+    # Locked as the update below would lock it: an account deleted at the
+    # same moment either waits for this sign-in (and deletes its session
+    # with it) or committed first and is not found, and the sign-in makes a
+    # new account, as a moment later.
+    user = db.scalar(
+        _by_google_sub(identity.sub).with_for_update(key_share=True, of=User)
+    )
     if user is None:
         try:
             # A savepoint: if a concurrent first sign-in of the same Google

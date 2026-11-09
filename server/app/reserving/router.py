@@ -3,8 +3,9 @@ marking bought, and joining or leaving a group gift (reserving plan D6).
 
 Every route resolves its occasion through `giving_occasion`, so a recipient
 gets the random-id 404 for every route and every state of their gifts (D4).
-Writes follow one lock order (D7): the occasion `FOR SHARE`, the gift
-`FOR KEY SHARE`, then the claim; they write `gift_claims` and
+Writes follow one lock order (D7): the user `FOR KEY SHARE` (taken by
+`current_session`), the occasion `FOR SHARE`, the gift `FOR KEY SHARE`, then
+the claim; they write `gift_claims` and
 `claim_participants` only, never a row an owner reads (D3).
 
 A 409 is returned, not raised, so it keeps the `code` its body needs. The
