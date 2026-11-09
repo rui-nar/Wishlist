@@ -15,6 +15,7 @@ from datetime import date, timedelta
 import pytest
 import test_reservations
 from claims_invariants import assert_claims_consistent
+from sqlalchemy import text
 from test_group_gifts import pledge
 from test_hidden_model import (
     add_hidden,
@@ -80,6 +81,13 @@ def answer(response):
     # Everything an owner receives but the time it was sent.
     headers = {k: v for k, v in response.headers.items() if k.lower() != "date"}
     return response.status_code, response.content, headers
+
+
+def updated_at(engine, gift):
+    with engine.connect() as connection:
+        return connection.scalar(
+            text("SELECT updated_at FROM gifts WHERE id = :gift"), {"gift": gift}
+        )
 
 
 def occasion_gift_ids(client, account, occasion):
@@ -212,6 +220,17 @@ def test_received_and_put_back_twice_change_nothing_more(client, world, engine):
     assert_claims_consistent(engine)
 
 
+def test_received_and_put_back_leave_updated_at_unchanged(client, world, engine):
+    gift = world.gifts[0]
+    before = updated_at(engine, gift)
+
+    assert mark_received(client, world.owner, gift).status_code == 204
+    assert updated_at(engine, gift) == before
+    assert put_back(client, world.owner, gift).status_code == 204
+    assert updated_at(engine, gift) == before
+    assert_claims_consistent(engine)
+
+
 def test_deleting_a_received_gift(client, world, engine):
     gift = world.gifts[0]
     assert reserve(client, world.ana, world.first, gift).status_code == 200
@@ -272,8 +291,8 @@ def test_a_revealed_gift_is_shown_alone_by_title(client, world, engine):
     for response in reads:
         assert response.status_code == 200, response.text
         # Join tokens are random text, where a name could appear by chance.
-        text = re.sub(r'"join_token":"[^"]*"', "", response.text)
-        assert not [name for name in ("Ana", "Ben") if name in text]
+        body = re.sub(r'"join_token":"[^"]*"', "", response.text)
+        assert not [name for name in ("Ana", "Ben") if name in body]
     assert_claims_consistent(engine)
 
 

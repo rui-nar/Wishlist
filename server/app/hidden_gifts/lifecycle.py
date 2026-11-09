@@ -107,10 +107,12 @@ def set_received(
     update_received = update(Gift).where(Gift.id == gift.id)
     if received_at is not None:
         update_received = update_received.where(Gift.received_at.is_(None))
+    # `updated_at` named, or its `onupdate` would move it: nothing else is
+    # touched (D5).
     db.execute(
-        update_received.values(received_at=received_at).execution_options(
-            synchronize_session=False
-        )
+        update_received.values(
+            received_at=received_at, updated_at=Gift.updated_at
+        ).execution_options(synchronize_session=False)
     )
 
 
