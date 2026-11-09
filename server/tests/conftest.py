@@ -10,12 +10,15 @@ scratch database it creates and drops.
 """
 
 import os
+import threading
 from collections.abc import Callable, Collection, Iterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.notifications.email_content import EmailMessage
+from app.notifications.mailer import Outcome
 from app.settings import Settings
 
 # Checked before anything imports app.main, whose module-level app would fail
@@ -25,6 +28,10 @@ if not os.environ.get("DATABASE_URL"):
         "DATABASE_URL is not set: the tests need a PostgreSQL test database",
         returncode=4,
     )
+
+# For the apps built without `make_client`: a test that wants the worker asks
+# for it, and none runs against the test database by accident.
+os.environ["NOTIFICATIONS_WORKER"] = "false"
 
 
 @pytest.fixture
@@ -37,7 +44,8 @@ def make_client(database_url: str, tmp_path) -> Iterator[Callable[..., TestClien
     """Builds a client for an app with test settings, overridable by keyword.
 
     MEDIA_DIR defaults to a directory under tmp_path, so no test writes into
-    the repository.
+    the repository. The worker is off and the mailer a fake: no test reaches
+    Brevo (comments plan Conventions).
     """
     from app.main import create_app
 
@@ -47,8 +55,11 @@ def make_client(database_url: str, tmp_path) -> Iterator[Callable[..., TestClien
         values: dict[str, Any] = {
             "database_url": database_url,
             "media_dir": tmp_path / "media",
+            "notifications_worker": False,
         } | overrides
-        client = TestClient(create_app(Settings(**values)))
+        app = create_app(Settings(**values))
+        app.state.mailer = FakeMailer()
+        client = TestClient(app)
         client.__enter__()  # runs the lifespan, as uvicorn does
         clients.append(client)
         return client
@@ -56,6 +67,28 @@ def make_client(database_url: str, tmp_path) -> Iterator[Callable[..., TestClien
     yield make
     for client in clients:
         client.__exit__(None, None, None)
+
+
+class FakeMailer:
+    """Stands in for `app.state.mailer`, a BrevoMailer: records every send and
+    answers `outcome`, or raises it when it is an exception."""
+
+    def __init__(self) -> None:
+        self.outcome: Outcome | Exception = Outcome.SENT
+        self.sent: list[tuple[str, str, EmailMessage]] = []
+        self._lock = threading.Lock()
+
+    def send(self, to_address: str, to_name: str, message: EmailMessage) -> Outcome:
+        with self._lock:
+            self.sent.append((to_address, to_name, message))
+        if isinstance(self.outcome, Exception):
+            raise self.outcome
+        return self.outcome
+
+
+@pytest.fixture
+def mailer() -> FakeMailer:
+    return FakeMailer()
 
 
 class FakeFetcher:

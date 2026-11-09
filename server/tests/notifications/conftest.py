@@ -67,7 +67,8 @@ def engine(notifications_database_url: str) -> Iterator[Engine]:
 def empty_tables(engine: Engine) -> Iterator[None]:
     yield
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE users CASCADE"))
+        # The worker sweeps whole tables, so nothing stays for the next test.
+        connection.execute(text("TRUNCATE users, lists, gift_claims CASCADE"))
 
 
 @pytest.fixture

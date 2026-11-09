@@ -12,8 +12,8 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import HTTPException, status
-from sqlalchemy import exists, select
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, and_, exists, not_, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.accounts.models import User
 from app.lists import visibility
@@ -120,6 +120,39 @@ def giving_occasion(
     if role == OWNER and db.get_one(List, occasion.list_id).recipient_kind != OTHER:
         raise not_found()
     return occasion
+
+
+def giver_condition(
+    user_id: uuid.UUID | ColumnElement[uuid.UUID],
+    occasion_id: uuid.UUID | ColumnElement[uuid.UUID],
+) -> ColumnElement[bool]:
+    """`giving_occasion`'s rule as a SQL expression, for the worker (comments
+    plan D11): ownership of a "for me" list is checked first, so a recipient
+    is never a giver, even one who was a member.
+
+    On aliases, so the rule means the same whatever the enclosing query
+    selects from: only the columns passed in correlate.
+    """
+    occasion = aliased(Occasion)
+    listing = aliased(List)
+    owner = aliased(ListOwner)
+    member = aliased(OccasionMember)
+    owns = exists().where(
+        occasion.id == occasion_id,
+        owner.list_id == occasion.list_id,
+        owner.user_id == user_id,
+    )
+    owns_for_someone_else = exists().where(
+        occasion.id == occasion_id,
+        owner.list_id == occasion.list_id,
+        owner.user_id == user_id,
+        listing.id == occasion.list_id,
+        listing.recipient_kind == OTHER,
+    )
+    is_member = exists().where(
+        member.occasion_id == occasion_id, member.user_id == user_id
+    )
+    return or_(owns_for_someone_else, and_(not_(owns), is_member))
 
 
 def giving_gift(
