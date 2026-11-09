@@ -140,7 +140,7 @@ def _fan_out(
     """The notifications the event writes, and the word that says why it ended
     as it did, if any."""
     if event.kind == GIFT_CHANGED:
-        return _gift_changed(db, event)
+        return _to_claim_participants(db, event)
     if event.kind == GIFT_DELETED:
         return _gift_deleted(db, event)
     if event.kind == COMMENT_ADDED:
@@ -150,17 +150,6 @@ def _fan_out(
     if event.kind == GIFTS_REMOVED:
         return _gifts_removed(db, event), None
     raise ValueError("unknown event kind")
-
-
-def _gift_changed(
-    db: Session, event: NotificationEvent
-) -> tuple[list[_Created], str | None]:
-    # Received is not notified, and its invitees no longer see it (D11). A
-    # gift gone since has its own `gift_deleted`.
-    gift = db.get(Gift, event.gift_id)
-    if gift is None or gift.received_at is not None:
-        return [], None
-    return _to_claim_participants(db, event)
 
 
 def _gift_deleted(
@@ -184,6 +173,10 @@ def _to_claim_participants(
     if occasion_id is None:
         return [], NO_OCCASION
     if not _claim_live(db, event.gift_id, occasion_id, event.created_at):
+        return [], None
+    # Received is not notified, and its invitees no longer see it (D11). A gift
+    # gone since has its own `gift_deleted`.
+    if event.kind == GIFT_CHANGED and not _in_occasion(db, event.gift_id, occasion_id):
         return [], None
     created = _notify(
         db,
