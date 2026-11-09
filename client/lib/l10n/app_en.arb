@@ -348,6 +348,60 @@
   "@deleteFailed": {
     "description": "A message after the server did not delete a list or a gift."
   },
+  "markReceived": "Mark as received",
+  "@markReceived": {
+    "description": "The gift form: the button that takes the gift off the list, under \"Received\". The same on every gift."
+  },
+  "revealedTitle": "Gifts from your occasions",
+  "@revealedTitle": {
+    "description": "List detail: the heading of the gifts that people giving for a passed occasion added and bought, shown to the list's owners."
+  },
+  "revealedReceived": "Received",
+  "@revealedReceived": {
+    "description": "List detail, a gift from an occasion: the button marking it received."
+  },
+  "revealedKeep": "Keep on my list",
+  "@revealedKeep": {
+    "description": "List detail, a gift from an occasion: the button adding it to the list as an ordinary gift."
+  },
+  "revealedDismiss": "Dismiss",
+  "@revealedDismiss": {
+    "description": "List detail, a gift from an occasion: the button deleting it, and the confirming dialog's button."
+  },
+  "dismissGiftTitle": "Dismiss this gift?",
+  "@dismissGiftTitle": {
+    "description": "The title of the dialog confirming a gift from an occasion is dismissed."
+  },
+  "dismissGiftBody": "The gift is deleted. This cannot be undone.",
+  "@dismissGiftBody": {
+    "description": "The dialog confirming a gift from an occasion is dismissed: what dismissing does."
+  },
+  "receivedTitle": "Received ({count})",
+  "@receivedTitle": {
+    "description": "List detail: the heading of the gifts marked received, which opens and closes the section, with how many there are.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "putBack": "Put back",
+  "@putBack": {
+    "description": "List detail, a received gift: the button putting it back on the list."
+  },
+  "putBackNotRevealed": "This gift can be put back once its occasion has passed again.",
+  "@putBackNotRevealed": {
+    "description": "List detail: a received gift from an occasion cannot be put back, because the occasion's date was moved later since."
+  },
+  "deleteReceivedBody": "The gift is removed from your received gifts. This cannot be undone.",
+  "@deleteReceivedBody": {
+    "description": "The dialog confirming a received gift's deletion: what deleting does."
+  },
+  "occasionDateEarlierWarning": "Hidden gifts added by your guests are revealed after the later date anyway.",
+  "@occasionDateEarlierWarning": {
+    "description": "The occasion form: under the date, when it is earlier than the occasion's saved date. Shown on every occasion alike."
+  },
   "occasionsTitle": "Occasions",
   "@occasionsTitle": {
     "description": "List detail: the heading of the occasions section."

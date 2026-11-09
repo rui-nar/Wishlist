@@ -84,6 +84,21 @@ class FakeListsServer {
   /// The occasions whose date has passed (D8).
   final passed = <String>{};
 
+  /// Gift id → when an owner marked it received, as a count that grows
+  /// (HIDDEN_GIFTS_PLAN D5): off the list and every occasion, under
+  /// `received`, newest first.
+  final receivedAt = <String, int>{};
+
+  /// The revealed gifts (D6), in [gifts] with their `list_id` (`GiftOut`
+  /// names the list a revealed gift is for): under `revealed` until
+  /// received, kept or dismissed, never on the list nor in an occasion.
+  final revealed = <String>{};
+
+  /// The received gifts from an occasion that are not revealed now, its
+  /// date moved later since (D5, review R2-1): put back and keep answer 409
+  /// `not_revealed`.
+  final notRevealed = <String>{};
+
   final status = <String, int>{};
 
   /// `'<METHOD> <path>'` → the `detail` code of the answer [status] forces
@@ -154,6 +169,37 @@ class FakeListsServer {
     });
     return id;
   }
+
+  /// A gift of [listId] revealed from one of its occasions (D6).
+  String addRevealed(
+    String listId,
+    String title, {
+    List<String> links = const [],
+    String? priceAmount,
+    String? priceCurrency,
+    bool image = false,
+  }) {
+    final id = addGift(
+      listId,
+      title,
+      links: links,
+      priceAmount: priceAmount,
+      priceCurrency: priceCurrency,
+      image: image,
+    );
+    revealed.add(id);
+    return id;
+  }
+
+  /// [giftId] marked received, the newest.
+  void markReceived(String giftId) => receivedAt[giftId] = _next++;
+
+  /// On its list, as owners and every occasion see it: neither received nor
+  /// revealed.
+  bool _onList(Map<String, dynamic> gift, String listId) =>
+      gift['list_id'] == listId &&
+      !receivedAt.containsKey(gift['id']) &&
+      !revealed.contains(gift['id']);
 
   /// A new image on the server; returns its id.
   String addImage() {
@@ -319,7 +365,7 @@ class FakeListsServer {
   ) {
     final ofList = [
       for (final gift in gifts)
-        if (gift['list_id'] == listId) gift,
+        if (_onList(gift, listId)) gift,
     ];
     if (request.method == 'GET' && segments.length == 4 && segments[3] == 'claims') {
       return json({
@@ -511,7 +557,7 @@ class FakeListsServer {
           {
             ...list,
             'gift_count':
-                gifts.where((gift) => gift['list_id'] == list['id']).length,
+                gifts.where((gift) => _onList(gift, list['id'] as String)).length,
           },
       ]);
     }
@@ -573,10 +619,33 @@ class FakeListsServer {
             ..sort(
               (a, b) => (a['date'] as String).compareTo(b['date'] as String),
             );
+          final listId = list['id'] as String;
+          final received = [
+            for (final gift in gifts)
+              if (gift['list_id'] == listId && receivedAt.containsKey(gift['id']))
+                gift,
+          ]..sort(
+              (a, b) => receivedAt[b['id']]!.compareTo(receivedAt[a['id']]!),
+            );
+          final revealedGifts = [
+            for (final gift in gifts)
+              if (gift['list_id'] == listId &&
+                  revealed.contains(gift['id']) &&
+                  !receivedAt.containsKey(gift['id']))
+                gift,
+          ]..sort((a, b) {
+              final byTitle =
+                  (a['title'] as String).compareTo(b['title'] as String);
+              return byTitle != 0
+                  ? byTitle
+                  : (a['id'] as String).compareTo(b['id'] as String);
+            });
           return json({
             ...list,
-            'gifts': gifts.where((gift) => gift['list_id'] == list['id']).toList(),
+            'gifts': gifts.where((gift) => _onList(gift, listId)).toList(),
             'occasions': ofList.map(_ownerOccasion).toList(),
+            'received': received,
+            'revealed': revealedGifts,
           });
         case 'PATCH':
           list.addAll(body!);
@@ -592,6 +661,9 @@ class FakeListsServer {
     }
     final found = gift(segments[2]);
     if (found == null) return notFound;
+    if (segments.length == 4) {
+      return _receivedOrKept(request, found, json, notFound, noContent);
+    }
     switch (request.method) {
       case 'PATCH':
         found.addAll(body!);
@@ -599,7 +671,48 @@ class FakeListsServer {
         return json(found);
       case 'DELETE':
         gifts.remove(found);
+        receivedAt.remove(found['id']);
+        revealed.remove(found['id']);
+        notRevealed.remove(found['id']);
         return noContent;
+    }
+    return notFound;
+  }
+
+  /// `POST` and `DELETE /api/gifts/{id}/received`, `POST
+  /// /api/gifts/{id}/keep` (HIDDEN_GIFTS_PLAN D5, D6).
+  http.Response _receivedOrKept(
+    http.Request request,
+    Map<String, dynamic> found,
+    http.Response Function(Object body, [int code]) json,
+    http.Response notFound,
+    http.Response noContent,
+  ) {
+    final id = found['id'] as String;
+    final notRevealedNow =
+        receivedAt.containsKey(id) && notRevealed.contains(id);
+    http.Response refused() =>
+        json({'detail': 'Not revealed', 'code': 'not_revealed'}, 409);
+    switch ((request.method, request.url.pathSegments[3])) {
+      case ('POST', 'received'):
+        receivedAt.putIfAbsent(id, () => _next++);
+        return noContent;
+      case ('DELETE', 'received'):
+        if (notRevealedNow) return refused();
+        receivedAt.remove(id);
+        return noContent;
+      case ('POST', 'keep'):
+        if (!revealed.contains(id) || notRevealedNow) return refused();
+        // A new row, at the end of the list; the old one goes with its
+        // activity (D6, D15).
+        final kept = {...found, 'id': 'gift-${_next++}'};
+        gifts
+          ..remove(found)
+          ..add(kept);
+        revealed.remove(id);
+        receivedAt.remove(id);
+        claims.remove(id);
+        return json(kept);
     }
     return notFound;
   }
@@ -674,7 +787,7 @@ class FakeListsServer {
             'role': 'invitee',
             'gifts': [
               for (final gift in gifts)
-                if (gift['list_id'] == of.list['id']) _sharedGift(id, gift),
+                if (_onList(gift, of.list['id'] as String)) _sharedGift(id, gift),
             ],
           });
         case ('DELETE', 'membership'):
@@ -700,7 +813,7 @@ class FakeListsServer {
           'role': 'owner',
           'list': of.list,
           'gifts': gifts
-              .where((gift) => gift['list_id'] == of.list['id'])
+              .where((gift) => _onList(gift, of.list['id'] as String))
               .toList(),
         });
       case ('PATCH', ''):

@@ -348,6 +348,109 @@ void main() {
       expect(find.text('Christmas 2026'), findsOneWidget);
     });
 
+    group('moving the date earlier warns (HIDDEN_GIFTS_PLAN D3, D13)', () {
+      const warning = 'Hidden gifts added by your guests are revealed after '
+          'the later date anyway.';
+
+      /// Edits an occasion of a list for me or for someone else, dated
+      /// 24 December, and picks [day] of that month.
+      Future<String> pick(
+        WidgetTester tester, {
+        required String? recipient,
+        required String day,
+      }) async {
+        final list = server.addList('Birthday', recipientName: recipient);
+        final id = server.addOccasion(list, 'Christmas', '2026-12-24');
+        await startApp(tester, server, '/lists/$list/occasions/$id/edit');
+        expect(find.text(warning), findsNothing);
+        await tester.tap(find.text('Date'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(day));
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+        return id;
+      }
+
+      for (final recipient in [null, 'Léa']) {
+        final kind = recipient == null ? 'for me' : 'for someone else';
+
+        testWidgets('on a list $kind, for an earlier date only, without a '
+            'request; saving is not blocked', (tester) async {
+          final id = await pick(tester, recipient: recipient, day: '15');
+          final calls = [...server.calls];
+
+          expect(find.text(warning), findsOneWidget);
+
+          // Back to the saved date, then later: no warning.
+          await tester.tap(find.text('Date'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('24'));
+          await tester.tap(find.text('OK'));
+          await tester.pumpAndSettle();
+          expect(find.text(warning), findsNothing);
+          await tester.tap(find.text('Date'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('28'));
+          await tester.tap(find.text('OK'));
+          await tester.pumpAndSettle();
+          expect(find.text(warning), findsNothing);
+          // Nothing but the date decides it.
+          expect(server.calls, calls);
+
+          await tester.tap(find.text('Date'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('15'));
+          await tester.tap(find.text('OK'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Save'));
+          await tester.pumpAndSettle();
+          expect(server.bodies['PATCH /api/occasions/$id']?['date'],
+              '2026-12-15');
+        });
+      }
+
+      testWidgets('the same on an occasion with activity', (tester) async {
+        final list = server.addList('Birthday');
+        final id = server.addOccasion(list, 'Christmas', '2026-12-24',
+            invitees: ['Carol']);
+        final gift = server.addGift(list, 'Book');
+        server.addClaim(gift, id, [FakeListsServer.giver('Carol')],
+            bought: true);
+        await startApp(tester, server, '/lists/$list/occasions/$id/edit');
+
+        await tester.tap(find.text('Date'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('15'));
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(warning), findsOneWidget);
+      });
+
+      testWidgets('not when creating', (tester) async {
+        await startApp(tester, server, '/lists/$listId/occasions/new');
+        await tester.tap(find.text('Date'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('1'));
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(warning), findsNothing);
+      });
+
+      testWidgets('in French', (tester) async {
+        tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+        addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+        await pick(tester, recipient: null, day: '15');
+
+        expect(
+          find.text('Les cadeaux cachés ajoutés par vos invités sont de toute '
+              'façon dévoilés après la date la plus tardive.'),
+          findsOneWidget,
+        );
+      });
+    });
+
     testWidgets('an occasion that is gone says so', (tester) async {
       await startApp(tester, server, '/lists/$listId/occasions/nope/edit');
 

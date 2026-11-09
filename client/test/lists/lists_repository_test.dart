@@ -130,6 +130,94 @@ void main() {
     expect(gift.priceAmount, '149.00');
     expect(gift.priceCurrency, 'EUR');
     expect(list.gifts[1].priceAmount, isNull);
+    // A server older than hidden gifts sends neither.
+    expect(list.received, isEmpty);
+    expect(list.revealed, isEmpty);
+  });
+
+  test('list reads the received and revealed gifts, in their order',
+      () async {
+    answer = {
+      'id': 'l1',
+      'title': 'Birthday',
+      'recipient_kind': 'self',
+      'recipient_name': null,
+      'gifts': [],
+      'occasions': [],
+      'received': [
+        {..._gift, 'id': 'r2'},
+        {..._gift, 'id': 'r1'},
+      ],
+      'revealed': [
+        {..._gift, 'id': 'v1', 'title': 'A scarf'},
+      ],
+    };
+
+    final list = await repository().list('l1');
+
+    expect(list.received.map((gift) => gift.id), ['r2', 'r1']);
+    expect(list.revealed.single.title, 'A scarf');
+    expect(list.revealed.single.listId, 'l1');
+  });
+
+  group('received and revealed gifts', () {
+    test('markReceived, putBack and keep: their paths, bodies and answers',
+        () async {
+      code = 204;
+      await repository().markReceived('g1');
+      await repository().putBack('g1');
+      await repository().deleteGift('g2');
+      code = 200;
+      answer = {..._gift, 'id': 'g9'};
+      final kept = await repository().keep('g3');
+
+      expect(sent(0), 'POST /api/gifts/g1/received');
+      expect(seen[0].body, isEmpty);
+      expect(sent(1), 'DELETE /api/gifts/g1/received');
+      expect(seen[1].body, isEmpty);
+      expect(sent(2), 'DELETE /api/gifts/g2');
+      expect(sent(3), 'POST /api/gifts/g3/keep');
+      expect(body(3), <String, dynamic>{});
+      expect(kept.id, 'g9');
+      expect(kept.title, 'Headphones');
+    });
+
+    test('a 409 not_revealed on put back or keep is NotRevealed', () async {
+      code = 409;
+      answer = {'detail': 'Not revealed', 'code': 'not_revealed'};
+
+      await expectLater(
+        repository().putBack('g1'),
+        throwsA(isA<NotRevealed>()),
+      );
+      await expectLater(repository().keep('g1'), throwsA(isA<NotRevealed>()));
+    });
+
+    test('any other error stays the ApiClient one', () async {
+      code = 409;
+      answer = {'detail': 'Refused', 'code': 'other'};
+      await expectLater(
+        repository().putBack('g1'),
+        throwsA(isA<ApiException>()
+            .having((e) => e.statusCode, 'statusCode', 409)),
+      );
+      code = 404;
+      answer = {'detail': 'Not found'};
+      await expectLater(
+        repository().keep('g1'),
+        throwsA(isA<ApiException>()
+            .having((e) => e.statusCode, 'statusCode', 404)),
+      );
+    });
+
+    test('ids are one path segment', () async {
+      code = 204;
+      await repository().markReceived('a/b');
+      await repository().putBack('a/b');
+
+      expect(seen[0].url.path, '/api/gifts/a%2Fb/received');
+      expect(seen[1].url.path, '/api/gifts/a%2Fb/received');
+    });
   });
 
   test('updateList patches the title, and the name when given', () async {
