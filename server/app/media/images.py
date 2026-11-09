@@ -375,14 +375,17 @@ def store(media_dir: Path, image_id: uuid.UUID, full: bytes, thumb: bytes) -> No
             raise
 
 
-def ingest(db: Session, media_dir: Path, user: User, data: bytes) -> Image:
-    """A new pending image of `user` from untrusted bytes (D1).
+def add_image(db: Session, media_dir: Path, user: User, processed: Processed) -> Image:
+    """A new pending image of `user` from what `process` made of untrusted
+    bytes (D1).
+
+    Kept apart from `process`, which may take seconds: the caller decodes
+    first, then locks the user and calls this (reserving review R9-3).
 
     The files are written before the row: a row never points at files that do
     not exist, and files left without a row by a failed transaction are
     orphans the purge removes (D9).
     """
-    processed = process(data)
     image = Image(
         id=uuid.uuid4(),
         uploaded_by=user.id,

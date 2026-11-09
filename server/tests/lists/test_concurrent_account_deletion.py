@@ -91,13 +91,19 @@ def lock_the_user_to_delete(connection, user):
 
 
 def lock_their_occasions_and_delete(connection, user):
-    """The rest of the deletion, as `delete_me` runs it once the user is
-    locked: their occasions `FOR UPDATE`, then the user deleted."""
+    """The rest of the deletion, as `delete_me` runs it once its dependency
+    has locked the user (`lock_the_user_to_delete`): the `occasions` rows of
+    the lists they own and of the occasions they are a member of, locked
+    `FOR UPDATE` in id order as `lock_occasions` locks them, then the user
+    deleted."""
     values = {"user": user}
     connection.execute(
         text(
-            "SELECT occasion_id FROM occasion_members WHERE user_id = :user"
-            " ORDER BY occasion_id FOR UPDATE"
+            "SELECT id FROM occasions"
+            " WHERE list_id IN (SELECT list_id FROM list_owners WHERE user_id = :user)"
+            " OR id IN"
+            " (SELECT occasion_id FROM occasion_members WHERE user_id = :user)"
+            " ORDER BY id FOR UPDATE"
         ),
         values,
     )
