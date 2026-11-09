@@ -19,10 +19,14 @@ import 'shared_repository.dart';
 
 enum _OccasionAction { leave }
 
-/// The occasion and what its givers did, loaded together; no claims for
-/// someone sent elsewhere: an owner on Shared with me, a recipient, or an
-/// invitee on an owner's location.
-typedef _Page = ({OccasionView view, OccasionClaims? claims});
+/// The occasion, what its givers did and their hidden gifts, loaded
+/// together; no claims nor hidden gifts for someone sent elsewhere: an owner
+/// on Shared with me, a recipient, or an invitee on an owner's location.
+typedef _Page = ({
+  OccasionView view,
+  OccasionClaims? claims,
+  List<HiddenGift>? hidden,
+});
 
 /// What the page shows above the gifts, from either view.
 typedef _Header = ({
@@ -41,6 +45,9 @@ typedef _Header = ({
 ///
 /// An owner who opens it from Shared with me is sent to the list, where they
 /// manage it; the occasion's activity is not asked for (RESERVING_PLAN D14).
+///
+/// Below the list's gifts, the givers' own hidden gifts, each with who added
+/// it, and the way to add one (HIDDEN_GIFTS_PLAN D14).
 ///
 /// Opened under the list ([listId], `/lists/:id/occasions/:occasionId`), it
 /// is the giver mode of an owner of a list for someone else: the same gifts,
@@ -109,9 +116,22 @@ class _OccasionScreenState extends State<OccasionScreen>
         // In place of this page, so going back does not come here again.
         Router.neglect(context, () => context.go(elsewhere));
       }
-      return (view: view, claims: null);
+      return (view: view, claims: null, hidden: null);
     }
-    return (view: view, claims: await _repository.claims(widget.occasionId));
+    final claims = _repository.claims(widget.occasionId);
+    final hidden = _repository.hiddenGifts(widget.occasionId);
+    await Future.wait([claims, hidden]);
+    return (view: view, claims: await claims, hidden: await hidden);
+  }
+
+  /// This page's location: under Shared with me, or under the list in giver
+  /// mode.
+  String get _location {
+    final occasion = Uri.encodeComponent(widget.occasionId);
+    final listId = widget.listId;
+    return listId == null
+        ? '/shared/$occasion'
+        : '/lists/${Uri.encodeComponent(listId)}/occasions/$occasion';
   }
 
   Future<void> _leave() async {
@@ -222,6 +242,20 @@ class _OccasionScreenState extends State<OccasionScreen>
         );
         if (pledge == null) return;
         send = () => _repository.pledge(occasionId, gift.id, pledge.amount);
+      case GiftAction.edit:
+        // Reloads on the way back.
+        await context.push(
+          '$_location/hidden/${Uri.encodeComponent(gift.id)}/edit',
+        );
+        return;
+      case GiftAction.delete:
+        final confirmed = await confirmDelete(
+          context,
+          title: l10n.deleteGiftTitle,
+          body: l10n.hiddenGiftDeleteBody,
+        );
+        if (!confirmed) return;
+        send = () => _repository.deleteHiddenGift(occasionId, gift.id);
     }
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -230,7 +264,13 @@ class _OccasionScreenState extends State<OccasionScreen>
     setState(() => _acting = true);
     try {
       await send();
-      if (mounted) await _reloadClaims(l10n, say);
+      if (mounted) {
+        if (action == GiftAction.delete) {
+          reload();
+        } else {
+          await _reloadClaims(l10n, say);
+        }
+      }
     } on ClaimConflict catch (conflict) {
       say(switch (conflict.code) {
         ClaimConflictCode.taken => l10n.claimTakenNow,
@@ -238,6 +278,9 @@ class _OccasionScreenState extends State<OccasionScreen>
         ClaimConflictCode.passed => l10n.claimPassedNow,
       });
       if (mounted) await _reloadClaims(l10n, say);
+    } on HiddenGiftRefused catch (refused) {
+      say(hiddenGiftRefusalMessage(l10n, refused.refusal));
+      if (mounted) reload();
     } catch (error) {
       if (error is ApiException &&
           (error.statusCode == 404 || error.statusCode == 422)) {
@@ -329,7 +372,12 @@ class _OccasionScreenState extends State<OccasionScreen>
                       : view == null
                           // Loading, or on the way elsewhere.
                           ? const Center(child: CircularProgressIndicator())
-                          : _content(context, _header(l10n, view), claims!),
+                          : _content(
+                              context,
+                              _header(l10n, view),
+                              claims!,
+                              page!.hidden ?? const [],
+                            ),
                 ),
               ),
               // An action on its way, under the app bar (review R3-3).
@@ -373,6 +421,7 @@ class _OccasionScreenState extends State<OccasionScreen>
     BuildContext context,
     _Header header,
     OccasionClaims claims,
+    List<HiddenGift> hidden,
   ) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
@@ -405,12 +454,34 @@ class _OccasionScreenState extends State<OccasionScreen>
           const SizedBox(height: Spacing.s12),
           _card(context, gift, claims.gifts[gift.id], claims.passed),
         ],
+        // Nothing to see or do in a section once passed and empty.
+        if (hidden.isNotEmpty || !claims.passed) ...[
+          const SizedBox(height: Spacing.s24),
+          Text(l10n.hiddenGiftsTitle, style: theme.textTheme.headlineMedium),
+          const SizedBox(height: Spacing.s4),
+          Text(l10n.hiddenGiftsExplanation(header.recipient), style: metadata),
+          for (final gift in hidden) ...[
+            const SizedBox(height: Spacing.s12),
+            _card(context, gift, claims.gifts[gift.id], claims.passed),
+          ],
+          if (!claims.passed) ...[
+            const SizedBox(height: Spacing.s12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => context.push('$_location/hidden/new'),
+                icon: const Icon(Icons.add),
+                label: Text(l10n.addHiddenGift),
+              ),
+            ),
+          ],
+        ],
       ],
     );
   }
 
-  /// The gift's card: its activity chip first, in rose, when it has a
-  /// claim. Tapping it opens the sheet.
+  /// The gift's card: who added it, for a hidden gift, and its activity chip,
+  /// in rose, first, when it has a claim. Tapping it opens the sheet.
   Widget _card(
     BuildContext context,
     SharedGift gift,
@@ -419,6 +490,7 @@ class _OccasionScreenState extends State<OccasionScreen>
   ) {
     final l10n = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).toString();
+    final author = gift is HiddenGift ? authorChip(l10n, gift) : null;
     return GiftCard(
       title: gift.title,
       image: gift.image == null
@@ -435,6 +507,7 @@ class _OccasionScreenState extends State<OccasionScreen>
           ? null
           : formatPrice(gift.priceAmount!, gift.priceCurrency!, locale),
       chips: [
+        ?author,
         if (claim != null) claimChip(l10n, claim),
         if (gift.description.isNotEmpty)
           StatusChip(label: l10n.giftDetails, icon: Icons.notes),

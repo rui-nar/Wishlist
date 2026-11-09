@@ -1053,5 +1053,53 @@
   "imageReadFailed": "This image could not be read. Try another one.",
   "@imageReadFailed": {
     "description": "The gift form: the picked image could not be read from the device."
+  },
+  "hiddenGiftsTitle": "Hidden gifts",
+  "@hiddenGiftsTitle": {
+    "description": "An occasion, for its givers: the heading of the section of gifts givers added, which the recipient does not see."
+  },
+  "hiddenGiftsExplanation": "Only the people giving for this occasion see these. {name} will see the ones bought, once the occasion has passed.",
+  "@hiddenGiftsExplanation": {
+    "description": "An occasion, for its givers: the line under the Hidden gifts heading. name is who the gifts are for.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "addHiddenGift": "Add a hidden gift",
+  "@addHiddenGift": {
+    "description": "An occasion, for its givers: the button that adds a hidden gift; also the title and button of the form that adds one."
+  },
+  "hiddenGiftAddedBy": "Added by {name}",
+  "@hiddenGiftAddedBy": {
+    "description": "An occasion, for its givers: the chip of a hidden gift someone else added.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Ana"
+      }
+    }
+  },
+  "hiddenGiftAddedByYou": "Added by you",
+  "@hiddenGiftAddedByYou": {
+    "description": "An occasion, for its givers: the chip of a hidden gift the user added."
+  },
+  "hiddenGiftDeleteBody": "It is removed for everyone giving for this occasion. This cannot be undone.",
+  "@hiddenGiftDeleteBody": {
+    "description": "The confirmation before deleting a hidden gift, under the same title as deleting a list gift."
+  },
+  "hiddenGiftBoughtNow": "This gift has been bought: it can no longer be changed.",
+  "@hiddenGiftBoughtNow": {
+    "description": "A hidden gift, when the server refuses a change because it has been bought meanwhile."
+  },
+  "hiddenGiftNotAuthor": "Only the person who added this gift can change it.",
+  "@hiddenGiftNotAuthor": {
+    "description": "A hidden gift, when the server refuses a change by someone other than its author."
+  },
+  "backToOccasion": "Back to the occasion",
+  "@backToOccasion": {
+    "description": "The hidden gift form, when the gift no longer exists: goes back to the occasion."
   }
 }

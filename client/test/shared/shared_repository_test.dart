@@ -453,4 +453,114 @@ void main() {
       );
     });
   });
+
+  group('hidden gifts', () {
+    const hidden = {
+      'id': 'g1',
+      'title': 'Weekend',
+      'description': 'Near the sea',
+      'links': ['https://shop.example/w'],
+      'price_amount': '199.50',
+      'price_currency': 'EUR',
+      'image': {
+        'id': 'i1',
+        'width': 800,
+        'height': 600,
+        'url': '/api/occasions/o1/images/i1/full',
+        'thumb_url': '/api/occasions/o1/images/i1/thumb',
+      },
+      'author': 'Ana',
+      'mine': false,
+    };
+    const draft = GiftDraft(title: 'Weekend');
+
+    Matcher refused(HiddenGiftRefusal refusal) => throwsA(
+          isA<HiddenGiftRefused>().having((e) => e.refusal, 'refusal', refusal),
+        );
+
+    test('hiddenGifts reads them, with author, mine and occasion paths',
+        () async {
+      answer = [
+        hidden,
+        {...hidden, 'id': 'g2', 'author': null, 'mine': true},
+      ];
+
+      final gifts = await repository().hiddenGifts('o 1');
+
+      expect(sent(0), 'GET /api/occasions/o%201/hidden-gifts');
+      expect(gifts.first.title, 'Weekend');
+      expect(gifts.first.description, 'Near the sea');
+      expect(gifts.first.links, ['https://shop.example/w']);
+      expect(gifts.first.priceAmount, '199.50');
+      expect(gifts.first.image!.url, '/api/occasions/o1/images/i1/full');
+      expect(gifts.first.author, 'Ana');
+      expect(gifts.first.mine, isFalse);
+      expect(gifts.last.author, isNull);
+      expect(gifts.last.mine, isTrue);
+    });
+
+    test('addHiddenGift posts the gift', () async {
+      answer = hidden;
+      code = 201;
+
+      final gift = await repository().addHiddenGift('o1', draft);
+
+      expect(sent(0), 'POST /api/occasions/o1/hidden-gifts');
+      expect(jsonDecode(seen[0].body), draft.toJson());
+      expect(gift.id, 'g1');
+    });
+
+    test('updateHiddenGift patches the gift', () async {
+      answer = hidden;
+
+      await repository().updateHiddenGift('o1', 'g1', draft);
+
+      expect(sent(0), 'PATCH /api/occasions/o1/hidden-gifts/g1');
+      expect(jsonDecode(seen[0].body), draft.toJson());
+    });
+
+    test('deleteHiddenGift deletes it', () async {
+      code = 204;
+
+      await repository().deleteHiddenGift('o1', 'g1');
+
+      expect(sent(0), 'DELETE /api/occasions/o1/hidden-gifts/g1');
+    });
+
+    test('a 403 and a 409 surface their code', () async {
+      code = 403;
+      answer = {'detail': 'Refused', 'code': 'not_author'};
+      await expectLater(
+        repository().updateHiddenGift('o1', 'g1', draft),
+        refused(HiddenGiftRefusal.notAuthor),
+      );
+      code = 409;
+      answer = {'detail': 'Refused', 'code': 'bought'};
+      await expectLater(
+        repository().deleteHiddenGift('o1', 'g1'),
+        refused(HiddenGiftRefusal.bought),
+      );
+      answer = {'detail': 'Refused', 'code': 'passed'};
+      await expectLater(
+        repository().addHiddenGift('o1', draft),
+        refused(HiddenGiftRefusal.passed),
+      );
+    });
+
+    test('any other refusal stays an ApiException', () async {
+      code = 404;
+      answer = {'detail': 'Not found'};
+      await expectLater(
+        repository().deleteHiddenGift('o1', 'g1'),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 404)),
+      );
+      // A code the hidden routes do not answer is not a refusal of theirs.
+      code = 409;
+      answer = {'detail': 'Refused', 'code': 'taken'};
+      await expectLater(
+        repository().deleteHiddenGift('o1', 'g1'),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 409)),
+      );
+    });
+  });
 }

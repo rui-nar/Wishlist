@@ -20,6 +20,8 @@ enum GiftAction {
   joinGroup,
   changeAmount,
   leaveGroup,
+  edit,
+  delete,
 }
 
 /// The actions [claim] allows the user. Once the occasion has [passed],
@@ -58,6 +60,40 @@ List<GiftAction> giftActions(
         ];
 }
 
+/// Whether the user may edit or delete [gift]: a hidden gift they added, not
+/// bought, while the occasion has not [passed] (HIDDEN_GIFTS_PLAN D8).
+bool authorMayChange(
+  SharedGift gift,
+  GiftClaim? claim, {
+  required bool passed,
+}) =>
+    gift is HiddenGift && gift.mine && !passed && !(claim?.bought ?? false);
+
+/// The rose chip of who added [gift], a hidden gift; null once their account
+/// is deleted (HIDDEN_GIFTS_PLAN D8, D14).
+StatusChip? authorChip(AppLocalizations l10n, HiddenGift gift) {
+  final author = gift.author;
+  if (author == null) return null;
+  return StatusChip(
+    label: gift.mine
+        ? l10n.hiddenGiftAddedByYou
+        : l10n.hiddenGiftAddedBy(personName(l10n, author)),
+    icon: Icons.person_outline,
+    variant: StatusChipVariant.inviteeActivity,
+  );
+}
+
+/// What to say when the server refused a change to a hidden gift.
+String hiddenGiftRefusalMessage(
+  AppLocalizations l10n,
+  HiddenGiftRefusal refusal,
+) =>
+    switch (refusal) {
+      HiddenGiftRefusal.notAuthor => l10n.hiddenGiftNotAuthor,
+      HiddenGiftRefusal.bought => l10n.hiddenGiftBoughtNow,
+      HiddenGiftRefusal.passed => l10n.claimPassedNow,
+    };
+
 /// The rose chip of [claim]: who reserved or bought it, a group gift and
 /// how many are in it, or taken.
 StatusChip claimChip(AppLocalizations l10n, GiftClaim claim) {
@@ -92,8 +128,9 @@ StatusChip claimChip(AppLocalizations l10n, GiftClaim claim) {
   );
 }
 
-/// The gift's sheet: its title, price and details, its claim with the
-/// pledges, and the buttons of [giftActions]. Returns the action tapped,
+/// The gift's sheet: its title, price and details, who added a hidden gift,
+/// its claim with the pledges, the buttons of [giftActions], then Edit and
+/// Delete for the author ([authorMayChange]). Returns the action tapped,
 /// which the caller confirms and sends; null when closed.
 Future<GiftAction?> showGiftSheet(
   BuildContext context, {
@@ -126,11 +163,14 @@ class _GiftSheet extends StatelessWidget {
     final theme = Theme.of(context);
     final locale = Localizations.localeOf(context).toString();
     final claim = this.claim;
+    final gift = this.gift;
     final actions = giftActions(
       claim,
       passed: passed,
       priced: gift.priceCurrency != null,
     );
+    final author = gift is HiddenGift ? authorChip(l10n, gift) : null;
+    final mayChange = authorMayChange(gift, claim, passed: passed);
     final total = claim == null ? null : _total(claim, locale, l10n);
     final metadata = theme.textTheme.bodyLarge?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
@@ -155,6 +195,10 @@ class _GiftSheet extends StatelessWidget {
             if (gift.description.isNotEmpty) ...[
               const SizedBox(height: Spacing.s12),
               Text(gift.description, style: theme.textTheme.bodyLarge),
+            ],
+            if (author != null) ...[
+              const SizedBox(height: Spacing.s16),
+              Align(alignment: Alignment.centerLeft, child: author),
             ],
             if (claim != null) ...[
               const SizedBox(height: Spacing.s16),
@@ -219,6 +263,21 @@ class _GiftSheet extends StatelessWidget {
                       child: Text(_label(l10n, action)),
                     ),
             ],
+            if (mayChange) ...[
+              SizedBox(height: actions.isEmpty ? Spacing.s16 : Spacing.s8),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(GiftAction.edit),
+                child: Text(_label(l10n, GiftAction.edit)),
+              ),
+              const SizedBox(height: Spacing.s8),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(GiftAction.delete),
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.colorScheme.error,
+                ),
+                child: Text(_label(l10n, GiftAction.delete)),
+              ),
+            ],
           ],
         ),
       ),
@@ -260,6 +319,8 @@ String _label(AppLocalizations l10n, GiftAction action) => switch (action) {
       GiftAction.joinGroup => l10n.claimJoinGroup,
       GiftAction.changeAmount => l10n.claimChangeAmount,
       GiftAction.leaveGroup => l10n.claimLeaveGroup,
+      GiftAction.edit => l10n.editGift,
+      GiftAction.delete => l10n.deleteGift,
     };
 
 /// What the pledge dialog gives back: the amount, a decimal string in the

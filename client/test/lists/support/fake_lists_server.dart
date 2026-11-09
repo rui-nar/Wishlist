@@ -99,6 +99,11 @@ class FakeListsServer {
   /// `not_revealed`.
   final notRevealed = <String>{};
 
+  /// Occasion id → its hidden gifts, oldest first (HIDDEN_GIFTS_PLAN D7):
+  /// a gift's fields with `author` and `mine`, never in [gifts], so no owner
+  /// route finds them.
+  final hiddenGifts = <String, List<Map<String, dynamic>>>{};
+
   final status = <String, int>{};
 
   /// `'<METHOD> <path>'` → the `detail` code of the answer [status] forces
@@ -193,6 +198,34 @@ class FakeListsServer {
 
   /// [giftId] marked received, the newest.
   void markReceived(String giftId) => receivedAt[giftId] = _next++;
+
+  /// A hidden gift of [occasionId], added by [author] (null once their
+  /// account is deleted), Alice when [mine].
+  String addHidden(
+    String occasionId,
+    String title, {
+    String? author,
+    bool mine = false,
+    String description = '',
+    List<String> links = const [],
+    String? priceAmount,
+    String? priceCurrency,
+    bool image = false,
+  }) {
+    final id = 'hidden-${_next++}';
+    hiddenGifts.putIfAbsent(occasionId, () => []).add({
+      'id': id,
+      'title': title,
+      'description': description,
+      'links': links,
+      'price_amount': priceAmount,
+      'price_currency': priceCurrency,
+      if (image) 'image': _ownerImage(addImage()),
+      'author': author,
+      'mine': mine,
+    });
+    return id;
+  }
 
   /// On its list, as owners and every occasion see it: neither received nor
   /// revealed.
@@ -363,9 +396,11 @@ class FakeListsServer {
     http.Response notFound,
     http.Response noContent,
   ) {
+    // What a giver of this occasion sees: the list's, and its hidden gifts.
     final ofList = [
       for (final gift in gifts)
         if (_onList(gift, listId)) gift,
+      ...?hiddenGifts[occasionId],
     ];
     if (request.method == 'GET' && segments.length == 4 && segments[3] == 'claims') {
       return json({
@@ -460,6 +495,64 @@ class FakeListsServer {
           givers.removeWhere((giver) => giver['mine'] == true);
           if (givers.isEmpty) claims.remove(giftId);
         }
+        return noContent;
+    }
+    return null;
+  }
+
+  /// `/api/occasions/{id}/hidden-gifts[/{gift_id}]` for a giver of the
+  /// occasion, with the server's rules (HIDDEN_GIFTS_PLAN D7, D8); null for
+  /// any other path.
+  http.Response? _hiddenRoutes(
+    http.Request request,
+    String occasionId,
+    List<String> segments,
+    Map<String, dynamic>? body,
+    http.Response Function(Object body, [int code]) json,
+    http.Response notFound,
+    http.Response noContent,
+  ) {
+    if (segments.length < 4 || segments[3] != 'hidden-gifts') return null;
+    final ofOccasion = hiddenGifts.putIfAbsent(occasionId, () => []);
+    http.Response out(Map<String, dynamic> gift, [int code = 200]) =>
+        json(_sharedGift(occasionId, gift), code);
+    http.Response refused(String code, int status) =>
+        json({'detail': 'Refused', 'code': code}, status);
+    final hasPassed = passed.contains(occasionId);
+    if (segments.length == 4) {
+      switch (request.method) {
+        case 'GET':
+          return json([for (final gift in ofOccasion) _sharedGift(occasionId, gift)]);
+        case 'POST':
+          if (hasPassed) return refused('passed', 409);
+          final id = addHidden(
+            occasionId,
+            body!['title'] as String,
+            author: kAliceName,
+            mine: true,
+          );
+          final gift = ofOccasion.firstWhere((gift) => gift['id'] == id);
+          gift.addAll(body);
+          _applyImageId(gift, body);
+          return out(gift, 201);
+      }
+      return null;
+    }
+    if (segments.length != 5) return null;
+    final gift =
+        ofOccasion.where((gift) => gift['id'] == segments[4]).firstOrNull;
+    if (gift == null) return notFound;
+    if (gift['mine'] != true) return refused('not_author', 403);
+    if (hasPassed) return refused('passed', 409);
+    if (claims[gift['id']]?['bought'] == true) return refused('bought', 409);
+    switch (request.method) {
+      case 'PATCH':
+        gift.addAll(body!);
+        _applyImageId(gift, body);
+        return out(gift);
+      case 'DELETE':
+        ofOccasion.remove(gift);
+        claims.remove(gift['id']);
         return noContent;
     }
     return null;
@@ -780,6 +873,9 @@ class FakeListsServer {
       final claims = _claims(request, id, of.list['id'] as String, segments,
           body, json, notFound, noContent);
       if (claims != null) return claims;
+      final hidden =
+          _hiddenRoutes(request, id, segments, body, json, notFound, noContent);
+      if (hidden != null) return hidden;
       switch ((request.method, rest)) {
         case ('GET', ''):
           return json({
@@ -805,6 +901,9 @@ class FakeListsServer {
       final claims = _claims(request, id, of.list['id'] as String, segments,
           body, json, notFound, noContent);
       if (claims != null) return claims;
+      final hidden =
+          _hiddenRoutes(request, id, segments, body, json, notFound, noContent);
+      if (hidden != null) return hidden;
     }
     switch ((request.method, rest)) {
       case ('GET', ''):

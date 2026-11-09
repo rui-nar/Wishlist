@@ -225,5 +225,14 @@
   "imageUrlFetchFailed": "L'image n'a pas pu être téléchargée depuis cette adresse.",
   "imageNotAttachable": "Cette image ne peut plus être utilisée. Ajoutez-la de nouveau.",
   "imageExpired": "Cette image a été ajoutée il y a trop longtemps. Ajoutez-la de nouveau.",
-  "imageReadFailed": "Cette image n'a pas pu être lue. Essayez-en une autre."
+  "imageReadFailed": "Cette image n'a pas pu être lue. Essayez-en une autre.",
+  "hiddenGiftsTitle": "Cadeaux cachés",
+  "hiddenGiftsExplanation": "Seules les personnes qui offrent pour cette occasion les voient. {name} verra ceux qui ont été achetés, une fois l'occasion passée.",
+  "addHiddenGift": "Ajouter un cadeau caché",
+  "hiddenGiftAddedBy": "Ajouté par {name}",
+  "hiddenGiftAddedByYou": "Ajouté par vous",
+  "hiddenGiftDeleteBody": "Il est retiré pour toutes les personnes qui offrent pour cette occasion. Cette action est définitive.",
+  "hiddenGiftBoughtNow": "Ce cadeau a été acheté : il ne peut plus être modifié.",
+  "hiddenGiftNotAuthor": "Seule la personne qui a ajouté ce cadeau peut le modifier.",
+  "backToOccasion": "Retour à l'occasion"
 }

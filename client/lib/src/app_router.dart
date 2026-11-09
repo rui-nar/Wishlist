@@ -86,6 +86,27 @@ String? safeFrom(String? from) {
   return from;
 }
 
+/// A giver's hidden-gift forms (HIDDEN_GIFTS_PLAN D14), under the occasion
+/// page at [location]: both the one under Shared with me and the one under a
+/// list for someone else.
+List<RouteBase> _hiddenGiftRoutes(String Function(GoRouterState) location) => [
+      GoRoute(
+        path: 'hidden/new',
+        builder: (context, state) => GiftFormScreen.hidden(
+          occasionId: state.pathParameters['occasionId']!,
+          occasionLocation: location(state),
+        ),
+      ),
+      GoRoute(
+        path: 'hidden/:giftId/edit',
+        builder: (context, state) => GiftFormScreen.hidden(
+          occasionId: state.pathParameters['occasionId']!,
+          occasionLocation: location(state),
+          giftId: state.pathParameters['giftId'],
+        ),
+      ),
+    ];
+
 /// The routes: the welcome page, sign-in, home with the lists, gifts and occasions under it,
 /// Shared with me with the shared occasions under it, joining by link,
 /// account and the version screen (`/about`). The guard runs again whenever
@@ -168,6 +189,10 @@ GoRouter buildRouter({
                   occasionId: state.pathParameters['occasionId']!,
                   listId: state.pathParameters['id'],
                 ),
+                routes: _hiddenGiftRoutes(
+                  (state) => '/lists/${Uri.encodeComponent(state.pathParameters['id']!)}'
+                      '/occasions/${Uri.encodeComponent(state.pathParameters['occasionId']!)}',
+                ),
               ),
               GoRoute(
                 path: 'occasions/:occasionId/edit',
@@ -198,6 +223,10 @@ GoRouter buildRouter({
             path: ':occasionId',
             builder: (context, state) =>
                 OccasionScreen(occasionId: state.pathParameters['occasionId']!),
+            routes: _hiddenGiftRoutes(
+              (state) =>
+                  '/shared/${Uri.encodeComponent(state.pathParameters['occasionId']!)}',
+            ),
           ),
         ],
       ),
