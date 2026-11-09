@@ -61,6 +61,15 @@ A person can own lists and be an invitee on other people's.
   reserved last Christmas is available again for the next occasion.
 - **After an occasion**, the owner marks the gifts they actually received, and
   those leave the list. Invitee activity stays hidden.
+- Decided 2026-11-09 (owner's instruction to proceed silently):
+  - An owner can mark **any** gift of their list received, at any time: the
+    action is offered the same way on every gift, so it says nothing about
+    which gifts were bought.
+  - A received gift leaves the list and every occasion: invitees no longer
+    see it. The owner finds it under "Received" on the list, where they can
+    put it back on the list (a mistake) or delete it. Putting it back brings
+    it back as it was, activity included.
+  - A received gift cannot be reserved and counts towards no limit.
 
 ### Gifts
 
@@ -132,12 +141,43 @@ Later: priority, quantity (with partial reservations).
   not received, the recipient can dismiss it or keep it on their list as an
   ordinary gift.
 - Hidden gifts never count towards the recipient's limits.
+- Decided 2026-11-09 (owner's instruction to proceed silently):
+  - The occasion's date is reached when the occasion **has passed**, as for
+    reservations: 12:00 UTC on the day after its date, when that day has
+    ended in every time zone. Moving the date later hides the gift again
+    until the new date has passed.
+  - Whoever added a hidden gift can edit or delete it until it is bought;
+    the other invitees reserve, pledge and comment on it. Its author's name
+    is shown to the occasion's invitees, as for any invitee activity.
+  - A hidden gift belongs to its occasion. One nobody bought ends with the
+    occasion: it is never revealed, never carried over, and stays visible
+    to that occasion's invitees only as part of the passed occasion.
+  - Deleting an occasion before it has passed deletes its hidden gifts,
+    bought or not: they are never revealed. A bought hidden gift of an
+    occasion deleted after it passed stays revealed.
+  - The recipient's three choices on a revealed gift: **received** (it
+    leaves the list, as any received gift), **dismiss** (it is deleted), or
+    **keep** (it becomes an ordinary gift of the list, available again, with
+    nothing of its past activity).
+  - "For someone else" lists: invitees add hidden gifts as on any list; the
+    owners, who are not recipients, see them and add their own like
+    invitees. When handover arrives, the new owner must be blind to them
+    like to every past activity.
 
 ### Invitees among themselves
 
 - Invitees see which invitee reserved, bought or pledged on each gift.
 - They coordinate through a **comment thread under each gift**, hidden from the
   owner.
+- Decided 2026-11-09 (owner's instruction to proceed silently):
+  - A thread belongs to a gift **in one occasion**: invitees of another
+    occasion of the same list never see it. Hidden gifts have threads too.
+  - The author of a comment can edit it (it then shows "edited") and delete
+    it (it disappears). There is no reporting: occasions are small private
+    groups, and an owner can remove an invitee.
+  - A comment of someone who left or was removed keeps their name; deleting
+    their account signs it "Deleted user".
+  - A comment is plain text, at most 2000 characters.
 
 ### Access
 
@@ -175,6 +215,28 @@ Push on mobile, email otherwise:
 - to invitees following a gift: a new comment.
 
 Later candidates: group gift activity, occasion reminders.
+
+Decided 2026-11-09 (owner's instruction to proceed silently):
+
+- **Following:** a giver follows a gift (in its occasion) once they comment
+  on it, reserve it or join its group gift, and can follow or unfollow it
+  by hand at any time.
+- **What is notified:** the owner changed a gift's title, description,
+  links, price or image, or deleted it (to its claim's participants,
+  bought ones included); a new comment (to the gift's followers, never its
+  author); a participant leaving a group gift because they left the
+  occasion, were removed or deleted their account (to the other
+  participants, as Access and Deleting an account say).
+- **Channels now:** email, through Brevo. Push needs the published mobile
+  apps; it comes with them, on the same notifications.
+- Emails are grouped: at most one email per gift and person every 15
+  minutes, listing what happened since the last one.
+- Every email has a one-click unsubscribe link, and the account screen has
+  an "email notifications" switch (on by default).
+- Emails are in the user's app language (English or French).
+- A recipient never receives a notification about invitee activity, and the
+  owner's own requests do the same work whether or not they cause
+  notifications.
 
 ### Free and premium (from the first release)
 
@@ -231,9 +293,5 @@ Later candidates: group gift activity, occasion reminders.
 | Question | Affects |
 |---|---|
 | Who can add co-owners, and can they remove each other? What happens to a co-owned list when one co-owner deletes their account? | Roles, access control, account deletion |
-| Hidden gifts: at what moment exactly is the occasion's date reached (whose time zone; start or end of the day)? | Reveal timing |
-| Hidden gifts nobody bought: does the author keep them for a later occasion, or do they expire with the occasion? | Hidden gifts lifecycle |
-| Can invitees also add hidden gifts to a "for someone else" list, where nobody is blind until a handover? | Hidden gifts, handover |
 | Offline edits by two co-owners on the same gift: last write wins, or a conflict shown? | Sync design |
-| Comment moderation: can invitees edit or delete comments; can anyone report one? | Comments design |
 | Image storage per account (size and count per gift are decided: 10 MB per image, one image per gift, gift images plan D4, D11) | VPS disk, backups, premium |
