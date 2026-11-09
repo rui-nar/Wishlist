@@ -950,9 +950,9 @@
   "@welcomeSurpriseTitle": {
     "description": "The welcome page: the title of the card about keeping the surprise."
   },
-  "welcomeSurpriseBody": "Whoever a list is for never sees what was reserved or bought. The people you invite see who is giving what, team up on a bigger gift, and can add hidden gifts of their own: the ones bought are revealed once the occasion has passed.",
+  "welcomeSurpriseBody": "Whoever a list is for never sees what was reserved, bought or said. The people you invite see who is giving what, talk it over under each gift, team up on a bigger gift, and can add hidden gifts of their own: the ones bought are revealed once the occasion has passed.",
   "@welcomeSurpriseBody": {
-    "description": "The welcome page: the text of the card about keeping the surprise: the recipient sees nothing of what was reserved or bought, invitees see who gives what."
+    "description": "The welcome page: the text of the card about keeping the surprise: the recipient sees nothing of what was reserved, bought or said; invitees see who gives what, comment under each gift, and can add hidden gifts."
   },
   "registerTitle": "Create your account",
   "@registerTitle": {
@@ -1225,5 +1225,45 @@
   "giftFollowing": "Following",
   "@giftFollowing": {
     "description": "A gift's sheet, in its header: the user follows the gift; tapping stops."
+  },
+  "emailNotifications": "Email notifications",
+  "@emailNotifications": {
+    "description": "The account screen: the switch that turns email notifications on and off."
+  },
+  "emailNotificationsHint": "Emails about the gifts you give or follow.",
+  "@emailNotificationsHint": {
+    "description": "The account screen: the line under the email notifications switch."
+  },
+  "emailNotificationsLoadFailed": "Your email notifications setting could not be loaded. Try again later.",
+  "@emailNotificationsLoadFailed": {
+    "description": "The account screen: a snack bar when the email notifications setting could not be read; the switch stays disabled."
+  },
+  "emailNotificationsSaveFailed": "Your email notifications setting could not be changed. Try again.",
+  "@emailNotificationsSaveFailed": {
+    "description": "The account screen: a snack bar when the email notifications switch could not be saved; the switch goes back."
+  },
+  "unsubscribeTitle": "Email notifications",
+  "@unsubscribeTitle": {
+    "description": "The unsubscribe page, opened from a link in an email: the title in its app bar."
+  },
+  "unsubscribeBody": "You will stop receiving emails about the gifts you give or follow.",
+  "@unsubscribeBody": {
+    "description": "The unsubscribe page: what the button does."
+  },
+  "unsubscribeAction": "Stop email notifications",
+  "@unsubscribeAction": {
+    "description": "The unsubscribe page: the one button, which turns email notifications off."
+  },
+  "unsubscribeDone": "Email notifications are off. You can turn them back on from your account.",
+  "@unsubscribeDone": {
+    "description": "The unsubscribe page: the confirmation, pointing to the account screen."
+  },
+  "unsubscribeInvalid": "This link is not valid. Open it again from your email, or change your email notifications from your account.",
+  "@unsubscribeInvalid": {
+    "description": "The unsubscribe page: the link has no token, or the server refused it."
+  },
+  "unsubscribeOpenAccount": "Go to my account",
+  "@unsubscribeOpenAccount": {
+    "description": "The unsubscribe page: the button that opens the account screen, after signing in if needed."
   }
 }

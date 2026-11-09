@@ -18,6 +18,7 @@ import 'lists/occasion_members_screen.dart';
 import 'shared/join_screen.dart';
 import 'shared/occasion_screen.dart';
 import 'shared/pending_join.dart';
+import 'unsubscribe/unsubscribe_screen.dart';
 import 'version_screen.dart';
 import 'welcome/welcome_screen.dart';
 
@@ -30,13 +31,15 @@ const kAboutPath = '/about';
 const kRegisterMode = 'register';
 
 /// Locations shown signed out as well as signed in: they show no user data
-/// (WEB_LAYOUT_PLAN D6, review R1-1).
-const _publicPaths = {kWelcomePath, kAboutPath};
+/// (WEB_LAYOUT_PLAN D6, review R1-1). The unsubscribe link has to work without
+/// a session (COMMENTS_NOTIFICATIONS_PLAN D18).
+const _publicPaths = {kWelcomePath, kAboutPath, kUnsubscribePath};
 
 /// Where the guard sends a request for [uri], or null to let it through.
 ///
 /// Signed out, `/` goes to the welcome page whatever its query, the welcome
-/// page, the sign-in screen and the version screen pass, and every other
+/// page, the sign-in screen, the version screen and the unsubscribe page
+/// pass, and every other
 /// location goes to `/sign-in?from=<location>` (WEB_LAYOUT_PLAN D6). Signed in, the welcome
 /// page goes to `/`, and the sign-in screen goes to `from`
 /// when [safeFrom] accepts it, `/` otherwise. Share links (`/join`) rely on
@@ -109,9 +112,10 @@ List<RouteBase> _hiddenGiftRoutes(String Function(GoRouterState) location) => [
 
 /// The routes: the welcome page, sign-in, home with the lists, gifts and occasions under it,
 /// Shared with me with the shared occasions under it, joining by link,
-/// account and the version screen (`/about`). The guard runs again whenever
-/// [auth] changes, and covers every route but the public ones: sign-in, the
-/// welcome page and the version screen.
+/// account, the version screen (`/about`) and the unsubscribe page. The guard
+/// runs again whenever [auth] changes, and covers every route but the public
+/// ones: sign-in, the welcome page, the version screen and the unsubscribe
+/// page.
 ///
 /// The lists' routes are under home and the shared occasions under Shared
 /// with me, so one opened from a link still has its destination to go back
@@ -121,6 +125,10 @@ GoRouter buildRouter({
   required ApiClient api,
   required String appVersion,
 }) {
+  // From the live address, before the router exists: the path URL strategy
+  // never hands the link's fragment to the router, and the router's first
+  // report rewrites the address without it (COMMENTS_NOTIFICATIONS_PLAN D18).
+  final unsubscribeToken = unsubscribeTokenFrom(Uri.base);
   return GoRouter(
     refreshListenable: auth,
     observers: [listsRouteObserver],
@@ -188,6 +196,7 @@ GoRouter buildRouter({
                 builder: (context, state) => OccasionScreen(
                   occasionId: state.pathParameters['occasionId']!,
                   listId: state.pathParameters['id'],
+                  giftId: state.uri.queryParameters['gift'],
                 ),
                 routes: _hiddenGiftRoutes(
                   (state) => '/lists/${Uri.encodeComponent(state.pathParameters['id']!)}'
@@ -221,8 +230,10 @@ GoRouter buildRouter({
         routes: [
           GoRoute(
             path: ':occasionId',
-            builder: (context, state) =>
-                OccasionScreen(occasionId: state.pathParameters['occasionId']!),
+            builder: (context, state) => OccasionScreen(
+              occasionId: state.pathParameters['occasionId']!,
+              giftId: state.uri.queryParameters['gift'],
+            ),
             routes: _hiddenGiftRoutes(
               (state) =>
                   '/shared/${Uri.encodeComponent(state.pathParameters['occasionId']!)}',
@@ -244,6 +255,12 @@ GoRouter buildRouter({
           httpClient: api.httpClient,
           apiBaseUrl: api.baseUrl,
           appVersion: appVersion,
+        ),
+      ),
+      GoRoute(
+        path: kUnsubscribePath,
+        builder: (context, state) => UnsubscribeScreen(
+          token: unsubscribeTokenFrom(state.uri) ?? unsubscribeToken,
         ),
       ),
     ],

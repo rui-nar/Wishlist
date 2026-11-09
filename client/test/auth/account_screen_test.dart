@@ -112,6 +112,77 @@ void main() {
     expect(find.byType(AccountScreen), findsOneWidget);
   });
 
+  group('email notifications (COMMENTS_NOTIFICATIONS D20)', () {
+    SwitchListTile emailSwitch(WidgetTester tester) =>
+        tester.widget(find.byType(SwitchListTile));
+
+    testWidgets('the switch reads the server', (tester) async {
+      server.preferences['email_notifications'] = false;
+      await pumpAccount(tester);
+
+      expect(server.calls, contains('GET /api/me/preferences'));
+      expect(find.text('Email notifications'), findsOneWidget);
+      expect(emailSwitch(tester).value, isFalse);
+    });
+
+    testWidgets('turning it off writes the server', (tester) async {
+      await pumpAccount(tester);
+      expect(emailSwitch(tester).value, isTrue);
+      final patches = server.preferencePatches.length;
+
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+
+      expect(server.preferencePatches.sublist(patches), [
+        {'email_notifications': false},
+      ]);
+      expect(server.preferences['email_notifications'], isFalse);
+      expect(emailSwitch(tester).value, isFalse);
+    });
+
+    testWidgets('a failed change says so and the switch goes back',
+        (tester) async {
+      await pumpAccount(tester);
+      server.status['PATCH /api/me/preferences'] = 500;
+
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Your email notifications setting could not be changed. Try again.',
+        ),
+        findsOneWidget,
+      );
+      expect(emailSwitch(tester).value, isTrue);
+      expect(emailSwitch(tester).onChanged, isNotNull);
+    });
+
+    testWidgets('a failed read says so and the switch stays disabled',
+        (tester) async {
+      server.status['GET /api/me/preferences'] = 500;
+      await pumpAccount(tester);
+
+      expect(
+        find.text(
+          'Your email notifications setting could not be loaded. '
+          'Try again later.',
+        ),
+        findsOneWidget,
+      );
+      expect(emailSwitch(tester).value, isFalse);
+      expect(emailSwitch(tester).onChanged, isNull);
+    });
+
+    testWidgets('in French on a French device', (tester) async {
+      tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+      addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+      await pumpAccount(tester);
+
+      expect(find.text('Notifications par e-mail'), findsOneWidget);
+    });
+  });
+
   testWidgets('sign out clears the store and shows sign-in', (tester) async {
     await pumpAccount(tester);
 

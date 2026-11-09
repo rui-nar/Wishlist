@@ -200,7 +200,7 @@
   "welcomeOccasionsTitle": "Partagées pour chaque occasion",
   "welcomeOccasionsBody": "Noël, un anniversaire : partagez votre liste pour l'occasion et invitez des personnes avec un lien.",
   "welcomeSurpriseTitle": "La surprise reste entière",
-  "welcomeSurpriseBody": "La personne à qui la liste est destinée ne voit jamais ce qui a été réservé ou acheté. Les personnes invitées voient qui offre quoi, se regroupent pour un cadeau plus important et peuvent ajouter leurs propres cadeaux cachés : ceux qui ont été achetés sont dévoilés une fois l'occasion passée.",
+  "welcomeSurpriseBody": "La personne à qui la liste est destinée ne voit jamais ce qui a été réservé, acheté ou dit. Les personnes invitées voient qui offre quoi, en discutent sous chaque cadeau, se regroupent pour un cadeau plus important et peuvent ajouter leurs propres cadeaux cachés : ceux qui ont été achetés sont dévoilés une fois l'occasion passée.",
   "registerTitle": "Créez votre compte",
   "registerPrompt": "Votre compte Google suffit.",
   "whatIsWishlist": "Qu'est-ce que Wishlist ?",
@@ -254,5 +254,15 @@
   "commentGoneNow": "Cela n'existe plus. Les commentaires ont été actualisés.",
   "commentRefused": "Ce commentaire n'a pas pu être enregistré. Vérifiez le texte et réessayez.",
   "giftFollow": "Suivre",
-  "giftFollowing": "Suivi"
+  "giftFollowing": "Suivi",
+  "emailNotifications": "Notifications par e-mail",
+  "emailNotificationsHint": "Des e-mails sur les cadeaux que vous offrez ou suivez.",
+  "emailNotificationsLoadFailed": "Votre réglage des notifications par e-mail n'a pas pu être chargé. Réessayez plus tard.",
+  "emailNotificationsSaveFailed": "Votre réglage des notifications par e-mail n'a pas pu être modifié. Réessayez.",
+  "unsubscribeTitle": "Notifications par e-mail",
+  "unsubscribeBody": "Vous ne recevrez plus d'e-mails sur les cadeaux que vous offrez ou suivez.",
+  "unsubscribeAction": "Arrêter les notifications par e-mail",
+  "unsubscribeDone": "Les notifications par e-mail sont désactivées. Vous pouvez les réactiver depuis votre compte.",
+  "unsubscribeInvalid": "Ce lien n'est pas valide. Ouvrez-le de nouveau depuis votre e-mail, ou modifiez vos notifications par e-mail depuis votre compte.",
+  "unsubscribeOpenAccount": "Aller à mon compte"
 }

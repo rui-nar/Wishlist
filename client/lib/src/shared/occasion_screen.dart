@@ -56,13 +56,26 @@ typedef _Header = ({
 /// list without the activity being asked for (D4, D14); an invitee is sent
 /// to the occasion under Shared with me. An occasion of another list is not
 /// found there.
+///
+/// An email's link names a gift ([giftId], `?gift=`): its sheet opens once
+/// the claims are loaded, and the owner of a list for someone else keeps it
+/// on the way to giver mode. A recipient goes to the list without it; a gift
+/// no longer here opens the occasion only (COMMENTS_NOTIFICATIONS_PLAN D20).
 class OccasionScreen extends StatefulWidget {
-  const OccasionScreen({super.key, required this.occasionId, this.listId});
+  const OccasionScreen({
+    super.key,
+    required this.occasionId,
+    this.listId,
+    this.giftId,
+  });
 
   final String occasionId;
 
   /// The list the location names, in giver mode; null under Shared with me.
   final String? listId;
+
+  /// The gift whose sheet opens with the page; none when null.
+  final String? giftId;
 
   @override
   State<OccasionScreen> createState() => _OccasionScreenState();
@@ -80,6 +93,10 @@ class _OccasionScreenState extends State<OccasionScreen>
   /// An action on a gift is on its way: a progress bar shows it, and no
   /// second one starts meanwhile (review R3-3).
   bool _acting = false;
+
+  /// The linked gift, until its sheet has opened: only the first load opens
+  /// it, not coming back to the page.
+  late String? _linkedGift = widget.giftId;
 
   @override
   void initState() {
@@ -105,10 +122,17 @@ class _OccasionScreenState extends State<OccasionScreen>
       // A giver on their own list's occasion: here.
       OwnedOccasion(:final givesHere) when givesHere && widget.listId != null =>
         null,
+      // An email's link: the same gift, in giver mode.
+      OwnedOccasion(:final givesHere, :final listId)
+          when givesHere && widget.giftId != null =>
+        _withGift(
+          '/lists/${Uri.encodeComponent(listId)}'
+          '/occasions/${Uri.encodeComponent(widget.occasionId)}',
+        ),
       // Any other owner, the recipient first, manages it from the list.
       OwnedOccasion(:final listId) => '/lists/$listId',
       InviteeOccasion() when widget.listId != null =>
-        '/shared/${Uri.encodeComponent(widget.occasionId)}',
+        _withGift('/shared/${Uri.encodeComponent(widget.occasionId)}'),
       InviteeOccasion() => null,
     };
     if (elsewhere != null) {
@@ -122,6 +146,26 @@ class _OccasionScreenState extends State<OccasionScreen>
     final hidden = _repository.hiddenGifts(widget.occasionId);
     await Future.wait([claims, hidden]);
     return (view: view, claims: await claims, hidden: await hidden);
+  }
+
+  /// [path] naming the linked gift, when there is one.
+  String _withGift(String path) {
+    final gift = widget.giftId;
+    return gift == null ? path : '$path?gift=${Uri.encodeQueryComponent(gift)}';
+  }
+
+  /// Opens the linked gift's sheet over the page just shown.
+  void _openLinkedGift(_Header header, _Page page, OccasionClaims claims) {
+    final id = _linkedGift;
+    if (id == null) return;
+    _linkedGift = null;
+    final gift = [...header.gifts, ...?page.hidden]
+        .where((gift) => gift.id == id)
+        .firstOrNull;
+    if (gift == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openSheet(gift, claims.gifts[gift.id], claims.passed);
+    });
   }
 
   /// This page's location: under Shared with me, or under the list in giver
@@ -329,6 +373,7 @@ class _OccasionScreenState extends State<OccasionScreen>
         // on their way elsewhere.
         final view = claims == null ? null : page!.view;
         final listId = widget.listId;
+        if (view != null) _openLinkedGift(_header(l10n, view), page!, claims!);
         return Scaffold(
           appBar: AppBar(
             title: Text(switch (view) {
