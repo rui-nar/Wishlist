@@ -117,6 +117,31 @@ String _giverOccasion(FakeListsServer server) {
   return '/lists/$list/occasions/$occasion';
 }
 
+/// Bob's occasion joined, with a hidden gift of each kind: Alice's, Carol's
+/// reserved by Dan, and one whose author's account is deleted
+/// (HIDDEN_GIFTS_PLAN D14).
+String _hiddenOccasion(FakeListsServer server) {
+  final occasion = _bobsOccasion(server);
+  server.joined.add(occasion);
+  server.addHidden(
+    occasion,
+    'Weekend by the sea',
+    author: kAliceName,
+    mine: true,
+    description: 'Two nights, for her and Tom',
+    priceAmount: '240.00',
+    priceCurrency: 'EUR',
+  );
+  final carols = server.addHidden(
+    occasion,
+    'Ice skates',
+    author: 'Carol Lambert',
+  );
+  server.addClaim(carols, occasion, [FakeListsServer.giver('Dan Moreau')]);
+  server.addHidden(occasion, 'Candle set');
+  return occasion;
+}
+
 void main() {
   const brightnesses = {'light': Brightness.light, 'dark': Brightness.dark};
 
@@ -148,6 +173,15 @@ void main() {
         ('/shared/${_passedOccasion(server)}', null),
     'occasion_giver': (server) => (_giverOccasion(server), null),
     'pledge_dialog': (server) => ('/shared/${_groupOccasion(server)}', null),
+    'occasion_hidden_gifts': (server) =>
+        ('/shared/${_hiddenOccasion(server)}', null),
+    'hidden_gift_sheet_author': (server) =>
+        ('/shared/${_hiddenOccasion(server)}', null),
+    'hidden_gift_form': (server) {
+      final occasion = _bobsOccasion(server);
+      server.joined.add(occasion);
+      return ('/shared/$occasion/hidden/new', null);
+    },
     'join_confirmation': (server) {
       _bobsOccasion(server);
       return ('/join', 'tok');
@@ -157,6 +191,13 @@ void main() {
 
   // What is tapped once the screen is shown.
   final then = <String, Future<void> Function(WidgetTester)>{
+    'hidden_gift_sheet_author': (tester) async {
+      final mine = find.text('Weekend by the sea');
+      await tester.ensureVisible(mine);
+      await tester.pumpAndSettle();
+      await tester.tap(mine);
+      await tester.pumpAndSettle();
+    },
     'gift_sheet_group': (tester) async {
       await tester.tap(find.text('Noise-cancelling headphones'));
       await tester.pumpAndSettle();
@@ -174,7 +215,7 @@ void main() {
   };
 
   // Every activity chip needs a taller screen.
-  const tall = {'occasion_activity'};
+  const tall = {'occasion_activity', 'occasion_hidden_gifts'};
 
   group('goldens', skip: _skip, () {
     for (final MapEntry(key: screen, value: setUp) in screens.entries) {

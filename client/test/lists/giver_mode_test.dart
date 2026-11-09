@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wishlist/src/design/widgets/gift_card.dart';
 import 'package:wishlist/src/design/widgets/privacy_banner.dart';
 import 'package:wishlist/src/design/widgets/status_chip.dart';
+import 'package:wishlist/src/lists/gift_form_screen.dart';
 import 'package:wishlist/src/lists/list_detail_screen.dart';
 import 'package:wishlist/src/lists/occasion_members_screen.dart';
 import 'package:wishlist/src/shared/occasion_screen.dart';
@@ -20,11 +21,11 @@ void main() {
 
   setUp(() => server = FakeListsServer());
 
-  /// The activity routes: an occasion's claims and every write on a gift of
-  /// it (D6).
+  /// The activity routes: an occasion's claims, every write on a gift of it
+  /// (D6) and its hidden gifts (HIDDEN_GIFTS_PLAN D14).
   List<String> activityCalls() => [
         for (final call in server.calls)
-          if (RegExp(r'^\w+ /api/occasions/[^/]+/(claims$|gifts/)')
+          if (RegExp(r'^\w+ /api/occasions/[^/]+/(claims$|gifts/|hidden-gifts)')
               .hasMatch(call))
             call,
       ];
@@ -214,6 +215,46 @@ void main() {
       expect(roseChip(tester, 'Headphones')!.label, 'Bought by you');
     });
 
+    testWidgets('hidden gifts: loaded, and added from the occasion under the '
+        'list', (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      server.addHidden(occasion, 'Weekend', author: 'Carol');
+      await startApp(tester, server, '/lists/$list/occasions/$occasion');
+
+      expect(
+        server.calls,
+        contains('GET /api/occasions/$occasion/hidden-gifts'),
+      );
+      expect(roseChip(tester, 'Weekend')!.label, 'Added by Carol');
+
+      await tapVisible(
+        tester,
+        find.widgetWithText(OutlinedButton, 'Add a hidden gift'),
+      );
+      await tester.enterText(fieldLabelled('What is it?'), 'Candle');
+      await tapVisible(
+        tester,
+        find.widgetWithText(FilledButton, 'Add a hidden gift'),
+      );
+
+      expect(
+        server.calls,
+        contains('POST /api/occasions/$occasion/hidden-gifts'),
+      );
+      expect(find.byType(OccasionScreen), findsOneWidget);
+      expect(roseChip(tester, 'Candle')!.label, 'Added by you');
+    });
+
+    testWidgets('no Add a hidden gift once the occasion has passed',
+        (tester) async {
+      server.passed.add(occasion);
+      await startApp(tester, server, '/lists/$list/occasions/$occasion');
+
+      expect(find.text('Add a hidden gift'), findsNothing);
+    });
+
     testWidgets('/shared/:id still sends an owner to the list',
         (tester) async {
       await startApp(tester, server, '/shared/$occasion');
@@ -319,6 +360,24 @@ void main() {
       expect(roseChips(tester), isEmpty);
       expect(activityCalls(), isEmpty);
     });
+
+    for (final (name, path) in [
+      ('under the list, adding', 'lists/%L/occasions/%O/hidden/new'),
+      ('under the list, editing', 'lists/%L/occasions/%O/hidden/x/edit'),
+      ('under Shared with me, adding', 'shared/%O/hidden/new'),
+      ('under Shared with me, editing', 'shared/%O/hidden/x/edit'),
+    ]) {
+      testWidgets('a hidden gift location ($name) goes to the list without '
+          'asking', (tester) async {
+        final location =
+            '/${path.replaceAll('%L', list).replaceAll('%O', occasion)}';
+        await startApp(tester, server, location);
+
+        expect(find.byType(ListDetailScreen), findsOneWidget);
+        expect(find.byType(GiftFormScreen), findsNothing);
+        expect(activityCalls(), isEmpty);
+      });
+    }
   });
 
   testWidgets("an invitee on an owner's location goes to the occasion",
