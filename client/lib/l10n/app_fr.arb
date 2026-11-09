@@ -138,7 +138,7 @@
   "claimGroup": "Cadeau commun · {count}",
   "claimGroupBought": "Cadeau commun · acheté",
   "claimTaken": "Déjà pris",
-  "claimTakenExplanation": "Quelqu'un d'autre offre déjà ce cadeau.",
+  "claimTakenExplanation": "Ce cadeau est déjà offert pour une autre occasion.",
   "claimYou": "Vous",
   "pledgeTotal": "{total} promis sur {price}",
   "occasionPassed": "Cette occasion est passée : plus rien ne peut être réservé.",

@@ -686,9 +686,9 @@
   "@claimTaken": {
     "description": "An occasion shared with the user: the chip of a gift someone gives for another occasion; who and where are not said."
   },
-  "claimTakenExplanation": "Someone else is already giving this gift.",
+  "claimTakenExplanation": "This gift is already being given for another occasion.",
   "@claimTakenExplanation": {
-    "description": "The gift sheet: a gift taken by someone the user cannot see."
+    "description": "The gift sheet: a gift claimed for another occasion of the list. It covers the giver's own claim there too, so it must not name or imply a person."
   },
   "claimYou": "You",
   "@claimYou": {

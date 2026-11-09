@@ -257,14 +257,31 @@ void main() {
       expect(sheetActions(tester), ['Mark as bought', 'Leave the group gift']);
     });
 
-    testWidgets('taken says only that someone else gives it', (tester) async {
+    testWidgets('taken says only that it is given for another occasion',
+        (tester) async {
       server.addClaim(priced('Headphones'), other, [eve]);
       await startApp(tester, server, '/shared/$occasion');
       await openSheet(tester, 'Headphones');
 
-      expect(find.text('Someone else is already giving this gift.'), findsOneWidget);
+      expect(
+        find.text('This gift is already being given for another occasion.'),
+        findsOneWidget,
+      );
       expect(find.textContaining('Eve'), findsNothing);
       expect(find.textContaining('Birthday'), findsNothing);
+    });
+
+    testWidgets('taken by the caller in another occasion names nobody',
+        (tester) async {
+      server.addClaim(priced('Headphones'), other, [alice]);
+      await startApp(tester, server, '/shared/$occasion');
+      await openSheet(tester, 'Headphones');
+
+      expect(
+        find.text('This gift is already being given for another occasion.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Someone else'), findsNothing);
     });
   });
 
