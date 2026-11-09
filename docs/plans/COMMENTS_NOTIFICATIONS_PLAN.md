@@ -209,7 +209,8 @@ out of scope for the first release (NEEDS, Out of scope).
 
 - **D9 — A durable outbox, written in the triggering transaction.** New
   table `notification_events`: `id` (bigint identity), `kind`
-  (`gift_changed` | `gift_deleted` | `comment_added` | `participants_left`,
+  (`gift_changed` | `gift_deleted` | `comment_added` | `participants_left` |
+  `gifts_removed`,
   check constraint), `occasion_id` (UUID, null, no FK), `gift_id` (UUID,
   null, no FK), `actor_id` (FK `users` `ON DELETE SET NULL`, null),
   `payload` (JSONB), `created_at`, `status` (`pending` | `done` |
@@ -233,7 +234,8 @@ out of scope for the first release (NEEDS, Out of scope).
   | An owner's `PATCH /api/gifts/{id}` that changes the title, description, links, price (amount or currency) or image | `gift_changed`, `gift_id`, actor the owner | `{"fields": [...]}`, the changed field names | `update_gift` |
   | An owner's `DELETE /api/gifts/{id}` | `gift_deleted`, `gift_id`, actor the owner | `{"title": "…", "received": bool}`: the title, and whether the gift was received, at deletion (the owner's own data) | `delete_gift` |
   | `POST …/comments` | `comment_added`, `occasion_id`, `gift_id`, actor the author | `{"comment_id": "…"}` | the comment route |
-  | `release_activity` (leave, removal, account deletion) | `participants_left`, actor the leaver | `{"gifts": [{"gift_id", "occasion_id"}…]}`: the unbought group gifts they left that still have participants | `release.py` |
+  | `release_activity` (leave, removal, account deletion) | `participants_left`, actor the leaver | `{"gifts": [{"gift_id", "occasion_id"}…]}`: the group gifts they left whose claim is live (`rules.is_live(now)` at release time) and still has participants | `release.py` |
+  | An owner's `DELETE …/members/{user_id}` | `gifts_removed`, `occasion_id`, actor the owner | `{"gifts": [{"gift_id", "title"}…]}`: the hidden gifts the removed invitee added that the removal deleted (HIDDEN_GIFTS_PLAN D8, `delete_unbought_by`, which returns their ids and titles); the title is captured because the row is gone by fan-out | `remove_member` |
 
   The `gift_changed` condition compares the request's values with the gift's
   stored ones, so it depends on the owner's input and the gift alone, never
@@ -246,9 +248,13 @@ out of scope for the first release (NEEDS, Out of scope).
   "revealed" without reading any activity, and the request does the same
   work for every revealed gift whatever its claim, thread or followers. A
   hidden gift edited or deleted by its author, and keep and received on a
-  revealed gift, write no event either (NEEDS). `participants_left` is written once per `release_activity`
-  call, also with an empty list, so leave, removal and deletion write the
-  same rows whatever was released (D12). Marking a gift received and
+  revealed gift, write no event either (NEEDS). `participants_left` is
+  written once per `release_activity` call, also with an empty list, and
+  `gifts_removed` once per removal, also with an empty list, so leave,
+  removal and deletion write the same event rows whatever was released or
+  deleted (D12). A group gift whose claim has expired (its occasion passed)
+  is not listed: it already ended, and its participants are not told of a
+  departure from it. Marking a gift received and
   deleting an occasion or a list notify nobody (NEEDS lists only the causes
   above; Open decisions).
 - **D11 — Fan-out: who is notified, decided by the worker.** The worker
@@ -280,7 +286,21 @@ out of scope for the first release (NEEDS, Out of scope).
     except the comment's author; nobody if the comment was deleted before
     fan-out.
   - `participants_left`: for each listed gift, the claim's participants at
-    fan-out time (the leaver is no longer one).
+    fan-out time (the leaver is no longer one). A listed gift whose row is
+    gone by fan-out (deleted by the same removal, or since) is skipped for
+    this event: the removal's `gifts_removed` tells its participants, and a
+    gift deleted later by its owner has its own `gift_deleted`.
+  - `gifts_removed`: for each listed gift, the participants of its claim,
+    read from the claim rows the deletion left (D13: nothing cascades from
+    the gift, and the sweep waits for this event), as live at the event's
+    time, except the actor; the email says the hidden gift, by its captured
+    title, was removed from the occasion, and nothing else about it. No
+    claim rows, no one for that gift.
+  - **Fan-out is per gift.** For the two list events, each listed gift is
+    evaluated on its own: a gift with missing rows is skipped with nothing
+    written for it, and never fails the event, so the other gifts of the
+    same event are still notified. Only an unexpected error fails the event
+    (D9's backoff and cap).
   - **Every target must be a giver of the notification's occasion at fan-out
     time**, by the same rule as `giving_occasion`, evaluated in SQL
     (`access.py` gains `giver_condition(user_id, occasion_id)`, ownership of
@@ -304,19 +324,20 @@ out of scope for the first release (NEEDS, Out of scope).
     revealed gift, D10) and deletes the gift row. Nothing cascades from `gifts` into activity any more (D13), so the
     request deletes the same rows whether the gift had a claim, pledges,
     comments and followers, or nothing.
-  - `remove_member` writes exactly one `participants_left` row, whatever
-    the removed person held. Its release of their claims is per-claim work
-    that predates this plan and that RESERVING accepted (its D10 and
-    envelope); this plan adds nothing per gift to it. Identical statements
-    are not required of it: its floor is that one event row plus that
-    release.
+  - `remove_member` writes exactly one `participants_left` row and one
+    `gifts_removed` row, whatever the removed person held. Its release of
+    their claims and HIDDEN_GIFTS_PLAN D8's deletion of their unbought
+    hidden gifts are per-row work RESERVING's and that plan's envelopes
+    accept for removal; this plan adds nothing per gift to it. Identical
+    statements are not required of it: its floor is those two event rows
+    plus that work.
   - Who is notified is decided by the worker (D11), in its own transaction,
     long after the owner's response.
   A test records the SQL statements and row counts of the owner's `PATCH`
   and `DELETE /api/gifts/{id}` on twin gifts, one with each kind of activity
   and one without, and requires them identical (U3, U9); for
-  `remove_member` it checks exactly one event row with and without group
-  gifts. A schema test fails if any foreign
+  `remove_member` it checks exactly one row of each of its two events with
+  and without group gifts and hidden gifts. A schema test fails if any foreign
   key from an activity table (`gift_claims`, `claim_participants`,
   `comments`, `gift_follows`, notification tables) references `gifts`.
 - **D13 — Deleting a gift leaves its activity to the worker.** The foreign
@@ -336,7 +357,8 @@ out of scope for the first release (NEEDS, Out of scope).
   1. fans out the `gift_deleted` event, reading the claim's participants
      from those rows;
   2. then deletes the activity of every gift id that no longer exists in
-     `gifts` and has no `pending` `gift_deleted` event (claims,
+     `gifts` and is named by no `pending` `gift_deleted` or
+     `gifts_removed` event (claims,
      participants by cascade, comments, follows). The same sweep cleans up
      after every other way a gift row goes (keep, dismiss, a hidden gift
      deleted by its author, an occasion's hidden gifts), and deletes unbought
@@ -551,8 +573,10 @@ concurrency, time), and these additions:
   email), is F1. The owner's `PATCH` and `DELETE /api/gifts/{id}` (dismiss
   of a revealed gift included) must do the same statements with the same
   row counts whatever the activity (D12). For `DELETE
-  …/members/{user_id}` the floor is exactly one `participants_left` event
-  row plus the per-claim release work RESERVING already accepted;
+  …/members/{user_id}` the floor is exactly one `participants_left` and
+  one `gifts_removed` event row plus the per-claim release work RESERVING
+  already accepted and the hidden-gift deletion HIDDEN_GIFTS_PLAN D8
+  accepts;
   identical statements are not required of it. Lock waits of a few
   milliseconds stay out of the envelope, as in RESERVING. Other owner
   deletions (occasion, list, account), which cause no notification, keep
@@ -814,11 +838,14 @@ concurrency, time), and these additions:
   gift does the same work whatever its activity.
 - **Scope:** `server/app/notifications/**` (new: `__init__.py`,
   `models.py`, `events.py`), `server/app/accounts/models.py` (the two
-  columns only), `server/app/reserving/models.py` (drop the FK only),
+  columns only), `server/app/reserving/models.py` (`GiftClaim` only: drop
+  the `gifts` foreign key and the `occasion_id` check constraint with its
+  comment), `hidden_gifts/lifecycle.py` (`delete_unbought_by` returns the
+  deleted gifts' ids and titles, nothing else),
   `server/app/reserving/release.py` (`release_activity` and the body of
   `drop_gift_activity`), `server/app/reserving/router.py`
   (auto-follow calls only), `server/app/lists/router.py` (`update_gift`,
-  `delete_gift` only), `server/app/comments/router.py` (the event on post
+  `delete_gift`, `remove_member` only), `server/app/comments/router.py` (the event on post
   only), `server/alembic/env.py`, `server/alembic/versions/**` (one new
   revision), `server/tests/lists/claims_invariants.py`,
   `server/tests/lists/**` (new `test_notification_events.py`,
@@ -846,10 +873,14 @@ concurrency, time), and these additions:
      write `gift_deleted` with the title and `received`; then delete the gift
      row (D10).
   4. `release.py`: `release_activity` collects the group gifts left that
-     still have participants (bought ones too), writes one
-     `participants_left` per call (empty list included) and calls
+     still have participants (bought ones too), only those whose claim is
+     live (`rules.is_live(now)`), writes one `participants_left` per call
+     (empty list included) and calls
      `drop_follows`. `drop_gift_activity`: its body deletes nothing (D13);
      docstring states its contract and that the sweep removes the rows.
+     `remove_member`: after the release and HIDDEN_GIFTS_PLAN D8's
+     `delete_unbought_by`, write one `gifts_removed` with the ids and titles
+     it returned (empty list included).
   5. Claims routes: `auto_follow` on reserve, mark bought from free, start
      or join a group gift. Comment post: `comment_added`.
   6. `claims_invariants.py`: orphaned claims and unbought claims with no
@@ -857,7 +888,11 @@ concurrency, time), and these additions:
   7. `test_notification_events.py`: each cause writes exactly its row and
      payload; an edit changing no notified field (or only an unnotified
      one) writes none; leave, removal and account deletion each write one
-     `participants_left`, with and without group gifts; follows dropped on
+     `participants_left`, with and without group gifts; a group gift of a
+     passed occasion (claim expired) is not listed, a live one is; a removal
+     writes one `gifts_removed` with the titles of the removed author's
+     unbought hidden gifts, and an empty one when there are none; follows
+     dropped on
      leave and removal; auto-follow per route, sticky unfollow respected;
      a deleted gift's claim, comments and follows remain, unreachable, and
      every claims and comment read ignores them; a gift deleted, then its
@@ -875,9 +910,10 @@ concurrency, time), and these additions:
      twin G2 with none record identical sequences; the same for a revealed
      gift's edit and dismissal (twin revealed gifts, one with a thread and
      followers, one without). `DELETE …/members/{user_id}` on an invitee
-     with and without group gifts writes exactly one event row each time
-     (statements not compared: its release is RESERVING's accepted
-     per-claim work, D12). A schema test: no foreign key
+     with and without group gifts and hidden gifts writes exactly one
+     `participants_left` and one `gifts_removed` row each time (statements
+     not compared: its release and hidden-gift deletion are accepted
+     per-row work, D12). A schema test: no foreign key
      from `gift_claims`, `claim_participants`, `comments`, `gift_follows`,
      `notification_events`, `notifications`, `email_digests` to `gifts`.
   9. `test_migrations.py`: upgrade then downgrade with an orphaned claim
@@ -1019,7 +1055,7 @@ concurrency, time), and these additions:
   1. `email_content.py`: input dataclasses (recipient name, language,
      occasion name, gift title, links, items: fields changed, comments with
      author name or null, participants left with name or null, gift
-     deleted); `render(...) -> EmailMessage` (subject, HTML, text, headers);
+     deleted, hidden gift removed with its title); `render(...) -> EmailMessage` (subject, HTML, text, headers);
      strings in an EN and an FR table with the same keys; every value HTML-
      escaped; no external images, no tracking.
   2. `mailer.py`: `BrevoMailer(api_key, sender_address, sender_name,
@@ -1125,7 +1161,13 @@ concurrency, time), and these additions:
        a "for someone else" list who also reserved; a claim with no
        occasion → event `done`, reason `no_occasion`, no row; an event
        whose fan-out raises five times → `failed`, logged, not retried, and
-       the sweep proceeds for its gift; a removed invitee, a
+       the sweep proceeds for its gift; a removal deleting the removed
+       author's unbought hidden group gift that others pledged on → its
+       other participants get one "removed" notification with the captured
+       title, the same removal's `participants_left` skips that gift and
+       still notifies the leaver's other group gifts, the claim rows are
+       swept only after; a `gifts_removed` gift with no claim rows → nobody,
+       the event `done`; a removed invitee, a
        recipient, a co-owner of a "for me" list who was a member, and a
        "for someone else" list's owner (a giver: notified) — no row ever for
        a non-giver; fanning out the same event twice inserts nothing twice;
