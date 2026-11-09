@@ -181,3 +181,21 @@ step 7) without a triage pass, since the floors fix their decisions.
 - Guard: skip the run with `media purge: skipped (clock behind)` when any orphan stamp, image creation time or dump date is later than now
 - Override: —
 - Outcome: guard added (8d15b81)
+
+## Delivery
+
+Orchestrated under the owner's standing instruction of 2026-11-08, in the
+same branch as the reserving plan (`feat/images-reserving`). Server units ran
+in worktrees (W2); client units in the main tree, alongside them.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Image pipeline and pending images | Opus | S4 | 1 | X3 (`.gitignore` hid `server/app/media`) | yes | R1-2, R1-3, R1-4, R1-6, R2-1, R2-2, R2-3, R2-4 |
+| U2 | SSRF-safe URL fetcher | Opus | S5 | 1 | — | yes | R1-9, R3-1, R3-2 |
+| U3 | Backups readable by the media purge | Opus | S5 | 1 | — | yes | R1-10 |
+| U4 | Client: load images over the API | Sonnet | — | 1 | — | yes | R1-5 |
+| U5 | Images on gifts, invitee route, image from URL | Opus | S4 | 1 | — | yes | R1-1, R1-7, R1-8 |
+| U6 | Client: gift image models and display | Sonnet | — | 1 | — | yes | R1-5 |
+| U7 | Client: select, URL or paste an image | Opus | S2 | 1 | — | yes | — |
+| U8 | Media purge | Opus | S5 | 1 | — | yes | R1-1, R1-6, R5-1, R5-2 |
+| F1 | App memory limits for image processing | Sonnet | — | 1 | budget vs host threshold, answered (threshold 1150 MB) | yes | — |

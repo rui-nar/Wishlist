@@ -139,4 +139,22 @@ plan must release such claims when the owner row is added.
 - Decision: Guard (D9)
 - Guard: the co-owner run of each state keeps the holder in place until after `deletions()`, so the recipient's deletions (including the twinned `DELETE /api/gifts/{id}`) meet the unbought reservation or group gift; an assertion checks that at least one run reaches `deletions()` with an unbought claim on G1
 - Override: —
-- Outcome: open
+- Outcome: guard added (259f3b5)
+
+## Delivery
+
+Orchestrated under the owner's standing instruction of 2026-11-08, in the
+same branch as the gift-images plan (`feat/images-reserving`). Server units
+ran in worktrees (W2); client units in the main tree, alongside them.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Claims, reserve, release, bought | Opus | S4 | 1 | — | yes | R1-1 |
+| U2 | Welcome page tells how the surprise is kept | Sonnet | — | 1 | — | yes | — |
+| U3 | Group gifts with pledges | Opus | S5 | 1 | — | yes | R1-2, R4-1 |
+| U4 | Client: reserve, release, mark bought | Opus | S5 | 1 | X3 (`putJson` in `ApiClient`) | yes | R3-1, R3-2, R3-3 |
+| U5 | Leaving, removal and deletions release claims | Opus | S4 | 1 | X3 (`delete_list`) | yes | R1-1, R1-3, R6-1, R6-2 |
+| U6 | Client: owners of a list for someone else give too | Opus | S5 | 1 | X3 (one line in `list_detail_screen.dart`) | yes | — |
+| U7 | The recipient sees nothing, endpoint by endpoint | Opus | S5 | 1 | — | yes | R7-1 |
+| F1 | A giver sees their own claim after the date | Opus | S5 | 1 | — | yes | R3-1, R4-1 |
+| F2 | Client: mark bought after the date, actions in flight | Opus | S5 | 1 | — | yes | R3-1, R3-2, R3-3 |
