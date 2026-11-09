@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # (lists plan D5); /api/config hands it to the mobile apps. Empty in DEV:
     # the web client builds the link on its own origin.
     public_base_url: str = ""
+    # Signs the unsubscribe links of emails (comments plan D18); rotating it
+    # invalidates every link sent. Empty: every unsubscribe token is refused.
+    notification_secret: str = ""
 
     @property
     def google_audiences(self) -> list[str]:
