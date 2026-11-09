@@ -122,7 +122,7 @@ occasions before the user row (R6-1).
 - Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=M/shared, confidence=verified
 - Decision: Defer (D10)
 - Revisit when: an IntegrityError on a users foreign key is logged, or account deletion gains a grace period or asynchronous processing
-- Override: —
+- Override: reopened in round 8 as Fix now by the orchestrator (standing instruction): the envelope's concurrency bullet requires that racing an account deletion never answers a 500, and R8-1 is the same family, fixed in the same unit
 - Outcome: open
 
 ## Round 7 — 2026-11-09, unit review of U7 (DELIVERY.md §5 point 3), reviewed at 33adb49
@@ -140,6 +140,27 @@ plan must release such claims when the owner row is added.
 - Guard: the co-owner run of each state keeps the holder in place until after `deletions()`, so the recipient's deletions (including the twinned `DELETE /api/gifts/{id}`) meet the unbought reservation or group gift; an assertion checks that at least one run reaches `deletions()` with an unbought claim on G1
 - Override: —
 - Outcome: guard added (259f3b5)
+
+## Round 8 — 2026-11-09, integrated diff review (DELIVERY.md §5), reviewed at 1269cce
+
+Table approved by the orchestrator under the owner's standing instruction of
+2026-11-08. Triager corrections accepted (R8-1 trigger concrete: the envelope
+names racing an account deletion as the normal case; R8-2 impact
+wrong-visible). R6-2 reopened (see its Override line).
+
+### R8-1 — A request racing its own account deletion answers 500 inside the auth dependency
+- Trigger: a user deletes their account on one device while another device sends any request → `current_session` finds the session, `delete_me` commits, `current_user`'s `get_one(User)` raises `NoResultFound` (or the `touch` flush raises `StaleDataError`) → 500 instead of 401
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/shared, confidence=verified
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: open
+
+### R8-2 — The gift sheet says "someone else" gives a gift the giver holds in another occasion
+- Trigger: an invitee of two occasions of a list reserves a gift in one and opens it in the other → the server answers `taken` with no participants, the sheet says someone else is giving it → false statement to the giver
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: open
 
 ## Delivery
 
