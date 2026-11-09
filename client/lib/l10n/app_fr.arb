@@ -110,7 +110,7 @@
   "revokeLinkBody": "Plus personne de nouveau ne peut rejoindre avec. Les personnes qui ont déjà rejoint gardent leur accès.",
   "revokeLinkConfirm": "Révoquer",
   "deleteOccasionTitle": "Supprimer cette occasion ?",
-  "deleteOccasionBody": "Ses invités perdent l'accès à la liste par elle, et son lien cesse de fonctionner. C'est définitif.",
+  "deleteOccasionBody": "Ses invités perdent l'accès à la liste par elle, et son lien cesse de fonctionner. Les cadeaux cachés ajoutés pour cette occasion sont aussi supprimés, sauf ceux achetés une fois l'occasion passée. C'est définitif.",
   "occasionNotFound": "Cette occasion n'existe plus.",
   "editOccasionTitle": "Modifier l'occasion",
   "occasionNameLabel": "Occasion",

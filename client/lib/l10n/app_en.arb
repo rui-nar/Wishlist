@@ -518,7 +518,7 @@
   "@deleteOccasionTitle": {
     "description": "The dialog before deleting an occasion."
   },
-  "deleteOccasionBody": "Its invitees lose access to the list through it, and its link stops working. This cannot be undone.",
+  "deleteOccasionBody": "Its invitees lose access to the list through it, and its link stops working. Hidden gifts added for this occasion are deleted too, except those bought once the occasion has passed. This cannot be undone.",
   "@deleteOccasionBody": {
     "description": "The dialog before deleting an occasion."
   },

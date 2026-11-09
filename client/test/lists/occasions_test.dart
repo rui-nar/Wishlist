@@ -275,6 +275,52 @@ void main() {
       expect(find.text('Christmas 2026'), findsNothing);
     });
 
+    group('the delete confirmation says what happens to hidden gifts '
+        '(HIDDEN_GIFTS_PLAN R5-1)', () {
+      const english = 'Hidden gifts added for this occasion are deleted too, '
+          'except those bought once the occasion has passed.';
+      const french = 'Les cadeaux cachés ajoutés pour cette occasion sont '
+          'aussi supprimés, sauf ceux achetés une fois l\'occasion passée.';
+
+      for (final recipient in [null, 'Léa']) {
+        final kind = recipient == null ? 'for me' : 'for someone else';
+
+        for (final inFrench in [false, true]) {
+          testWidgets(
+              'on an occasion of a list $kind, in ${inFrench ? 'French' : 'English'}',
+              (tester) async {
+            if (inFrench) {
+              tester.platformDispatcher.localesTestValue = const [
+                Locale('fr', 'FR'),
+              ];
+              addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+            }
+            final list = server.addList('Birthday', recipientName: recipient);
+            server.addOccasion(list, 'Christmas', '2026-12-24');
+            await startApp(tester, server, '/lists/$list');
+
+            final actions =
+                find.byTooltip(inFrench ? "Actions de l'occasion" : 'Occasion actions');
+            await tester.ensureVisible(actions);
+            await tester.tap(actions);
+            await tester.pumpAndSettle();
+            await tester.tap(
+              find.text(inFrench ? "Supprimer l'occasion" : 'Delete occasion'),
+            );
+            await tester.pumpAndSettle();
+
+            expect(
+              find.descendant(
+                of: find.byType(AlertDialog),
+                matching: find.textContaining(inFrench ? french : english),
+              ),
+              findsOneWidget,
+            );
+          });
+        }
+      }
+    });
+
     testWidgets('a failed change says so', (tester) async {
       final id = server.addOccasion(listId, 'Christmas 2026', '2026-12-24');
       server.status['POST /api/occasions/$id/link'] = 500;
