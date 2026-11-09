@@ -7,6 +7,7 @@ A hidden gift is deleted explicitly, its activity dropped through
 Postgres fires cascades in (reserving plan D11, review R1-1).
 """
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import delete, exists, or_, select, update
@@ -50,3 +51,22 @@ def settle_occasion_deletion(db: Session, occasion: Occasion, now: datetime) -> 
     gone = list(db.scalars(select(Gift.id).where(hidden)))
     drop_gift_activity(db, gone)
     db.execute(delete(Gift).where(Gift.id.in_(gone)))
+
+
+def lock_authored(db: Session, user_id: uuid.UUID) -> None:
+    """Before an account deletion releases its claims: the hidden and
+    revealed gifts the user authored, locked `FOR NO KEY UPDATE` in id
+    order, as the deletion's `hidden_by` `SET NULL` locks them (D8, D10).
+
+    So the deletion takes these gifts before any claim (D10: occasions,
+    gifts, claims), never after: a deletion of one of them at the same moment
+    (an owner dismissing it, which locks the gift, then its claims) either
+    finished first or waits, never a deadlock (review R3-1). A giver's claim
+    write, which takes the gift `FOR KEY SHARE`, does not wait on it.
+    """
+    db.execute(
+        select(Gift.id)
+        .where(Gift.hidden_by == user_id)
+        .order_by(Gift.id)
+        .with_for_update(key_share=True)
+    )

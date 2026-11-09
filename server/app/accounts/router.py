@@ -11,6 +11,7 @@ from app.accounts.google import GoogleIdentity, InvalidGoogleToken
 from app.accounts.models import User, UserIdentity
 from app.accounts.schemas import GoogleSignIn, SignedIn, UserOut
 from app.db import DbSession
+from app.hidden_gifts.lifecycle import lock_authored
 from app.lists.deletion import delete_lists_owned_only_by
 from app.lists.models import List, ListOwner, Occasion, OccasionMember
 from app.lists.visibility import of_lists
@@ -77,6 +78,10 @@ def delete_me(user: UserToDelete, db: DbSession) -> Response:
             ),
         ),
     )
+    # The gifts they authored, before any claim: the user's deletion below
+    # updates them (`hidden_by`), and a gift is always locked before its
+    # claims (hidden gifts plan D10, review R3-1).
+    lock_authored(db, user.id)
     # Released in every occasion (D10); their name leaves their bought
     # reservations with the user row, below.
     release_activity(db, user.id, None)
