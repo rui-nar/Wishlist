@@ -31,6 +31,7 @@ from app.accounts.models import User
 from app.db import DbSession
 from app.lists.access import giving_occasion, not_found
 from app.lists.models import Gift, Occasion
+from app.lists.visibility import in_occasion, lock_gift_in_occasion
 from app.reserving.models import GROUP as GROUP_KIND
 from app.reserving.models import RESERVATION, ClaimParticipant, GiftClaim
 from app.reserving.rules import has_passed, is_live, purge_expired, remove_participant
@@ -68,12 +69,13 @@ def occasion_claims(
     # Live claims, and the caller's own claims of this occasion that have
     # expired: they may still mark those bought (D8, review R3-1). Anyone
     # else's expired claim is gone, for this occasion's invitees too, and
-    # counts as taken nowhere.
+    # counts as taken nowhere. Only of the gifts the occasion shows: its
+    # hidden gifts included, received gifts left out (hidden gifts plan D4).
     rows = db.execute(
         select(GiftClaim, is_live(now).label("live"))
         .join(Gift, Gift.id == GiftClaim.gift_id)
         .where(
-            Gift.list_id == occasion.list_id,
+            in_occasion(occasion),
             or_(
                 is_live(now),
                 and_(
@@ -291,21 +293,17 @@ def _conflict(code: ConflictCode) -> JSONResponse:
 def _giving_gift(
     db: Session, user: User, occasion_id: uuid.UUID, gift_id: uuid.UUID
 ) -> Occasion:
-    """The occasion, if the user gives in it and the gift is on its list;
-    otherwise 404 (D6).
+    """The occasion, if the user gives in it and its givers see the gift (on
+    its list or one of its hidden gifts, not received); otherwise 404 (D6,
+    hidden gifts plan D4).
 
     The gift is locked `FOR KEY SHARE` (D7 step 2): its deletion at the same
     moment either committed before (404) or waits for this request, while an
-    owner's edit of it is not blocked. Only its list id is read, so the gift
-    row is never in the session to be written back (D3).
+    owner's edit of it, or its receipt, is not blocked. Only its id is read,
+    so the gift row is never in the session to be written back (D3).
     """
     occasion = giving_occasion(db, user, occasion_id)
-    list_id = db.scalar(
-        select(Gift.list_id)
-        .where(Gift.id == gift_id)
-        .with_for_update(read=True, key_share=True)
-    )
-    if list_id != occasion.list_id:
+    if not lock_gift_in_occasion(db, gift_id, occasion):
         raise not_found()
     return occasion
 

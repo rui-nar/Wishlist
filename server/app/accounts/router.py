@@ -12,7 +12,8 @@ from app.accounts.models import User, UserIdentity
 from app.accounts.schemas import GoogleSignIn, SignedIn, UserOut
 from app.db import DbSession
 from app.lists.deletion import delete_lists_owned_only_by
-from app.lists.models import Gift, ListOwner, Occasion, OccasionMember
+from app.lists.models import List, ListOwner, Occasion, OccasionMember
+from app.lists.visibility import of_lists
 from app.reserving.release import delete_gift_claims, lock_occasions, release_activity
 
 router = APIRouter(prefix="/api", tags=["accounts"])
@@ -79,16 +80,19 @@ def delete_me(user: UserToDelete, db: DbSession) -> Response:
     # Released in every occasion (D10); their name leaves their bought
     # reservations with the user row, below.
     release_activity(db, user.id, None)
-    # The claims on the lists about to go, before their cascades (D11).
+    # The claims on the lists about to go, before their cascades (D11), their
+    # hidden and revealed gifts' included (hidden gifts plan D9).
     other = aliased(ListOwner)
     delete_gift_claims(
         db,
-        Gift.list_id.in_(
-            select(ListOwner.list_id).where(
-                ListOwner.user_id == user.id,
-                ~exists().where(
-                    other.list_id == ListOwner.list_id, other.user_id != user.id
-                ),
+        of_lists(
+            List.id.in_(
+                select(ListOwner.list_id).where(
+                    ListOwner.user_id == user.id,
+                    ~exists().where(
+                        other.list_id == ListOwner.list_id, other.user_id != user.id
+                    ),
+                )
             )
         ),
     )

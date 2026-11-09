@@ -15,6 +15,7 @@ occasions `FOR UPDATE` first (D7), so no claim is made in them meanwhile.
 """
 
 import uuid
+from collections.abc import Collection
 
 from sqlalchemy import ColumnElement, delete, select
 from sqlalchemy.orm import Session
@@ -73,3 +74,19 @@ def delete_gift_claims(db: Session, gifts: ColumnElement[bool]) -> None:
     db.execute(
         delete(GiftClaim).where(GiftClaim.gift_id.in_(select(Gift.id).where(gifts)))
     )
+
+
+def drop_gift_activity(db: Session, gift_ids: Collection[uuid.UUID]) -> None:
+    """Before a gift row is deleted or replaced: every activity on those ids,
+    in the caller's transaction (hidden gifts plan D15).
+
+    The contract: once the transaction commits, no activity of those ids is
+    reachable from any id. Every path deleting or replacing a gift calls it,
+    rather than relying on a cascade from `gifts`. Today the activity is the
+    gifts' claims (their participants go by cascade), which also keeps an
+    unbought claim away from the occasions' `SET NULL` (review R1-1).
+    COMMENTS_NOTIFICATIONS_PLAN owns this body next and extends it; the
+    contract stays.
+    """
+    if gift_ids:
+        db.execute(delete(GiftClaim).where(GiftClaim.gift_id.in_(gift_ids)))
