@@ -10,11 +10,11 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
 import test_reservations
-from claims_invariants import assert_claims_consistent
+from claims_invariants import assert_claims_consistent, assert_unreachable
 from locks import TIMEOUT_SECONDS, together, wait_until_blocked_on_a_lock
 from sqlalchemy import text
 from test_hidden_gifts import add, added, edit, remove, titles
-from test_hidden_model import claim_count, gift_row
+from test_hidden_model import gift_row
 from test_reservations import BOUGHT, NOT_FOUND, mark_bought, reserve, share
 
 # Its fixtures, registered here by name.
@@ -54,11 +54,11 @@ def test_a_delete_racing_a_reservation(client, world, engine):
         )
 
         # Deleted first and the reservation finds nothing, or reserved first
-        # and deleted with its claim.
+        # and its claim is out of reach with the gift (comments plan D13).
         assert deleted.status_code == 204, deleted.text
         assert reserved.status_code in (200, 404), reserved.text
         assert gift_row(engine, gift) is None
-        assert claim_count(engine, gift) == 0
+        assert_unreachable(client, world.ben, world.first, gift)
     assert titles(client, world.ben, world.first) == []
     assert_claims_consistent(engine)
 
