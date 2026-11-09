@@ -163,6 +163,15 @@ Later: priority, quantity (with partial reservations).
     owners, who are not recipients, see them and add their own like
     invitees. When handover arrives, the new owner must be blind to them
     like to every past activity.
+  - Moving an occasion's date earlier never brings a reveal forward: a
+    hidden gift is revealed once the latest date the occasion ever had has
+    passed. Otherwise a recipient could move the date into the past, read
+    the reveals and move it back.
+  - A hidden gift whose author leaves, is removed or deletes their account
+    stays, with their name (no name after an account deletion); nobody can
+    edit it any more.
+  - Revealed gifts, with the three choices, also show to the owners of a
+    "for someone else" list.
 
 ### Invitees among themselves
 
@@ -178,6 +187,8 @@ Later: priority, quantity (with partial reservations).
   - A comment of someone who left or was removed keeps their name; deleting
     their account signs it "Deleted user".
   - A comment is plain text, at most 2000 characters.
+  - Comments stay possible after the occasion has passed. A received gift's
+    thread is hidden while it is received and comes back with it.
 
 ### Access
 
@@ -237,6 +248,12 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
 - A recipient never receives a notification about invitee activity, and the
   owner's own requests do the same work whether or not they cause
   notifications.
+- Unfollowing by hand sticks: commenting or pledging later does not follow
+  the gift again.
+- A first email waits about a minute, so a quick correction or a burst of
+  comments arrives as one email.
+- Not notified for now: a gift marked received, an occasion or list
+  deleted, a hidden gift edited or deleted by its author.
 
 ### Free and premium (from the first release)
 
