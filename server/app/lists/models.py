@@ -99,6 +99,11 @@ class Gift(Base):
         Numeric(PRICE_PRECISION, PRICE_SCALE)
     )
     price_currency: Mapped[str | None] = mapped_column(String(3))
+    # Its picture (gift images plan D2). Unique: one gift per image. The
+    # default NO ACTION: an image row a gift points at cannot be deleted.
+    image_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("images.id"), unique=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

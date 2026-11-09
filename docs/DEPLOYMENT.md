@@ -53,7 +53,7 @@ Google Cloud console, in Wishlist's project).
 |---|---|---|---|
 | `/opt/wishlist/` | `<deploy-user>` | 755 | PROD: `docker-compose.yml` (644), `.env` (600) |
 | `/opt/wishlist/backup/` | `<deploy-user>` | 755 | `backup.sh`, `healthcheck.sh` (644), mounted read-only into the `backup` service |
-| `/opt/wishlist/backups/` | `999:999` | 700 | the nightly dumps (600 each); uid 999 is the `postgres` user of the official image (D14) |
+| `/opt/wishlist/backups/` | `999:10001` | 750 | the nightly dumps (600 each); uid 999 is the `postgres` user of the official image (D14); group 10001 lets PROD's app list them for the media purge, not read them ([Backups](#backups)) |
 | `/opt/wishlist-val/` | `<deploy-user>` | 755 | VAL: `docker-compose.yml` (644), `.env` (600), `seed-from-prod.sh` (755) |
 | `/opt/wishlist-val/webhook/` | `<deploy-user>` | 755 | `deploy-validation.sh` (755), `hooks.yaml` (600, holds the secret), `deploy.log`, `deploy.lock` |
 | `/opt/wishlist-media/` | `root` | 755 | parent of both media directories, so one mount covers both when seeding (D18) |
@@ -136,17 +136,19 @@ changing them is a plan change.
 **[VPS]** Free memory and disk:
 
 ```bash
-free -m                 # "available": more than 1000 MB
+free -m                 # "available": more than 1150 MB
 swapon --show
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}'
 df -h /                 # at least 5 GB available
 docker system df
 ```
 
-Wishlist's memory limits add up to 960 MB (PROD app 256, PROD Postgres 256,
-VAL app 192, VAL Postgres 192, backup 64). Limits are caps, not reservations,
-but if less than that is available with TraxJourney running, stop and decide
-first: a peak on either project would then push the host into swap or the
+Wishlist's memory limits add up to 1088 MB (PROD app 320, PROD Postgres 256,
+VAL app 256, VAL Postgres 192, backup 64). The app limits leave room for image
+processing (gift images plan; measured idle ≈121 MB + ≈89 MB per image; idle
+RSS measured in a Linux container, 2026-11-08, to be refined on VAL). Limits
+are caps, not reservations, but if less than 1150 MB (the total plus a small
+margin) is available with TraxJourney running, stop and decide first: a peak on either project would then push the host into swap or the
 kernel's OOM killer, which may pick a TraxJourney process.
 
 The 5 GB of disk covers two app images plus the previous one each during a
@@ -254,7 +256,7 @@ docker pull ghcr.io/rui-nar/wishlist:validation
 me=$(id -un)
 sudo install -d -o "$me" -g "$me" -m 755 \
     /opt/wishlist /opt/wishlist/backup /opt/wishlist-val /opt/wishlist-val/webhook
-sudo install -d -o 999 -g 999 -m 700 /opt/wishlist/backups
+sudo install -d -o 999 -g 10001 -m 750 /opt/wishlist/backups
 sudo install -d -o root -g root -m 755 /opt/wishlist-media
 sudo install -d -o 10001 -g 10001 -m 750 /opt/wishlist-media/prod /opt/wishlist-media/val
 
@@ -682,15 +684,15 @@ curl.exe -m 5 http://<vps-host>:8010/api/version   # fails: connection refused o
 curl.exe -m 5 http://<vps-host>:8011/api/version   # same
 ```
 
-**[VPS]** Memory within the limits (about 1 GB in total):
+**[VPS]** Memory within the limits (about 1.1 GB in total):
 
 ```bash
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}' | grep -E 'NAME|wishlist'
 free -m
 ```
 
-Each `MemUsage` reads `used / limit`, with limits 256 MiB (PROD app and db),
-192 MiB (VAL app and db) and 64 MiB (backup). A container that reaches its
+Each `MemUsage` reads `used / limit`, with limits 320 MiB (PROD app), 256 MiB (PROD db and
+VAL app), 192 MiB (VAL db) and 64 MiB (backup). An idle app reads about 121 MiB. A container that reaches its
 limit is killed and restarted; it does not take memory from TraxJourney.
 
 **[dev]** TraxJourney still answers, as it did before:
@@ -838,6 +840,16 @@ df -h /
   without reading logs ([Backups](#backups)). An app turns `unhealthy` when
   `/api/health` fails: the database is unreachable or its media directory is
   not writable.
+- PROD's media purge ran in the last day, with a horizon
+  ([Media](#media)):
+
+  ```bash
+  docker compose -f /opt/wishlist/docker-compose.yml logs --since 25h app | grep 'media purge:'
+  ```
+
+  Expect at least one `media purge: horizon=<date> ...` line. `horizon=none` or
+  `skipped` means nothing is purged and media only grow: check the backups
+  directory's owner and mode, and that `backup` is healthy.
 - At least 5 GB available on `/`. Media grow with use and have no per-account
   limit yet (open in `docs/NEEDS.md`), so this check is the only guard against
   the disk filling. If it drops, see what grew:
@@ -859,9 +871,13 @@ df -h /
 - **Rotation:** the 30 newest `wishlist_*.dump` files are kept, the rest
   deleted after each successful dump. Other names in the directory are never
   deleted.
-- **Access:** the directory is `999:999` mode 700 and each dump 600. The
+- **Access:** the directory is `999:10001` mode 750 and each dump 600. The
   dumps hold every user's data, so the deploy user cannot read or even list
-  them: use `sudo`.
+  them: use `sudo`. PROD's app (uid and gid 10001) has the directory mounted
+  read-only at `/app/backups`: through the group it lists the dumps and reads
+  their names and dates for the [media purge](#media), and cannot open one
+  (gift images plan D10). Keep every dump 600: a copy made readable to the
+  group is readable by the app.
 - **Health:** the service's healthcheck fails when no dump is newer than 26
   hours. It is the [daily check](#daily-check).
 
@@ -876,7 +892,7 @@ docker compose -f /opt/wishlist/docker-compose.yml restart backup  # dump now (r
 **When `backup` is `unhealthy`:** read its logs. Likely causes: the password
 in `/opt/wishlist/.env` no longer matches the database
 ([step 5](#5-env-files)), a full disk, or the backups directory's owner or
-mode changed (it must be `999:999` 700). Once fixed, `restart backup` dumps
+mode changed (it must be `999:10001` 750). Once fixed, `restart backup` dumps
 at once and the service turns healthy within a minute.
 
 **[VPS → dev]** Copying a dump off the host. Copy it to the deploy user's home
@@ -903,8 +919,9 @@ datacenter loses them with the database: off-site copies are an
 [open item](#open-items).
 
 Rotation counts dumps, not days: after a backup outage of several nights the
-30 kept dumps reach further back than 30 days. Review finding R2-5 (deferred
-to the gifts feature) is about matching the media purge to that.
+30 kept dumps reach further back than 30 days. The [media purge](#media)
+follows the oldest kept dump, so it moves back with them (review finding
+R2-5).
 
 ## Media
 
@@ -923,10 +940,47 @@ in [step 4](#4-directories-and-files). If an app's `/api/health` reports
 `MEDIA_DIR=/app/media` and no `.env` may override it, or uploads would land in
 the container and vanish on the next `up -d`.
 
-The binding rules for the feature that writes them: a file is named by its
-content hash and never modified; deleting a gift only removes the database
-reference; a file is purged only after being unreferenced for longer than the
-dump retention.
+Gift images are `gifts/<id>.webp` and `gifts/<id>.thumb.webp`, where `<id>`
+is the image's random id, not a content hash: written once under a temporary
+name, renamed into place, never modified (gift images plan D3, amending D18;
+seeding's hard links need only that files never change). Replacing or
+removing a gift's image, or deleting a gift, a list or an account, only
+changes database rows; files leave the disk late, through the media purge.
+
+**The media purge** (gift images plan
+[D9, D10](plans/GIFT_IMAGES_PLAN.md)) runs inside PROD's app, 10 minutes
+after it starts and then every 24 hours. It deletes an image's two files only
+once no database row has pointed at them since before the **oldest kept
+dump** was taken: no dump still in `/opt/wishlist/backups` can reference
+them, so restoring any of them finds its images. The horizon is the oldest
+`*.dump` in that directory, by its file date and the date in its name,
+whichever is earlier, minus a day. So:
+
+- it counts dumps, not days: after a backup outage the 30 kept dumps reach
+  further back, and so does the purge;
+- manual copies in the directory (`kept_<YYYY-MM-DD>.dump`,
+  `before-restore.dump`, `before-pg<new-major>.dump`) count while they are
+  there: an old one holds back every purge until it is deleted;
+- copies taken off the host do not count: restoring one older than the oldest
+  dump on the host may find some images gone;
+- with no dump it can list (a missing or unreadable directory, or an empty
+  one), nothing is purged at all.
+
+Each run logs one line in the app's logs:
+
+```bash
+docker compose -f /opt/wishlist/docker-compose.yml logs app | grep 'media purge:'
+# media purge: horizon=<iso|none> orphans=<n> purged=<n> rows_released=<n>
+# media purge: skipped (<reason>)
+```
+
+`horizon=none` or `skipped` means nothing was purged. If the backups
+directory lost its group or mode, put back `999:10001` 750
+([Backups](#backups)).
+
+VAL has no backups, so `BACKUP_DIR` is not set there and VAL's media are never
+purged; reseeding only adds files. If `/opt/wishlist-media/val` grows past
+1 GB, that is an open decision of the gift images plan.
 
 **What that protects against:** logical errors. A bad migration, a bug that
 deletes gifts, an accidental deletion through the app: restoring any kept
@@ -936,7 +990,7 @@ dump finds every file it references, without keeping 30 copies of the images.
 
 - Losing the VPS or its disk: the media, like the dumps, are on the same
   disk. Off-site copies are an [open item](#open-items).
-- Deleting or changing files on the host by hand, or a bug in the future purge
+- Deleting or changing files on the host by hand, or a bug in the purge
   itself.
 - A full disk: there is no per-account limit yet. Free space is part of the
   [daily check](#daily-check).
@@ -949,8 +1003,12 @@ In one `du` run, a file hard-linked into both (by seeding) is counted once.
 
 This replaces PROD's database with a dump's content. Everything written since
 that dump is lost. PROD is down from step 1 to step 4. Media need no step:
-files are never modified and purged late, so every file a kept dump references
-is still there (D18; see R2-5 above).
+files are never modified and purged after the oldest kept dump, so every file
+a dump on the host references is still there ([Media](#media)). That holds
+after rolling back to `before-restore.dump` too: the purge also goes by each
+file's modification time, which every run sets while a row references the
+file, so a record the rollback brings back cannot make it go early. Never
+set those times to an earlier date by hand.
 
 **[VPS]**
 
@@ -1052,7 +1110,9 @@ What it does, and what to expect:
   app migrated the database and reported healthy.
 
 If it fails, it says `FAILED: VAL may be left stopped`. Fix the cause and run
-it again. To bring VAL back empty instead:
+it again. A failure while hard-linking a media file that no longer exists
+means PROD's daily [media purge](#media) deleted it during the copy: just run
+it again (gift images review R1-10). To bring VAL back empty instead:
 `docker compose -f /opt/wishlist-val/docker-compose.yml up -d`.
 
 ## Later releases
@@ -1071,6 +1131,28 @@ it again. To bring VAL back empty instead:
 `deploy.ps1` never runs `docker compose down`: the old containers keep serving
 during the pull, so a failed pull leaves PROD as it was. A failed check after
 `up -d` leaves the containers as they are, for inspection.
+
+### Release-specific steps
+
+Run these on the host **before** deploying the release named, once.
+
+- **The release with gift images** (the first with `BACKUP_DIR` in PROD's
+  compose file). **[VPS]** Give PROD's app the right to list the dumps, then
+  update the compose file (below):
+
+  ```bash
+  sudo chgrp 10001 /opt/wishlist/backups && sudo chmod 750 /opt/wishlist/backups
+  sudo stat -c '%u:%g %a' /opt/wishlist/backups              # 999:10001 750
+  sudo find /opt/wishlist/backups -type f ! -perm 600       # nothing: every dump stays 600
+  ```
+
+  Without it the release still runs: the purge logs `skipped` and deletes
+  nothing.
+
+  The same release raises the app memory limits (PROD 320M, VAL 256M; total
+  1088 MB). **[VPS]** On an existing host, with both stacks running, check
+  that `free -m` shows "available" of at least 1150 MB; if not, stop and
+  decide before deploying.
 
 ### Updating the files on the host
 
@@ -1334,7 +1416,7 @@ Each item of the plan's Definition of done, and where it is checked:
 | `docker ps` shows no Wishlist port outside `127.0.0.1` and no Postgres port published | [10. Verifying](#10-verifying-the-installation), first block |
 | TraxJourney prod and val answer `/api/version` as before throughout | [6. Caddy](#6-caddy) after the reload, and [10. Verifying](#10-verifying-the-installation) |
 | A nightly dump exists after the first night; at most 30 kept; `backup` healthy; seeding VAL from it succeeds | the day after step 9: `sudo ls -l /opt/wishlist/backups/` shows a dump written at 02:00 UTC, the [daily check](#daily-check) shows `backup` healthy, then [Seeding VAL](#seeding-val-from-prod). The rotation to 30 is proven by the smoke test (31 old dumps, 30 kept). |
-| `docker stats` shows Wishlist's containers within their limits (about 1 GB) | [10. Verifying](#10-verifying-the-installation), memory |
+| `docker stats` shows Wishlist's containers within their limits (about 1.1 GB) | [10. Verifying](#10-verifying-the-installation), memory |
 | No secret, host name or key is committed | [10. Verifying](#10-verifying-the-installation), last block |
 
 ## Open items
@@ -1348,6 +1430,12 @@ Each item of the plan's Definition of done, and where it is checked:
 - [ ] **Off-site backups** of the dumps **and** the media directory (shared
       problem with TraxJourney). Today both are lost with the VPS, its disk or
       OVH's datacenter. Needed before PROD holds real users' data.
+      Two constraints from the media purge: the copy's retention joins the
+      purge horizon, and media restored from it must get the current time as
+      modification time (copy without preserving times, or touch after), since
+      the purge reads an old modification time as "not live". The purge also
+      touches every live image daily, so a time-based sync sees every file
+      change each day.
 - [ ] **Observability**: logs and metrics for VAL and PROD (reusing
       TraxJourney's Loki/Prometheus on the NAS is the candidate). A later plan;
       until then, the [daily check](#daily-check) and `docker compose logs`.
@@ -1360,8 +1448,8 @@ Each item of the plan's Definition of done, and where it is checked:
       `app.migrate` (accounts plan D13); see [Rollback](#rollback) and
       [Seeding VAL](#seeding-val-from-prod). Images older than it still
       cannot start against a newer database.
-- [ ] **R2-5, media purge vs. dump retention** (deferred): the purge rule must
-      be stated relative to the oldest kept dump when the gifts feature
-      implements it.
+- [x] **R2-5, media purge vs. dump retention**: the purge follows the oldest
+      kept dump, not a number of days (gift images plan
+      [D9](plans/GIFT_IMAGES_PLAN.md)); see [Media](#media).
 - [ ] **Memory on a shared 4 GB host.** Wishlist's limits keep its own
       containers in bounds, but a TraxJourney peak can still exhaust the host.

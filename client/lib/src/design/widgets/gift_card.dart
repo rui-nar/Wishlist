@@ -15,6 +15,7 @@ class GiftCard extends StatelessWidget {
     this.chips = const [],
     this.action,
     this.onTap,
+    this.onImageTap,
   });
 
   final String title;
@@ -22,7 +23,8 @@ class GiftCard extends StatelessWidget {
   /// One line under the title (price, shop...).
   final String? metadata;
 
-  /// Shown at 64 px; a gift icon on `primaryContainer` stands in when null.
+  /// Shown at 64 px; a gift icon on `primaryContainer` stands in when null
+  /// or when it fails to load.
   final ImageProvider? image;
 
   /// Usually [StatusChip]s.
@@ -34,35 +36,57 @@ class GiftCard extends StatelessWidget {
   /// Makes the whole card tappable.
   final VoidCallback? onTap;
 
+  /// Makes the image tappable (the full-screen viewer), with a hit area of at
+  /// least 44 px; taps on it do not reach [onTap]. Ignored without [image].
+  final VoidCallback? onImageTap;
+
   static const double _imageSize = 64;
   static const double _padding = 14;
   static const double _minHitArea = 44;
+
+  /// The 64 px slot already exceeds [_minHitArea].
+  Widget _tappable(Widget slot) => image != null && onImageTap != null
+      ? GestureDetector(
+          key: const ValueKey('gift-card-image'),
+          behavior: HitTestBehavior.opaque,
+          onTap: onImageTap,
+          child: slot,
+        )
+      : slot;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
+    final placeholder = ColoredBox(
+      color: scheme.primaryContainer,
+      child: ExcludeSemantics(
+        child: Icon(
+          Icons.card_giftcard_outlined,
+          color: scheme.onPrimaryContainer,
+        ),
+      ),
+    );
+
     final content = Padding(
       padding: const EdgeInsets.all(_padding),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.all(Radius.circular(Radii.md)),
-            child: SizedBox.square(
-              dimension: _imageSize,
-              child: image != null
-                  ? Image(image: image!, fit: BoxFit.cover)
-                  : ColoredBox(
-                      color: scheme.primaryContainer,
-                      child: ExcludeSemantics(
-                        child: Icon(
-                          Icons.card_giftcard_outlined,
-                          color: scheme.onPrimaryContainer,
-                        ),
-                      ),
-                    ),
+          _tappable(
+            ClipRRect(
+              borderRadius: const BorderRadius.all(Radius.circular(Radii.md)),
+              child: SizedBox.square(
+                dimension: _imageSize,
+                child: image != null
+                    ? Image(
+                        image: image!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => placeholder,
+                      )
+                    : placeholder,
+              ),
             ),
           ),
           const SizedBox(width: Spacing.s12),

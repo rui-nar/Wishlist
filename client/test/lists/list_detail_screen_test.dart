@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
+import 'package:wishlist/src/api/api_image.dart';
 import 'package:wishlist/src/auth/sign_in_screen.dart';
 import 'package:wishlist/src/design/widgets/gift_card.dart';
+import 'package:wishlist/src/design/widgets/image_viewer.dart';
 import 'package:wishlist/src/lists/gift_form_screen.dart';
 import 'package:wishlist/src/lists/list_detail_screen.dart';
 
@@ -157,12 +159,82 @@ void main() {
     expect(find.byType(GiftFormScreen), findsOneWidget);
 
     await tester.enterText(fieldLabelled('What is it?'), 'Earphones');
+    await tester.ensureVisible(find.text('Save'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
     expect(server.gift(giftId)!['title'], 'Earphones');
     expect(find.byType(ListDetailScreen), findsOneWidget);
     expect(find.text('Earphones'), findsOneWidget);
+  });
+
+  group('gift images', () {
+    late String giftId;
+    late String imageId;
+
+    setUp(() {
+      // Each test's server numbers its images alike, and the cache is shared.
+      TestWidgetsFlutterBinding.ensureInitialized();
+      imageCache.clear();
+      giftId = server.addGift(listId, 'Headphones', image: true);
+      imageId = (server.gift(giftId)!['image'] as Map)['id'] as String;
+    });
+
+    testWidgets('the card shows the thumbnail from the response',
+        (tester) async {
+      final app = await startApp(tester, server, '/lists/$listId');
+
+      final card = tester.widget<GiftCard>(find.byType(GiftCard));
+      expect(card.image, ApiImage(app.api, '/api/images/$imageId/thumb'));
+      expect(server.calls, contains('GET /api/images/$imageId/thumb'));
+    });
+
+    testWidgets('tapping the thumbnail opens the full image in the viewer',
+        (tester) async {
+      await startApp(tester, server, '/lists/$listId');
+
+      await tester.tap(find.byKey(const ValueKey('gift-card-image')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ImageViewer), findsOneWidget);
+      expect(server.calls, contains('GET /api/images/$imageId/full'));
+      expect(find.byType(GiftFormScreen), findsNothing);
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ImageViewer), findsNothing);
+    });
+
+    testWidgets('tapping the card elsewhere still opens the edit form',
+        (tester) async {
+      await startApp(tester, server, '/lists/$listId');
+
+      await tester.tap(find.text('Headphones'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GiftFormScreen), findsOneWidget);
+      expect(find.byType(ImageViewer), findsNothing);
+    });
+
+    testWidgets('a gift without an image has no image tap', (tester) async {
+      server.addGift(listId, 'Book');
+      await startApp(tester, server, '/lists/$listId');
+
+      final cards = tester.widgetList<GiftCard>(find.byType(GiftCard)).toList();
+      expect(cards[1].image, isNull);
+      expect(cards[1].onImageTap, isNull);
+      expect(find.byKey(const ValueKey('gift-card-image')), findsOneWidget);
+    });
+
+    testWidgets('an image that fails to load leaves the placeholder',
+        (tester) async {
+      server.status['GET /api/images/$imageId/thumb'] = 404;
+      await startApp(tester, server, '/lists/$listId');
+      await loadImages(tester);
+
+      expect(find.byIcon(Icons.card_giftcard_outlined), findsOneWidget);
+    });
   });
 
   group('deleting the list', () {

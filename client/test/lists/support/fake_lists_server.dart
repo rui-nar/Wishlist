@@ -4,11 +4,13 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:url_launcher_platform_interface/link.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
@@ -19,13 +21,21 @@ import 'package:wishlist/src/shared/pending_join.dart';
 
 import '../../support/fakes.dart';
 
+/// A valid 8 x 8 PNG (two blue and two orange squares) every image of
+/// [FakeListsServer] serves, whatever the variant.
+final kTestImage = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAHElEQVR4nGOwbvoGR1/nccMR'
+  'AxUlkDnIiqgoAQB9j2ohclFlTgAAAABJRU5ErkJggg==',
+);
+
 /// The signed-in user's display name, as the server gives it to others.
 const kAliceName = 'Alice Martin';
 
 /// Lists, gifts, occasions and joining for the signed-in user, Alice
 /// (LISTS_GIFTS_SHARING_PLAN D8). Any other call goes to [accounts].
-/// [status] forces an answer for `'<METHOD> <path>'`; while [hold] is set,
-/// these calls wait for it.
+/// [status] forces an answer for `'<METHOD> <path>'`, with the error code in
+/// [details] as its body when there is one; while [hold] is set, these calls
+/// wait for it.
 ///
 /// [lists] are Alice's own. [otherLists] belong to someone else, named in
 /// [otherOwners]: Alice sees their occasions only as a member ([joined]).
@@ -66,7 +76,27 @@ class FakeListsServer {
   /// The occasions whose owner removed Alice.
   final aliceRemoved = <String>{};
 
+  /// Gift id → its claim (RESERVING_PLAN D1, D2): `occasion_id` (null once
+  /// its occasion was deleted), `kind` (`reservation` or `group`), `bought`
+  /// and `participants`, each as [giver] makes it, by when they joined.
+  final claims = <String, Map<String, dynamic>>{};
+
+  /// The occasions whose date has passed (D8).
+  final passed = <String>{};
+
   final status = <String, int>{};
+
+  /// `'<METHOD> <path>'` → the `detail` code of the answer [status] forces
+  /// (GIFT_IMAGES D11).
+  final details = <String, String>{};
+
+  /// Image id → its `{id, width, height}`: pending ones (uploaded, not yet
+  /// attached) and attached ones. The paths are made when it is shown, as
+  /// the server does (GIFT_IMAGES D7).
+  final images = <String, Map<String, dynamic>>{};
+
+  /// The bytes of every `POST /api/images`.
+  final uploads = <Uint8List>[];
 
   /// Every call to these endpoints, as `'<METHOD> <path>'`.
   final calls = <String>[];
@@ -109,6 +139,7 @@ class FakeListsServer {
     List<String> links = const [],
     String? priceAmount,
     String? priceCurrency,
+    bool image = false,
   }) {
     final id = 'gift-${_next++}';
     gifts.add({
@@ -119,9 +150,61 @@ class FakeListsServer {
       'links': links,
       'price_amount': priceAmount,
       'price_currency': priceCurrency,
+      if (image) 'image': _ownerImage(addImage()),
     });
     return id;
   }
+
+  /// A new image on the server; returns its id.
+  String addImage() {
+    final id = 'image-${_next++}';
+    images[id] = {'id': id, 'width': 8, 'height': 8};
+    return id;
+  }
+
+  /// An image as its list's owners see it: `/api/images/...` paths.
+  Map<String, dynamic> _ownerImage(String id) => {
+        ...images[id]!,
+        'url': '/api/images/$id/full',
+        'thumb_url': '/api/images/$id/thumb',
+      };
+
+  /// An image as an occasion's invitees see it.
+  Map<String, dynamic> _inviteeImage(String occasionId, String id) => {
+        ...images[id]!,
+        'url': '/api/occasions/$occasionId/images/$id/full',
+        'thumb_url': '/api/occasions/$occasionId/images/$id/thumb',
+      };
+
+  /// Applies `image_id` of a gift create or update: absent leaves the image,
+  /// `null` removes it, an id attaches that image.
+  void _applyImageId(Map<String, dynamic> gift, Map<String, dynamic> body) {
+    gift.remove('image_id');
+    if (!body.containsKey('image_id')) return;
+    final id = body['image_id'] as String?;
+    if (id == null) {
+      gift.remove('image');
+    } else {
+      gift['image'] = _ownerImage(id);
+    }
+  }
+
+  /// The gift as an invitee of [occasionId] sees it.
+  Map<String, dynamic> _sharedGift(String occasionId, Map<String, dynamic> gift) {
+    final image = gift['image'] as Map<String, dynamic>?;
+    return {
+      ...gift,
+      if (image != null) 'image': _inviteeImage(occasionId, image['id'] as String),
+    }..remove('list_id');
+  }
+
+  http.Response _imageResponse(String id) => images.containsKey(id)
+      ? http.Response.bytes(
+          kTestImage,
+          200,
+          headers: {'content-type': 'image/png'},
+        )
+      : http.Response('{"detail":"Not found"}', 404);
 
   /// An occasion of [listId] on [date] (`2026-12-24`), with a link when
   /// [token] is given, and [invitees] (display names) who joined it.
@@ -153,6 +236,188 @@ class FakeListsServer {
 
   Map<String, dynamic>? gift(String id) =>
       gifts.where((gift) => gift['id'] == id).firstOrNull;
+
+  /// A participant of a claim: [name], Alice when [mine], with an optional
+  /// pledge.
+  static Map<String, dynamic> giver(
+    String name, {
+    bool mine = false,
+    String? amount,
+    String? currency,
+  }) =>
+      {
+        'display_name': name,
+        'mine': mine,
+        'pledge_amount': amount,
+        'pledge_currency': currency,
+      };
+
+  /// [giftId] reserved in [occasionId] by [participants] (one), or a group
+  /// gift of theirs when [group].
+  void addClaim(
+    String giftId,
+    String? occasionId,
+    List<Map<String, dynamic>> participants, {
+    bool group = false,
+    bool bought = false,
+  }) {
+    claims[giftId] = {
+      'occasion_id': occasionId,
+      'kind': group ? 'group' : 'reservation',
+      'bought': bought,
+      'participants': [...participants],
+    };
+  }
+
+  /// A claim stops being live when its occasion has passed, unless bought
+  /// (D8).
+  bool _live(Map<String, dynamic> claim) =>
+      claim['bought'] == true || !passed.contains(claim['occasion_id']);
+
+  /// The claim as a giver of [occasionId] sees it (`GiftClaimOut`);
+  /// `expired` when it is no longer live, which only Alice's own claims of
+  /// this occasion are when read (review R3-1).
+  Map<String, dynamic> _claimOut(
+    String occasionId,
+    String giftId,
+    Map<String, dynamic> claim,
+  ) =>
+      claim['occasion_id'] == occasionId
+          ? {
+              'gift_id': giftId,
+              'state': claim['kind'] == 'group' ? 'group' : 'reserved',
+              'bought': claim['bought'],
+              'expired': !_live(claim),
+              'participants': claim['participants'],
+            }
+          : {
+              'gift_id': giftId,
+              'state': 'taken',
+              'bought': false,
+              'expired': false,
+              'participants': const <Object>[],
+            };
+
+  /// Alice is in [claim], of [occasionId].
+  bool _aliceIn(String occasionId, Map<String, dynamic>? claim) =>
+      claim != null &&
+      claim['occasion_id'] == occasionId &&
+      (claim['participants'] as List).any((giver) => giver['mine'] == true);
+
+  /// `/api/occasions/{id}/claims` and `…/gifts/{gift_id}/<action>` for a
+  /// giver of the occasion, with the server's rules (D6, D8, D9); null for
+  /// any other path.
+  http.Response? _claims(
+    http.Request request,
+    String occasionId,
+    String listId,
+    List<String> segments,
+    Map<String, dynamic>? body,
+    http.Response Function(Object body, [int code]) json,
+    http.Response notFound,
+    http.Response noContent,
+  ) {
+    final ofList = [
+      for (final gift in gifts)
+        if (gift['list_id'] == listId) gift,
+    ];
+    if (request.method == 'GET' && segments.length == 4 && segments[3] == 'claims') {
+      return json({
+        'passed': passed.contains(occasionId),
+        'gifts': [
+          // Live claims, and Alice's own of this occasion once expired: she
+          // may still mark those bought (D8, review R3-1).
+          for (final gift in ofList)
+            if (claims[gift['id']] case final claim?
+                when _live(claim) || _aliceIn(occasionId, claim))
+              _claimOut(occasionId, gift['id'] as String, claim),
+        ],
+      });
+    }
+    if (segments.length != 6 || segments[3] != 'gifts') return null;
+    final gift = ofList.where((gift) => gift['id'] == segments[4]).firstOrNull;
+    final action = (request.method, segments[5]);
+    const actions = {
+      ('POST', 'reservation'),
+      ('DELETE', 'reservation'),
+      ('POST', 'bought'),
+      ('PUT', 'pledge'),
+      ('DELETE', 'pledge'),
+    };
+    if (!actions.contains(action)) return null;
+    if (gift == null) return notFound;
+    final giftId = gift['id'] as String;
+    http.Response conflict(String code) =>
+        json({'detail': 'Refused', 'code': code}, 409);
+    http.Response out() => json(_claimOut(occasionId, giftId, claims[giftId]!));
+    final held = claims[giftId];
+    final live = held != null && _live(held) ? held : null;
+    final mine = _aliceIn(occasionId, live);
+    final alice = giver(kAliceName, mine: true);
+    if (passed.contains(occasionId)) {
+      // The one write allowed: marking bought one's own claim, still there.
+      if (action != ('POST', 'bought') || !_aliceIn(occasionId, held)) {
+        return conflict('passed');
+      }
+      held!['bought'] = true;
+      return out();
+    }
+    switch (action) {
+      case ('POST', 'reservation'):
+        if (live == null) {
+          addClaim(giftId, occasionId, [alice]);
+          return out();
+        }
+        return live['kind'] == 'reservation' && mine ? out() : conflict('taken');
+      case ('DELETE', 'reservation'):
+        if (live?['kind'] == 'reservation' && mine) {
+          if (live!['bought'] == true) return conflict('bought');
+          claims.remove(giftId);
+        }
+        return noContent;
+      case ('POST', 'bought'):
+        if (live == null) {
+          addClaim(giftId, occasionId, [alice], bought: true);
+          return out();
+        }
+        if (!mine) return conflict('taken');
+        live['bought'] = true;
+        return out();
+      case ('PUT', 'pledge'):
+        final amount = body!['amount'] as String?;
+        final currency = gift['price_currency'] as String?;
+        if (amount != null && currency == null) {
+          return json({'detail': 'No currency'}, 422);
+        }
+        final pledge = giver(
+          kAliceName,
+          mine: true,
+          amount: amount,
+          currency: amount == null ? null : currency,
+        );
+        if (live == null) {
+          addClaim(giftId, occasionId, [pledge], group: true);
+          return out();
+        }
+        if (live['occasion_id'] != occasionId || live['kind'] != 'group') {
+          return conflict('taken');
+        }
+        if (live['bought'] == true) return conflict('bought');
+        final givers = live['participants'] as List<Map<String, dynamic>>;
+        final index = givers.indexWhere((giver) => giver['mine'] == true);
+        index < 0 ? givers.add(pledge) : givers[index] = pledge;
+        return out();
+      case ('DELETE', 'pledge'):
+        if (live?['kind'] == 'group' && mine) {
+          if (live!['bought'] == true) return conflict('bought');
+          final givers = live['participants'] as List<Map<String, dynamic>>;
+          givers.removeWhere((giver) => giver['mine'] == true);
+          if (givers.isEmpty) claims.remove(giftId);
+        }
+        return noContent;
+    }
+    return null;
+  }
 
   /// An occasion as its list's owners see it (`OccasionOut`).
   Map<String, dynamic> _ownerOccasion(Map<String, dynamic> occasion) => {
@@ -198,6 +463,7 @@ class FakeListsServer {
     '/api/occasions',
     '/api/shared',
     '/api/join',
+    '/api/images',
   ];
 
   Future<http.Response> _handle(http.Request request) async {
@@ -211,12 +477,19 @@ class FakeListsServer {
     }
     final call = '${request.method} $path';
     calls.add(call);
-    if (request.body.isNotEmpty) {
+    final isJson =
+        (request.headers['content-type'] ?? '').startsWith('application/json');
+    if (isJson && request.body.isNotEmpty) {
       bodies[call] = jsonDecode(request.body) as Map<String, dynamic>;
     }
     await hold?.future;
     final forced = status[call];
-    if (forced != null) return http.Response('', forced);
+    if (forced != null) {
+      final detail = details[call];
+      return detail == null
+          ? http.Response('', forced)
+          : http.Response(jsonEncode({'detail': detail}), forced);
+    }
     final auth = request.headers['Authorization'] ?? '';
     if (!accounts.sessions.containsKey(auth.replaceFirst('Bearer ', ''))) {
       return http.Response('{"detail":"Not authenticated"}', 401);
@@ -251,6 +524,18 @@ class FakeListsServer {
     if (call == 'POST /api/join/preview' || call == 'POST /api/join') {
       return _join(call, body?['token'], json, notFound);
     }
+    if (call == 'POST /api/images') {
+      uploads.add(request.bodyBytes);
+      return json(_ownerImage(addImage()), 201);
+    }
+    if (call == 'POST /api/images/from-url') {
+      return json(_ownerImage(addImage()), 201);
+    }
+    if (request.method == 'GET' &&
+        segments[1] == 'images' &&
+        segments.length == 4) {
+      return _imageResponse(segments[2]);
+    }
     if (segments[1] == 'occasions') {
       return _occasion(request, segments, body, json, notFound, noContent);
     }
@@ -277,6 +562,7 @@ class FakeListsServer {
       if (segments.length == 4 && request.method == 'POST') {
         final id = addGift(list['id'] as String, body!['title'] as String);
         gift(id)!.addAll(body);
+        _applyImageId(gift(id)!, body);
         return json(gift(id)!, 201);
       }
       switch (request.method) {
@@ -309,6 +595,7 @@ class FakeListsServer {
     switch (request.method) {
       case 'PATCH':
         found.addAll(body!);
+        _applyImageId(found, body);
         return json(found);
       case 'DELETE':
         gifts.remove(found);
@@ -374,6 +661,12 @@ class FakeListsServer {
     final rest = segments.skip(3).join('/');
     if (!of.mine) {
       if (!joined.contains(id)) return notFound;
+      if (request.method == 'GET' && segments.length == 6 && segments[3] == 'images') {
+        return _imageResponse(segments[4]);
+      }
+      final claims = _claims(request, id, of.list['id'] as String, segments,
+          body, json, notFound, noContent);
+      if (claims != null) return claims;
       switch ((request.method, rest)) {
         case ('GET', ''):
           return json({
@@ -381,8 +674,7 @@ class FakeListsServer {
             'role': 'invitee',
             'gifts': [
               for (final gift in gifts)
-                if (gift['list_id'] == of.list['id'])
-                  {...gift}..remove('list_id'),
+                if (gift['list_id'] == of.list['id']) _sharedGift(id, gift),
             ],
           });
         case ('DELETE', 'membership'):
@@ -390,6 +682,16 @@ class FakeListsServer {
           return noContent;
       }
       return notFound;
+    }
+    if (request.method == 'GET' && segments.length == 6 && segments[3] == 'images') {
+      return _imageResponse(segments[4]);
+    }
+    // Owners of a list for someone else give too; a recipient gets the
+    // random-id 404 (RESERVING_PLAN D4).
+    if (of.list['recipient_kind'] == 'other') {
+      final claims = _claims(request, id, of.list['id'] as String, segments,
+          body, json, notFound, noContent);
+      if (claims != null) return claims;
     }
     switch ((request.method, rest)) {
       case ('GET', ''):
@@ -498,6 +800,46 @@ FakeUrlLauncher installFakeUrlLauncher() {
   return fake;
 }
 
+/// image_picker's platform side: hands over [picked] (null: the user
+/// cancelled), and records how it was asked.
+class FakeImagePicker extends Fake
+    with MockPlatformInterfaceMixin
+    implements ImagePickerPlatform {
+  Uint8List? picked;
+  final requests = <(ImageSource, ImagePickerOptions)>[];
+
+  @override
+  Future<XFile?> getImageFromSource({
+    required ImageSource source,
+    ImagePickerOptions options = const ImagePickerOptions(),
+  }) async {
+    requests.add((source, options));
+    final bytes = picked;
+    return bytes == null ? null : XFile.fromData(bytes, mimeType: 'image/png');
+  }
+}
+
+/// Installs a fresh [FakeImagePicker] for the test, picking [picked].
+FakeImagePicker installFakeImagePicker([Uint8List? picked]) {
+  final previous = ImagePickerPlatform.instance;
+  final fake = FakeImagePicker()..picked = picked;
+  ImagePickerPlatform.instance = fake;
+  addTearDown(() => ImagePickerPlatform.instance = previous);
+  return fake;
+}
+
 /// The text field labelled [label].
 Finder fieldLabelled(String label) =>
     find.widgetWithText(TextFormField, label);
+
+/// Lets the images the screen asked for download and decode: decoding runs
+/// off the test's fake clock, so it is waited for in real time.
+Future<void> loadImages(WidgetTester tester) async {
+  for (var i = 0; i < 3; i++) {
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+  }
+  await tester.pumpAndSettle();
+}

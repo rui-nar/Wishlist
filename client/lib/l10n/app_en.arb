@@ -424,6 +424,10 @@
   "@seeInvitees": {
     "description": "List detail: opens an occasion's invitees."
   },
+  "occasionGiftsAndReservations": "Gifts and reservations",
+  "@occasionGiftsAndReservations": {
+    "description": "List detail, on a list for someone else only: opens an occasion's gifts with who reserved, bought or pledged, where the owner can give too."
+  },
   "editOccasion": "Rename or change the date",
   "@editOccasion": {
     "description": "List detail: an occasion's menu item opening its form."
@@ -628,6 +632,194 @@
   "@leaveFailed": {
     "description": "A message after the server did not let the user leave an occasion."
   },
+  "claimReservedBy": "Reserved by {name}",
+  "@claimReservedBy": {
+    "description": "An occasion shared with the user: the chip of a gift another giver reserved.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Ana"
+      }
+    }
+  },
+  "claimReservedByYou": "Reserved by you",
+  "@claimReservedByYou": {
+    "description": "An occasion shared with the user: the chip of a gift the user reserved."
+  },
+  "claimReserved": "Reserved",
+  "@claimReserved": {
+    "description": "An occasion shared with the user: the chip of a reserved gift whose giver is no longer known."
+  },
+  "claimBoughtBy": "Bought by {name}",
+  "@claimBoughtBy": {
+    "description": "An occasion shared with the user: the chip of a gift another giver bought.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Ana"
+      }
+    }
+  },
+  "claimBoughtByYou": "Bought by you",
+  "@claimBoughtByYou": {
+    "description": "An occasion shared with the user: the chip of a gift the user bought."
+  },
+  "claimBought": "Bought",
+  "@claimBought": {
+    "description": "An occasion shared with the user: the chip of a bought gift whose giver deleted their account."
+  },
+  "claimGroup": "Group gift · {count}",
+  "@claimGroup": {
+    "description": "An occasion shared with the user: the chip of a group gift, with how many people are in it.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "claimGroupBought": "Group gift · bought",
+  "@claimGroupBought": {
+    "description": "An occasion shared with the user: the chip of a group gift that was bought."
+  },
+  "claimTaken": "Taken",
+  "@claimTaken": {
+    "description": "An occasion shared with the user: the chip of a gift someone gives for another occasion; who and where are not said."
+  },
+  "claimTakenExplanation": "This gift is already being given for another occasion.",
+  "@claimTakenExplanation": {
+    "description": "The gift sheet: a gift claimed for another occasion of the list. It covers the giver's own claim there too, so it must not name or imply a person."
+  },
+  "claimYou": "You",
+  "@claimYou": {
+    "description": "The gift sheet: the user, in the list of people in a reservation or group gift."
+  },
+  "pledgeTotal": "{total} pledged of {price}",
+  "@pledgeTotal": {
+    "description": "The gift sheet: the pledges of a group gift added up, against the gift's price.",
+    "placeholders": {
+      "total": {
+        "type": "String",
+        "example": "€80.00"
+      },
+      "price": {
+        "type": "String",
+        "example": "€149.00"
+      }
+    }
+  },
+  "occasionPassed": "This occasion has passed: nothing can be reserved any more.",
+  "@occasionPassed": {
+    "description": "The gift sheet: the occasion's date has passed, so no action is offered."
+  },
+  "claimExpiredExplanation": "This occasion has passed, so this gift is no longer held for you. If you gave it, mark it as bought so nobody else gives it.",
+  "@claimExpiredExplanation": {
+    "description": "The gift sheet: the occasion's date has passed and the user's reservation or group gift was not marked bought; they may still mark it bought."
+  },
+  "claimActionInFlight": "Wait a moment: your last change is still being saved.",
+  "@claimActionInFlight": {
+    "description": "A message when the user taps a gift while their previous action on a gift is still on its way to the server."
+  },
+  "claimReserve": "Reserve",
+  "@claimReserve": {
+    "description": "The gift sheet: the button reserving the gift."
+  },
+  "claimStartGroup": "Start a group gift",
+  "@claimStartGroup": {
+    "description": "The gift sheet: the button starting a group gift; also the title of its dialog."
+  },
+  "claimMarkBought": "Mark as bought",
+  "@claimMarkBought": {
+    "description": "The gift sheet: the button marking the gift bought; also the button of its confirmation."
+  },
+  "claimRelease": "Release",
+  "@claimRelease": {
+    "description": "The gift sheet: the button releasing the user's reservation; also the button of its confirmation."
+  },
+  "claimJoinGroup": "Join the group gift",
+  "@claimJoinGroup": {
+    "description": "The gift sheet: the button joining a group gift; also the title of its dialog."
+  },
+  "claimChangeAmount": "Change my amount",
+  "@claimChangeAmount": {
+    "description": "The gift sheet: the button changing the user's pledge in a group gift; also the title of its dialog."
+  },
+  "claimLeaveGroup": "Leave the group gift",
+  "@claimLeaveGroup": {
+    "description": "The gift sheet: the button leaving a group gift."
+  },
+  "releaseTitle": "Release this gift?",
+  "@releaseTitle": {
+    "description": "The dialog before releasing a reservation."
+  },
+  "releaseBody": "Someone else can then reserve it.",
+  "@releaseBody": {
+    "description": "The dialog before releasing a reservation."
+  },
+  "leaveGroupTitle": "Leave the group gift?",
+  "@leaveGroupTitle": {
+    "description": "The dialog before leaving a group gift."
+  },
+  "leaveGroupBody": "Your pledge is removed. When the last person leaves, the gift is free again.",
+  "@leaveGroupBody": {
+    "description": "The dialog before leaving a group gift."
+  },
+  "leaveGroupConfirm": "Leave",
+  "@leaveGroupConfirm": {
+    "description": "The dialog's button leaving a group gift."
+  },
+  "markBoughtTitle": "Mark as bought?",
+  "@markBoughtTitle": {
+    "description": "The dialog before marking a gift bought."
+  },
+  "markBoughtBody": "This is final: it can't be undone, and nobody else can take this gift.",
+  "@markBoughtBody": {
+    "description": "The dialog before marking a gift bought: it is final."
+  },
+  "pledgeExplanation": "The others giving for this occasion see your name and your amount. The amount is optional.",
+  "@pledgeExplanation": {
+    "description": "The group gift dialog, for a gift with a price."
+  },
+  "pledgeExplanationNoPrice": "The others giving for this occasion see your name. This gift has no price, so there is no amount to give.",
+  "@pledgeExplanationNoPrice": {
+    "description": "The group gift dialog, for a gift without a price."
+  },
+  "pledgeAmountLabel": "My amount (optional)",
+  "@pledgeAmountLabel": {
+    "description": "The group gift dialog: the label of the amount field, in the gift's currency."
+  },
+  "pledgeInvalid": "Enter an amount such as 50 or 49.90",
+  "@pledgeInvalid": {
+    "description": "The group gift dialog: the amount is not a positive amount of at most 10 digits and 2 decimals."
+  },
+  "pledgeStart": "Start",
+  "@pledgeStart": {
+    "description": "The group gift dialog's button starting the group gift."
+  },
+  "pledgeJoin": "Join",
+  "@pledgeJoin": {
+    "description": "The group gift dialog's button joining the group gift."
+  },
+  "claimTakenNow": "Someone else has just taken this gift.",
+  "@claimTakenNow": {
+    "description": "A message after the server refused an action: someone else holds the gift."
+  },
+  "claimBoughtNow": "This gift is bought now, which is final.",
+  "@claimBoughtNow": {
+    "description": "A message after the server refused an action: the gift was bought meanwhile."
+  },
+  "claimPassedNow": "This occasion has passed: nothing can be changed any more.",
+  "@claimPassedNow": {
+    "description": "A message after the server refused an action: the occasion's date has passed."
+  },
+  "claimGiftChanged": "This gift changed meanwhile. Check it and try again.",
+  "@claimGiftChanged": {
+    "description": "A message after the server refused an action because the gift changed or is gone."
+  },
+  "claimNeedsConnection": "That didn't go through: it needs a connection. Try again.",
+  "@claimNeedsConnection": {
+    "description": "A message after an action on a gift could not reach the server."
+  },
   "occasionNoLongerShared": "This occasion is no longer shared with you.",
   "@occasionNoLongerShared": {
     "description": "An occasion that was deleted, or that the user left or was removed from."
@@ -672,7 +864,7 @@
   "@welcomeHeadline": {
     "description": "The welcome page: the headline, under the app's name."
   },
-  "welcomePurpose": "Keep the things you'd love to receive in one place, and share them with family and friends for each occasion.",
+  "welcomePurpose": "Keep the things you'd love to receive in one place, share them with family and friends for each occasion, and let them choose without spoiling the surprise.",
   "@welcomePurpose": {
     "description": "The welcome page: the sentence under the headline, saying what the app is for."
   },
@@ -700,13 +892,13 @@
   "@welcomeOccasionsBody": {
     "description": "The welcome page: the text of the card about occasions."
   },
-  "welcomeControlTitle": "You stay in control",
-  "@welcomeControlTitle": {
-    "description": "The welcome page: the title of the card about controlling who sees a shared list."
+  "welcomeSurpriseTitle": "The surprise stays a surprise",
+  "@welcomeSurpriseTitle": {
+    "description": "The welcome page: the title of the card about keeping the surprise."
   },
-  "welcomeControlBody": "Stop a link from working or remove someone from an occasion at any time.",
-  "@welcomeControlBody": {
-    "description": "The welcome page: the text of the card about controlling who sees a shared list: disabling a share link, removing an invitee."
+  "welcomeSurpriseBody": "Whoever a list is for never sees what was reserved or bought. The people you invite see who is giving what, and can team up on a bigger gift.",
+  "@welcomeSurpriseBody": {
+    "description": "The welcome page: the text of the card about keeping the surprise: the recipient sees nothing of what was reserved or bought, invitees see who gives what."
   },
   "registerTitle": "Create your account",
   "@registerTitle": {
@@ -719,5 +911,93 @@
   "whatIsWishlist": "What is Wishlist?",
   "@whatIsWishlist": {
     "description": "The sign-in screen: the link to the welcome page, which explains the app."
+  },
+  "imageViewerClose": "Close",
+  "@imageViewerClose": {
+    "description": "The full-screen image viewer: the tooltip of the button that closes it."
+  },
+  "giftImageLabel": "Image",
+  "@giftImageLabel": {
+    "description": "The gift form: the heading of the image section, above the title."
+  },
+  "giftImagePreview": "The gift's image",
+  "@giftImagePreview": {
+    "description": "The gift form: what screen readers say for the image preview."
+  },
+  "imageChoose": "Choose image",
+  "@imageChoose": {
+    "description": "The gift form: the button that opens the device's photos to pick the gift's image."
+  },
+  "imageFromUrl": "Image URL",
+  "@imageFromUrl": {
+    "description": "The gift form: the button that asks for the web address of an image."
+  },
+  "imagePaste": "Paste image",
+  "@imagePaste": {
+    "description": "The gift form: the button that takes the image copied to the clipboard."
+  },
+  "imageRemove": "Remove image",
+  "@imageRemove": {
+    "description": "The gift form: the button that removes the gift's image."
+  },
+  "imageUploading": "Adding the image...",
+  "@imageUploading": {
+    "description": "The gift form: what screen readers say while an image is being sent to the server."
+  },
+  "imageUrlTitle": "Image from the web",
+  "@imageUrlTitle": {
+    "description": "The image address dialog: its title."
+  },
+  "imageUrlLabel": "Image address",
+  "@imageUrlLabel": {
+    "description": "The image address dialog: the label of the field where the image's web address is typed."
+  },
+  "imageUrlConfirm": "Use this image",
+  "@imageUrlConfirm": {
+    "description": "The image address dialog: the button that has the server download the image."
+  },
+  "imageClipboardEmpty": "No image in the clipboard.",
+  "@imageClipboardEmpty": {
+    "description": "The gift form: Paste image found no image in the clipboard (Android, iOS)."
+  },
+  "imageClipboardEmptyWeb": "No image could be read from the clipboard. Press Ctrl+V (Cmd+V on a Mac) to paste one.",
+  "@imageClipboardEmptyWeb": {
+    "description": "The gift form, in a browser: Paste image found no image, or the browser did not let the app read the clipboard; the keyboard shortcut always works."
+  },
+  "imageTooLarge": "This image is too large: the limit is 10 MB.",
+  "@imageTooLarge": {
+    "description": "The gift form: the image file is over 10 MB."
+  },
+  "imageTooManyPixels": "This image has too many pixels. Try a smaller one.",
+  "@imageTooManyPixels": {
+    "description": "The gift form: the image's dimensions are over the server's limit."
+  },
+  "imageUnsupported": "This kind of image can't be used. Try a JPEG, PNG, WebP or GIF.",
+  "@imageUnsupported": {
+    "description": "The gift form: the file is not an image the server reads."
+  },
+  "imageBusy": "The server is busy with other images. Try again in a moment.",
+  "@imageBusy": {
+    "description": "The gift form: the server is processing other images and could not take this one in time."
+  },
+  "imageUrlNotAllowed": "This address can't be used.",
+  "@imageUrlNotAllowed": {
+    "description": "The gift form: the server refuses to download from this web address (a private or local address, an unusual port...)."
+  },
+  "imageUrlFetchFailed": "The image could not be downloaded from this address.",
+  "@imageUrlFetchFailed": {
+    "description": "The gift form: the server could not download an image from the address (not found, not an image, too slow, too large)."
+  },
+  "imageNotAttachable": "This image can no longer be used. Add it again.",
+  "@imageNotAttachable": {
+    "description": "The gift form, on saving: the image added in the form can no longer be attached to the gift."
+  },
+  "imageExpired": "This image was added too long ago. Add it again.",
+  "@imageExpired": {
+    "description": "The gift form, on saving: the image was added to the form more than a day before saving."
+  },
+  "imageReadFailed": "This image could not be read. Try another one.",
+  "@imageReadFailed": {
+    "description": "The gift form: the picked image could not be read from the device."
   }
 }

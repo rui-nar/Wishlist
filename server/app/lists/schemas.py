@@ -39,6 +39,7 @@ from app.lists.models import (
     SELF,
     TITLE_MAX_LENGTH,
 )
+from app.media.schemas import ImageOut
 
 MAX_LINKS = 10
 
@@ -134,6 +135,8 @@ class GiftCreate(_Body):
     links: Links = []
     price_amount: Price | None = None
     price_currency: Currency | None = None
+    # A pending image of the caller, attached by the save (gift images D1).
+    image_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def _price(self) -> GiftCreate:
@@ -149,6 +152,9 @@ class GiftUpdate(_Body):
     # Checked together with the stored price by the endpoint.
     price_amount: Price | None = None
     price_currency: Currency | None = None
+    # An id attaches that pending image in place of the current one, null
+    # removes the current one (gift images D11).
+    image_id: uuid.UUID | None = None
 
 
 class OccasionCreate(_Body):
@@ -175,6 +181,8 @@ class GiftOut(BaseModel):
     # A JSON string ("149.00"), so no client reads it as a binary float.
     price_amount: Decimal | None
     price_currency: str | None
+    # Its paths are the owners' (gift images D7).
+    image: ImageOut | None
 
 
 class ListOut(BaseModel):
@@ -232,6 +240,8 @@ class SharedGiftOut(BaseModel):
     links: list[str]
     price_amount: Decimal | None
     price_currency: str | None
+    # Its paths go through the occasion the gift is shown in (gift images D7).
+    image: ImageOut | None
 
 
 class SharedOccasion(BaseModel):

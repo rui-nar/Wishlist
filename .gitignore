@@ -29,5 +29,7 @@ client/lib/l10n/*.dart
 # Database dumps (backups, VAL seeds): never committed, the repository is public
 *.dump
 
-# Uploaded files (MEDIA_DIR defaults to ./media locally)
-media/
+# Uploaded files (MEDIA_DIR defaults to ./media locally). Anchored: the server
+# has packages named media (app/media, tests/media).
+/media/
+/server/media/

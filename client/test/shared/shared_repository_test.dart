@@ -4,7 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:wishlist/src/api/api_client.dart';
+import 'package:wishlist/src/lists/lists_repository.dart';
 import 'package:wishlist/src/shared/shared_repository.dart';
+
+import '../lists/support/fake_lists_server.dart';
+import '../support/fakes.dart';
 
 const _shared = {
   'id': 'o1',
@@ -82,7 +86,45 @@ void main() {
     expect(invitee.gifts.single.priceAmount, '149.00');
   });
 
-  test("occasion: an owner's answer names the list to open", () async {
+  test('occasion: a gift keeps the occasion paths of its image, or none',
+      () async {
+    const gift = {
+      'id': 'g1',
+      'title': 'Headphones',
+      'description': '',
+      'links': <String>[],
+      'price_amount': null,
+      'price_currency': null,
+    };
+    answer = {
+      ..._shared,
+      'role': 'invitee',
+      'gifts': [
+        {
+          ...gift,
+          'image': {
+            'id': 'i1',
+            'width': 800,
+            'height': 600,
+            'url': '/api/occasions/o1/images/i1/full',
+            'thumb_url': '/api/occasions/o1/images/i1/thumb',
+          },
+        },
+        {...gift, 'id': 'g2', 'image': null},
+        {...gift, 'id': 'g3'},
+      ],
+    };
+
+    final view = await repository().occasion('o1') as InviteeOccasion;
+
+    expect(view.gifts[0].image!.url, '/api/occasions/o1/images/i1/full');
+    expect(view.gifts[0].image!.thumbUrl, '/api/occasions/o1/images/i1/thumb');
+    expect(view.gifts[1].image, isNull);
+    expect(view.gifts[2].image, isNull);
+  });
+
+  test("occasion: an owner's answer names the list, who it is for and its "
+      'gifts', () async {
     answer = {
       'id': 'o1',
       'list_id': 'l1',
@@ -97,13 +139,64 @@ void main() {
         'recipient_kind': 'other',
         'recipient_name': 'Léa',
       },
-      'gifts': [],
+      'gifts': [
+        {
+          'id': 'g1',
+          'list_id': 'l1',
+          'title': 'Headphones',
+          'description': '',
+          'links': <String>[],
+          'price_amount': '149.00',
+          'price_currency': 'EUR',
+          'image': {
+            'id': 'i1',
+            'width': 8,
+            'height': 8,
+            'url': '/api/images/i1/full',
+            'thumb_url': '/api/images/i1/thumb',
+          },
+        },
+      ],
     };
 
     final view = await repository().occasion('o1');
 
     expect(view, isA<OwnedOccasion>());
-    expect((view as OwnedOccasion).listId, 'l1');
+    view as OwnedOccasion;
+    expect(view.listId, 'l1');
+    expect(view.listTitle, 'Christmas');
+    expect(view.recipientKind, RecipientKind.other);
+    expect(view.recipientName, 'Léa');
+    expect(view.givesHere, isTrue);
+    expect(view.name, 'Christmas 2026');
+    expect(view.date, DateTime(2026, 12, 24));
+    expect(view.gifts.single.id, 'g1');
+    expect(view.gifts.single.priceCurrency, 'EUR');
+    expect(view.gifts.single.image!.thumbUrl, '/api/images/i1/thumb');
+  });
+
+  test("occasion: the owner of a list for themselves doesn't give", () async {
+    answer = {
+      'id': 'o1',
+      'list_id': 'l1',
+      'name': 'Birthday',
+      'date': '2027-03-02',
+      'join_token': null,
+      'member_count': 0,
+      'role': 'owner',
+      'list': {
+        'id': 'l1',
+        'title': 'Birthday',
+        'recipient_kind': 'self',
+        'recipient_name': null,
+      },
+      'gifts': [],
+    };
+
+    final view = await repository().occasion('o1') as OwnedOccasion;
+
+    expect(view.recipientKind, RecipientKind.self);
+    expect(view.givesHere, isFalse);
   });
 
   test('the token goes in the body, never in the URL', () async {
@@ -171,5 +264,193 @@ void main() {
 
     expect(seen.single.method, 'DELETE');
     expect(seen.single.url.path, '/api/occasions/a%2F..%2Fb/membership');
+  });
+
+  test('a 409 with a code no client knows stays an ApiException', () async {
+    code = 409;
+    answer = {'detail': 'Something new', 'code': 'later'};
+
+    await expectLater(
+      repository().reserve('o1', 'g1'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 409)),
+    );
+  });
+
+  test('claim ids are one path segment each', () async {
+    code = 204;
+
+    await repository().release('a/b', 'c?d');
+
+    expect(
+      seen.single.url.path,
+      '/api/occasions/a%2Fb/gifts/c%3Fd/reservation',
+    );
+  });
+
+  group('activity, against the fake server (RESERVING_PLAN D6)', () {
+    late FakeListsServer server;
+    late SharedRepository shared;
+    late String occasion;
+    late String other;
+    late String priced;
+    late String unpriced;
+
+    String path(String gift, String action) =>
+        '/api/occasions/$occasion/gifts/$gift/$action';
+
+    setUp(() {
+      server = FakeListsServer();
+      final list = server.addList(
+        'Christmas',
+        recipientName: 'Léa',
+        ownerNames: ['Bob Durand'],
+      );
+      priced = server.addGift(
+        list,
+        'Headphones',
+        priceAmount: '149.00',
+        priceCurrency: 'EUR',
+      );
+      unpriced = server.addGift(list, 'Socks');
+      occasion = server.addOccasion(list, 'Christmas 2026', '2026-12-24');
+      other = server.addOccasion(list, 'Birthday', '2027-03-02');
+      server.joined.add(occasion);
+      shared = SharedRepository(
+        ApiClient(server.client, baseUrl: kApiBase)
+          ..token = server.accounts.addSession(),
+      );
+    });
+
+    test('claims: passed, the states, the participants and their pledges',
+        () async {
+      server
+        ..addClaim(priced, occasion, [
+          FakeListsServer.giver('Carol', amount: '50.00', currency: 'EUR'),
+          FakeListsServer.giver(kAliceName, mine: true),
+        ], group: true)
+        ..addClaim(unpriced, other, [FakeListsServer.giver('Eve')]);
+
+      final claims = await shared.claims(occasion);
+
+      expect(server.calls.single, 'GET /api/occasions/$occasion/claims');
+      expect(claims.passed, isFalse);
+      final group = claims.gifts[priced]!;
+      expect(group.state, ClaimState.group);
+      expect(group.bought, isFalse);
+      expect(group.expired, isFalse);
+      expect(group.mine, isTrue);
+      expect(group.participants.first.displayName, 'Carol');
+      expect(group.participants.first.mine, isFalse);
+      expect(group.participants.first.pledgeAmount, '50.00');
+      expect(group.participants.first.pledgeCurrency, 'EUR');
+      expect(group.participants.last.pledgeAmount, isNull);
+      final taken = claims.gifts[unpriced]!;
+      expect(taken.state, ClaimState.taken);
+      expect(taken.participants, isEmpty);
+      expect(taken.mine, isFalse);
+    });
+
+    test('a free gift is absent; a passed occasion says so', () async {
+      server.passed.add(occasion);
+
+      final claims = await shared.claims(occasion);
+
+      expect(claims.passed, isTrue);
+      expect(claims.gifts, isEmpty);
+    });
+
+    test('passed: my own unbought claim comes back expired, no one else\'s',
+        () async {
+      server
+        ..passed.add(occasion)
+        ..addClaim(priced, occasion, [
+          FakeListsServer.giver('Carol'),
+          FakeListsServer.giver(kAliceName, mine: true),
+        ], group: true)
+        ..addClaim(unpriced, occasion, [FakeListsServer.giver('Carol')]);
+
+      final claims = await shared.claims(occasion);
+
+      expect(claims.gifts.keys, [priced]);
+      final mine = claims.gifts[priced]!;
+      expect(mine.expired, isTrue);
+      expect(mine.bought, isFalse);
+      expect(mine.mine, isTrue);
+      await shared.markBought(occasion, priced);
+      final after = (await shared.claims(occasion)).gifts[priced]!;
+      expect(after.bought, isTrue);
+      expect(after.expired, isFalse);
+    });
+
+    test('each write: its method and path, a body only for the pledge',
+        () async {
+      final pledge = 'PUT ${path(priced, 'pledge')}';
+      await shared.reserve(occasion, priced);
+      await shared.release(occasion, priced);
+      await shared.markBought(occasion, unpriced);
+      await shared.pledge(occasion, priced, '50.00');
+      expect(server.bodies[pledge], {'amount': '50.00'});
+      await shared.pledge(occasion, priced, null);
+      expect(server.bodies[pledge], {'amount': null});
+      await shared.leaveGroup(occasion, priced);
+
+      expect(server.calls, [
+        'POST ${path(priced, 'reservation')}',
+        'DELETE ${path(priced, 'reservation')}',
+        'POST ${path(unpriced, 'bought')}',
+        pledge,
+        pledge,
+        'DELETE ${path(priced, 'pledge')}',
+      ]);
+      expect(server.bodies.keys, [pledge]);
+      expect(server.claims.containsKey(priced), isFalse);
+      expect(server.claims[unpriced]!['bought'], isTrue);
+    });
+
+    test('a 409 surfaces its code: taken, bought, passed', () async {
+      server
+        ..addClaim(priced, occasion, [FakeListsServer.giver('Carol')])
+        ..addClaim(
+          unpriced,
+          occasion,
+          [FakeListsServer.giver(kAliceName, mine: true)],
+          bought: true,
+        );
+      Matcher conflict(ClaimConflictCode code) =>
+          throwsA(isA<ClaimConflict>().having((e) => e.code, 'code', code));
+
+      await expectLater(
+        shared.reserve(occasion, priced),
+        conflict(ClaimConflictCode.taken),
+      );
+      await expectLater(
+        shared.pledge(occasion, priced, null),
+        conflict(ClaimConflictCode.taken),
+      );
+      await expectLater(
+        shared.release(occasion, unpriced),
+        conflict(ClaimConflictCode.bought),
+      );
+      server.passed.add(occasion);
+      await expectLater(
+        shared.leaveGroup(occasion, priced),
+        conflict(ClaimConflictCode.passed),
+      );
+    });
+
+    test('release and leave hold nothing: done all the same', () async {
+      await shared.release(occasion, priced);
+      await shared.leaveGroup(occasion, priced);
+
+      expect(server.claims, isEmpty);
+    });
+
+    test('an amount on a gift without a price is an ApiException 422',
+        () async {
+      await expectLater(
+        shared.pledge(occasion, unpriced, '10.00'),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 422)),
+      );
+    });
   });
 }

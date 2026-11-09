@@ -21,6 +21,10 @@ from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
 from app.db import create_db_engine, create_session_factory
 from app.lists.router import router as lists_router
+from app.media.purge import MediaPurge
+from app.media.router import router as media_router
+from app.reserving.router import router as reserving_router
+from app.safe_fetch import SafeFetcher
 from app.settings import Settings
 
 # The Flutter web build. The image puts it in /app/web, next to /app/server;
@@ -56,18 +60,33 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         # the directory as not writable.
         with contextlib.suppress(OSError):
             settings.media_dir.mkdir(parents=True, exist_ok=True)
+        # Only where dumps can be dated (gift images plan D10); stopped
+        # before the engine goes.
+        app.state.media_purge = None
+        if settings.backup_dir is not None:
+            app.state.media_purge = MediaPurge(
+                app.state.session_factory,
+                settings.media_dir,
+                settings.backup_dir,
+                lambda: app.state.clock(),
+            )
+            app.state.media_purge.start()
         yield
+        if app.state.media_purge is not None:
+            app.state.media_purge.stop()
         engine.dispose()
 
     app = FastAPI(title="Wishlist", version=settings.app_version, lifespan=lifespan)
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
-    # Both replaced by tests: no test calls Google or waits for the clock.
+    # Replaced by tests: no test calls Google, waits for the clock or fetches
+    # from the network.
     app.state.google_verifier = (
         GoogleVerifier(settings.google_audiences) if settings.google_audiences else None
     )
     app.state.clock = sessions.utc_now
+    app.state.url_fetcher = SafeFetcher(version=settings.app_version)
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.
@@ -112,6 +131,8 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
 
     app.include_router(accounts_router)
     app.include_router(lists_router)
+    app.include_router(media_router)
+    app.include_router(reserving_router)
     app.add_exception_handler(RequestValidationError, _validation_error)
 
     # Registered last, so every /api route above takes precedence.

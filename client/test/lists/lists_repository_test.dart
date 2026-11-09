@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -163,6 +164,113 @@ void main() {
         'price_currency': null,
       });
     }
+  });
+
+  group('gift images', () {
+    const image = {
+      'id': 'i1',
+      'width': 800,
+      'height': 600,
+      'url': '/api/images/i1/full',
+      'thumb_url': '/api/images/i1/thumb',
+    };
+
+    test('a gift parses with and without an image', () async {
+      answer = {
+        'id': 'l1',
+        'title': 'Birthday',
+        'recipient_kind': 'self',
+        'recipient_name': null,
+        'gifts': [
+          {..._gift, 'image': image},
+          {..._gift, 'id': 'g2', 'image': null},
+          {..._gift, 'id': 'g3'},
+        ],
+        'occasions': [],
+      };
+
+      final gifts = (await repository().list('l1')).gifts;
+
+      expect(gifts[0].image!.id, 'i1');
+      expect(gifts[0].image!.width, 800);
+      expect(gifts[0].image!.height, 600);
+      expect(gifts[0].image!.url, '/api/images/i1/full');
+      expect(gifts[0].image!.thumbUrl, '/api/images/i1/thumb');
+      expect(gifts[1].image, isNull);
+      expect(gifts[2].image, isNull);
+    });
+
+    test('a draft sends no image_id when unchanged, null on remove, the id '
+        'on attach', () async {
+      code = 201;
+      answer = _gift;
+      const base = GiftDraft(title: 'Book');
+      const attach = GiftDraft(title: 'Book', imageChange: AttachImage('i2'));
+      const remove = GiftDraft(title: 'Book', imageChange: RemoveImage());
+
+      await repository().addGift('l1', base);
+      await repository().addGift('l1', attach);
+      await repository().updateGift('g1', remove);
+
+      expect((body(0) as Map).containsKey('image_id'), isFalse);
+      expect((body(1) as Map)['image_id'], 'i2');
+      expect((body(2) as Map).containsKey('image_id'), isTrue);
+      expect((body(2) as Map)['image_id'], isNull);
+    });
+
+    test('a gift read from the server sends no image_id when saved again',
+        () {
+      expect(
+        Gift.fromJson({..._gift, 'image': image}).toJson(),
+        isNot(contains('image_id')),
+      );
+    });
+
+    test('uploadImage sends the bytes and reads the pending image', () async {
+      code = 201;
+      answer = image;
+
+      final pending =
+          await repository().uploadImage(Uint8List.fromList([1, 2]));
+
+      expect(sent(0), 'POST /api/images');
+      expect(seen[0].bodyBytes, [1, 2]);
+      expect(pending.id, 'i1');
+      expect(pending.thumbUrl, '/api/images/i1/thumb');
+    });
+
+    test('an upload the server refuses carries its code', () async {
+      code = 422;
+      answer = {'detail': 'image_unsupported'};
+
+      await expectLater(
+        repository().uploadImage(Uint8List(1)),
+        throwsA(isA<ApiException>()
+            .having((e) => e.body?['detail'], 'detail', 'image_unsupported')),
+      );
+    });
+
+    testWidgets('imageFromUrl waits past 10 s for the server (review R1-5)',
+        (tester) async {
+      final api = ApiClient(
+        MockClient((request) async {
+          seen.add(request);
+          await Future<void>.delayed(const Duration(seconds: 25));
+          return http.Response(jsonEncode(image), 201);
+        }),
+        baseUrl: 'http://api.test',
+      );
+      PendingImage? pending;
+      ListsRepository(api)
+          .imageFromUrl('https://shop.example/h.jpg')
+          .then((value) => pending = value);
+
+      await tester.pump(const Duration(seconds: 26));
+
+      expect(pending?.id, 'i1');
+      expect(sent(0), 'POST /api/images/from-url');
+      expect(body(0), {'url': 'https://shop.example/h.jpg'});
+    });
   });
 
   test('deletes answer 204', () async {

@@ -16,4 +16,6 @@ the plan.
 | [DESIGN_SYSTEM_PLAN](DESIGN_SYSTEM_PLAN.md) | — | feat/first-version (#4) |
 | [ACCOUNTS_PLAN](ACCOUNTS_PLAN.md) | — | feat/first-version (#4) |
 | [LISTS_GIFTS_SHARING_PLAN](LISTS_GIFTS_SHARING_PLAN.md) | — | feat/first-version (#4) |
-| [WEB_LAYOUT_PLAN](WEB_LAYOUT_PLAN.md) | — | feat/web-layout |
+| [WEB_LAYOUT_PLAN](WEB_LAYOUT_PLAN.md) | — | feat/web-layout (#9) |
+| [GIFT_IMAGES_PLAN](GIFT_IMAGES_PLAN.md) | — | feat/images-reserving |
+| [RESERVING_PLAN](RESERVING_PLAN.md) | — | feat/images-reserving |

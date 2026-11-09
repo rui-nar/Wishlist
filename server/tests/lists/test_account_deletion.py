@@ -1,6 +1,14 @@
-"""Deleting an account deletes the lists its user owns alone (lists plan D9)."""
+"""Deleting an account deletes the lists its user owns alone (lists plan D9),
+and takes them out of every claim (reserving plan D10)."""
 
+from datetime import date, timedelta
+
+from claims_invariants import assert_claims_consistent
 from sqlalchemy import text
+
+# Relative to today: a fixed date would turn into a passed occasion, where
+# claims are refused (reserving plan D8, review R1-3).
+FUTURE = (date.today() + timedelta(days=60)).isoformat()
 
 
 def add_list(client, account, title):
@@ -63,7 +71,7 @@ def share(client, owner, list_id, *invitees):
     """An occasion on the list, joined by each invitee; returns its id."""
     occasion = client.post(
         f"/api/lists/{list_id}/occasions",
-        json={"name": "Christmas", "date": "2026-12-25"},
+        json={"name": "Christmas", "date": FUTURE},
         headers=owner.headers,
     ).json()["id"]
     link = client.post(f"/api/occasions/{occasion}/link", headers=owner.headers)
@@ -138,3 +146,44 @@ def test_deleting_an_owners_account_deletes_the_removals_on_their_lists(
     client.delete("/api/me", headers=leaving.headers)
 
     assert rows("occasion_removals") == 0
+
+
+def test_deleting_a_givers_account_leaves_no_row_naming_them(
+    client, make_account, engine, rows
+):
+    owner = make_account("Ada")
+    leaving = make_account("Bea")
+    staying = make_account("Cid")
+    list_id = add_list(client, owner, "Ada's")
+    gifts = [
+        client.post(
+            f"/api/lists/{list_id}/gifts", json={"title": title}, headers=owner.headers
+        ).json()["id"]
+        for title in ("Pen", "Hat")
+    ]
+    bought, grouped = gifts
+    occasion = share(client, owner, list_id, leaving, staying)
+    base = f"/api/occasions/{occasion}/gifts"
+    for response in (
+        client.post(f"{base}/{bought}/reservation", headers=leaving.headers),
+        client.post(f"{base}/{bought}/bought", headers=leaving.headers),
+        client.put(
+            f"{base}/{grouped}/pledge", json={"amount": None}, headers=leaving.headers
+        ),
+        client.put(
+            f"{base}/{grouped}/pledge", json={"amount": None}, headers=staying.headers
+        ),
+    ):
+        assert response.status_code == 200, response.text
+
+    client.delete("/api/me", headers=leaving.headers)
+
+    assert rows("users", "id", leaving.id) == 0
+    assert rows("claim_participants", "user_id", leaving.id) == 0
+    claims = client.get(f"/api/occasions/{occasion}/claims", headers=staying.headers)
+    by_gift = {claim["gift_id"]: claim for claim in claims.json()["gifts"]}
+    # The bought gift stays bought, with no name; the group gift keeps Cid.
+    assert (by_gift[bought]["bought"], by_gift[bought]["participants"]) == (True, [])
+    assert [p["display_name"] for p in by_gift[grouped]["participants"]] == ["Cid"]
+    assert "Bea" not in claims.text
+    assert_claims_consistent(engine)

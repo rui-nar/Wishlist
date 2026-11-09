@@ -99,7 +99,7 @@ docker tag wishlist:smoke ghcr.io/rui-nar/wishlist:validation
 log "Deploy user and directories, as the runbook creates them"
 sudo useradd --create-home --groups docker "$deploy_user"
 sudo install -d -o "$deploy_user" -g "$deploy_user" -m 755 "$prod" "$prod/backup" "$val"
-sudo install -d -o 999 -g 999 -m 700 "$prod/backups"
+sudo install -d -o 999 -g 10001 -m 750 "$prod/backups"
 sudo install -d -o root -g root -m 755 "$media"
 sudo install -d -o 10001 -g 10001 -m 750 "$media/prod" "$media/val"
 # Not a runbook step: shows whether this host has default ACLs, which replace
@@ -125,8 +125,8 @@ check_app 8010 production
 check_ports compose_prod 8010
 
 log "Old dumps for the rotation, and the healthcheck failing on them"
-# The runner's shell cannot list the 999-owned, mode 700 backups directory, so
-# a glob there would stay literal: every path under it is named in full and
+# The runner's shell cannot list the backups directory (999:10001, mode 750),
+# so a glob there would stay literal: every path under it is named in full and
 # reached through sudo (or a container), here and below.
 for day in $(seq -w 1 31); do
     old="$prod/backups/wishlist_2000-01-$day.dump"
@@ -151,6 +151,30 @@ expect "dumps kept" "$(sudo find "$prod/backups" -name 'wishlist_*.dump' | wc -l
 expect "partial dumps left" "$(sudo find "$prod/backups" -name '*.partial' | wc -l)" 0
 sudo test ! -e "$prod/backups/wishlist_2000-01-02.dump" || fail "the oldest dumps were not deleted"
 sudo test -e "$prod/backups/wishlist_2000-01-03.dump" || fail "a dump among the 30 newest was deleted"
+
+log "PROD's app lists the dumps and cannot read them (gift images plan D10)"
+expect "backups owner and mode" "$(sudo stat -c '%u:%g %a' "$prod/backups")" "999:10001 750"
+# Prints how many dumps the app sees; exits non-zero if it can open or create a
+# file there.
+backups_probe='
+import os, sys
+d = os.environ["BACKUP_DIR"]
+dumps = [n for n in os.listdir(d) if n.startswith("wishlist_") and n.endswith(".dump")]
+dump = os.path.join(d, sys.argv[1])
+os.stat(dump)
+try:
+    open(dump, "rb").close()
+    sys.exit("the app can read " + dump)
+except PermissionError:
+    pass
+try:
+    open(os.path.join(d, "smoke-probe"), "x").close()
+    sys.exit("the app can write to " + d)
+except OSError:
+    pass
+print(len(dumps))
+'
+expect "dumps the app lists"     "$(compose_prod exec -T app python -c "$backups_probe" "$(basename "$today")")" 30
 
 log "A file written through PROD's app lands on the host, owned by 10001"
 # shellcheck disable=SC2016 # $MEDIA_DIR is the container's

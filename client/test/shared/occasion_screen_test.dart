@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
+import 'package:wishlist/src/api/api_image.dart';
 import 'package:wishlist/src/design/widgets/gift_card.dart';
+import 'package:wishlist/src/design/widgets/image_viewer.dart';
 import 'package:wishlist/src/design/widgets/privacy_banner.dart';
 import 'package:wishlist/src/lists/list_detail_screen.dart';
 import 'package:wishlist/src/shared/shared_with_me_screen.dart';
@@ -83,7 +85,7 @@ void main() {
     );
   });
 
-  testWidgets('read-only: no edit control, no link, no invitee',
+  testWidgets('the list is read-only: no edit control, no link, no invitee',
       (tester) async {
     server.addGift(list, 'Headphones', links: ['https://shop.example/h']);
     await startApp(tester, server, '/shared/$occasion');
@@ -102,20 +104,18 @@ void main() {
     }
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(find.byType(TextField), findsNothing);
-    // A gift without details opens nothing.
-    expect(tester.widget<GiftCard>(find.byType(GiftCard)).onTap, isNull);
-
     await tester.tap(find.byTooltip('Show menu'));
     await tester.pumpAndSettle();
     expect(find.text('Leave the occasion'), findsOneWidget);
     expect(find.text('Rename'), findsNothing);
 
-    // Only the invitee's own calls: Shared with me, under this page, and
-    // the occasion.
-    expect(
-      server.calls.toSet(),
-      {'GET /api/shared', 'GET /api/occasions/$occasion'},
-    );
+    // Only the invitee's own calls: Shared with me, under this page, the
+    // occasion and its activity.
+    expect(server.calls.toSet(), {
+      'GET /api/shared',
+      'GET /api/occasions/$occasion',
+      'GET /api/occasions/$occasion/claims',
+    });
   });
 
   testWidgets('a gift with details shows them when tapped', (tester) async {
@@ -128,6 +128,60 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Black, over-ear'), findsOneWidget);
+  });
+
+  group('gift images', () {
+    late String imageId;
+
+    setUp(() {
+      final gift = server.addGift(list, 'Headphones', image: true);
+      imageId = (server.gift(gift)!['image'] as Map)['id'] as String;
+    });
+
+    testWidgets('the card shows the thumbnail on the occasion path',
+        (tester) async {
+      final app = await startApp(tester, server, '/shared/$occasion');
+
+      final card = tester.widget<GiftCard>(find.byType(GiftCard));
+      expect(
+        card.image,
+        ApiImage(app.api, '/api/occasions/$occasion/images/$imageId/thumb'),
+      );
+      expect(
+        server.calls,
+        contains('GET /api/occasions/$occasion/images/$imageId/thumb'),
+      );
+    });
+
+    testWidgets('tapping the thumbnail opens the full image in the viewer',
+        (tester) async {
+      await startApp(tester, server, '/shared/$occasion');
+
+      await tester.tap(find.byKey(const ValueKey('gift-card-image')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ImageViewer), findsOneWidget);
+      expect(
+        server.calls,
+        contains('GET /api/occasions/$occasion/images/$imageId/full'),
+      );
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ImageViewer), findsNothing);
+    });
+
+    testWidgets('tapping the card elsewhere keeps its behaviour',
+        (tester) async {
+      server.addGift(list, 'Book', description: 'The illustrated edition');
+      await startApp(tester, server, '/shared/$occasion');
+
+      await tester.tap(find.text('Book'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('The illustrated edition'), findsOneWidget);
+      expect(find.byType(ImageViewer), findsNothing);
+    });
   });
 
   testWidgets('a gift link opens in the external browser', (tester) async {

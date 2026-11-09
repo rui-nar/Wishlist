@@ -175,9 +175,9 @@ class _Features extends StatelessWidget {
         ),
         const SizedBox(height: Spacing.s16),
         _FeatureCard(
-          icon: Icons.tune_outlined,
-          title: l10n.welcomeControlTitle,
-          body: l10n.welcomeControlBody,
+          icon: Icons.visibility_off_outlined,
+          title: l10n.welcomeSurpriseTitle,
+          body: l10n.welcomeSurpriseBody,
         ),
       ],
     );

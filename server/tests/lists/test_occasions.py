@@ -353,6 +353,7 @@ def test_an_invitee_sees_the_occasion_its_list_and_gifts(client, bea, shared):
                 "links": [],
                 "price_amount": "12.50",
                 "price_currency": "EUR",
+                "image": None,
             }
         ],
     }

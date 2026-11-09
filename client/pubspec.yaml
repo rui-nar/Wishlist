@@ -65,6 +65,13 @@ dependencies:
   # (LISTS_GIFTS_SHARING_PLAN U4).
   share_plus: ^13.3.1
 
+  # A gift's image (GIFT_IMAGES D14): picked from the device, re-encoded and
+  # resized by the picker before upload (D5), or read from the clipboard.
+  image_picker: ^1.2.4
+  pasteboard: ^0.6.0
+  # The browser's paste event in the gift form (D14), web only.
+  web: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -85,6 +92,8 @@ dev_dependencies:
   plugin_platform_interface: ^2.1.8
   # Referenced by the tests, which stand in for the share sheet.
   share_plus_platform_interface: ^7.2.0
+  # Referenced by the tests, which stand in for the image picker.
+  image_picker_platform_interface: ^2.11.2
 
 # google_sign_in_web 1.1.3 with Google's script loaded in init() instead of at
 # plugin registration, so only the sign-in screen fetches it (ACCOUNTS_PLAN

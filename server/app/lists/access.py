@@ -15,7 +15,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.accounts.models import User
-from app.lists.models import Gift, List, ListOwner, Occasion, OccasionMember
+from app.lists.models import OTHER, Gift, List, ListOwner, Occasion, OccasionMember
 
 OWNER = "owner"
 INVITEE = "invitee"
@@ -77,6 +77,39 @@ def visible_occasion(
     if db.get(OccasionMember, (occasion.id, user.id)) is not None:
         return occasion, INVITEE
     raise not_found()
+
+
+def giving_occasion(
+    db: Session, user: User, occasion_id: uuid.UUID, lock: bool = True
+) -> Occasion:
+    """The occasion, if the user is one of its givers; otherwise 404
+    (reserving plan D4).
+
+    A giver is a member of the occasion, or an owner of its list when the
+    list is "for someone else". An owner of a "for me" list is its recipient
+    and gets what a stranger gets for a random id, whatever the activity.
+    Decided from the list's kind on every call, never stored with the
+    activity.
+
+    For a write, the occasion is locked `FOR SHARE` before the membership is
+    checked (D7 step 1): a removal or a leave, which lock it `FOR UPDATE`,
+    either committed before (and the check fails) or waits for this request.
+    A read passes `lock=False`: it needs no lock, and one would make an
+    owner's change to the occasion wait on a giver's read, a wait the
+    recipient could notice (review round 2).
+    """
+    if lock:
+        locked = db.scalar(
+            select(Occasion)
+            .where(Occasion.id == occasion_id)
+            .with_for_update(read=True)
+        )
+        if locked is None:
+            raise not_found()
+    occasion, role = visible_occasion(db, user, occasion_id)
+    if role == OWNER and db.get_one(List, occasion.list_id).recipient_kind != OTHER:
+        raise not_found()
+    return occasion
 
 
 def owned_occasion(db: Session, user: User, occasion_id: uuid.UUID) -> Occasion:
