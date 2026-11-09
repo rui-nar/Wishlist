@@ -20,6 +20,7 @@ from app.accounts import sessions
 from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
 from app.db import create_db_engine, create_session_factory
+from app.hidden_gifts.router import router as hidden_gifts_router
 from app.lists.router import router as lists_router
 from app.media.purge import MediaPurge
 from app.media.router import router as media_router
@@ -133,6 +134,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.include_router(lists_router)
     app.include_router(media_router)
     app.include_router(reserving_router)
+    app.include_router(hidden_gifts_router)
     app.add_exception_handler(RequestValidationError, _validation_error)
 
     # Registered last, so every /api route above takes precedence.

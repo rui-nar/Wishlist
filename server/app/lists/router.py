@@ -26,6 +26,7 @@ from app.accounts.models import User
 from app.db import DbSession
 from app.hidden_gifts.lifecycle import (
     NotRevealed,
+    delete_unbought_by,
     keep_revealed,
     set_received,
     settle_occasion_deletion,
@@ -487,6 +488,10 @@ def remove_member(
     # write of theirs waits on the occasion's lock, then is refused
     # (reserving plan D10).
     release_activity(db, user_id, occasion.id)
+    # And the hidden gifts they added that nobody bought: the owner's remedy
+    # against an abusive invitee (hidden gifts plan D8). Same answer either
+    # way.
+    delete_unbought_by(db, user_id, occasion.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
