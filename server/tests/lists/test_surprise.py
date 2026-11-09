@@ -428,6 +428,9 @@ def reads(rec: Recorder, gifts: tuple[str, ...], images: tuple[str, str]) -> Non
     rec.call("GET", "/api/lists")
     detail = rec.call("GET", "/api/lists/{list_id}", list_id="list")
     assert_twin_gifts(rec, detail.json()["gifts"], gifts)
+    # No hidden gift is revealed, and nothing is left received (hidden gifts
+    # plan D5, D6).
+    assert (detail.json()["received"], detail.json()["revealed"]) == ([], [])
     rec.call("GET", "/api/shared")
     for occasion in OCCASIONS:
         view = rec.call("GET", "/api/occasions/{occasion_id}", occasion_id=occasion)
@@ -513,6 +516,22 @@ def edits(rec: Recorder, state: str, keep_holders: bool) -> None:
         {"gift_id": ("G1", "G2")},
         body=lambda side: {"image_id": rec.ids[("up1", "up2")[side]]},
     )
+    # Received and put back, G1 as its twin: G1's claim is kept meanwhile
+    # and comes back with it (hidden gifts plan D5). Keep is refused on a
+    # gift on the list (D6).
+    received = "/api/gifts/{gift_id}/received"
+    rec.twin("POST", received, {"gift_id": ("G1", "G2")})
+    detail = rec.call("GET", "/api/lists/{list_id}", list_id="list").json()
+    assert [gift["id"] for gift in detail["gifts"]] == [rec.ids["G3"]]
+    # Newest first.
+    assert [gift["id"] for gift in detail["received"]] == [
+        rec.ids["G2"],
+        rec.ids["G1"],
+    ]
+    rec.twin("DELETE", received, {"gift_id": ("G1", "G2")})
+    rec.twin("POST", "/api/gifts/{gift_id}/keep", {"gift_id": ("G1", "G2")})
+    statuses = [answer.status for answer in rec.answers[-7:]]
+    assert statuses == [204, 204, 200, 204, 204, 409, 409]
     rec.register(
         "E",
         rec.call(
