@@ -210,10 +210,16 @@ class ListSummary(ListOut):
 
 
 class ListDetail(ListOut):
-    # Oldest first (D3).
+    # Oldest first (D3). Never a received one (hidden gifts plan D5).
     gifts: list[GiftOut]
     # By date.
     occasions: list[OccasionOut]
+    # Marked received by its owners, on the list or revealed: newest first
+    # (hidden gifts plan D5).
+    received: list[GiftOut]
+    # Hidden gifts revealed and not received, each the gift alone: by title
+    # (hidden gifts plan D6).
+    revealed: list[GiftOut]
 
 
 class OwnerOccasionView(OccasionOut):
@@ -265,6 +271,17 @@ class InviteeOccasionView(SharedOccasion):
 OccasionView = Annotated[
     OwnerOccasionView | InviteeOccasionView, Field(discriminator="role")
 ]
+
+
+NOT_REVEALED = "not_revealed"
+
+
+class GiftConflict(BaseModel):
+    """The body of a 409 from putting back or keeping a gift: it is not
+    revealed now (hidden gifts plan D5, D6)."""
+
+    detail: str
+    code: Literal["not_revealed"]
 
 
 class JoinPreview(BaseModel):

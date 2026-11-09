@@ -30,7 +30,12 @@ def test_creating_a_list_for_me(client, ada):
     }
     detail = client.get(f"/api/lists/{created['id']}", headers=ada.headers)
     assert detail.status_code == 200
-    assert detail.json() == created | {"gifts": [], "occasions": []}
+    assert detail.json() == created | {
+        "gifts": [],
+        "occasions": [],
+        "received": [],
+        "revealed": [],
+    }
 
 
 def test_creating_a_list_for_someone_else(client, ada):
@@ -121,7 +126,12 @@ def test_renaming_a_list_and_its_recipient(client, ada):
     expected = created | {"title": "Leo turns 7", "recipient_name": "Léo"}
     assert response.json() == expected
     detail = client.get(f"/api/lists/{created['id']}", headers=ada.headers).json()
-    assert detail == expected | {"gifts": [], "occasions": []}
+    assert detail == expected | {
+        "gifts": [],
+        "occasions": [],
+        "received": [],
+        "revealed": [],
+    }
 
 
 def test_a_field_left_out_of_a_patch_is_unchanged(client, ada):
@@ -161,7 +171,12 @@ def test_invalid_changes_are_refused_and_change_nothing(client, ada, original, p
 
     assert response.status_code == 422
     detail = client.get(f"/api/lists/{created['id']}", headers=ada.headers).json()
-    assert detail == created | {"gifts": [], "occasions": []}
+    assert detail == created | {
+        "gifts": [],
+        "occasions": [],
+        "received": [],
+        "revealed": [],
+    }
 
 
 def test_deleting_a_list_deletes_its_gifts(client, ada, rows):

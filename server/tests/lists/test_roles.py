@@ -293,6 +293,12 @@ ENDPOINTS = [
     Endpoint("POST", "/api/lists/{list_id}/gifts", {"title": "Scarf"}, 201),
     Endpoint("PATCH", "/api/gifts/{gift_id}", {"title": "Renamed"}, 200),
     Endpoint("DELETE", "/api/gifts/{gift_id}", None, 204),
+    # Received and put back, on any gift its owners see; keep, only on a
+    # revealed one: the scenario's gift is on the list (hidden gifts plan D5,
+    # D6).
+    Endpoint("POST", "/api/gifts/{gift_id}/received", None, 204),
+    Endpoint("DELETE", "/api/gifts/{gift_id}/received", None, 204),
+    Endpoint("POST", "/api/gifts/{gift_id}/keep", None, 409),
     Endpoint(
         "POST",
         "/api/lists/{list_id}/occasions",
@@ -531,6 +537,13 @@ def test_endpoint_by_role(client, scenario, endpoint, list_key, actor):
     assert owners_view(client, scenario) == before
     random_ids = {name: str(uuid.uuid4()) for name in scenario.lists[list_key]}
     probe = call(client, scenario, actor, endpoint, random_ids)
+    if status == 409:
+        # A conflict on a gift its owner sees, not a refusal: an id that
+        # exists nowhere gets the 404 every refusal gets (hidden gifts plan
+        # D5, D6).
+        assert relation == OWNER
+        assert (probe.status_code, probe.json()) == (404, {"detail": "Not found"})
+        return
     assert (probe.status_code, probe.json()) == (response.status_code, response.json())
 
 

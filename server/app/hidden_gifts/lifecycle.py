@@ -1,5 +1,6 @@
 """What happens to hidden gifts when their occasion goes (hidden gifts plan
-D9).
+D9), and what an owner decides on a gift: received, put back, keep (D5,
+D6).
 
 A hidden gift is deleted explicitly, its activity dropped through
 `drop_gift_activity` first (D15), never left to the occasion's cascade: no
@@ -13,8 +14,13 @@ from datetime import datetime
 from sqlalchemy import delete, exists, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.lists.access import not_found
 from app.lists.models import Gift, Occasion
-from app.lists.visibility import reveal_date_has_passed
+from app.lists.visibility import (
+    is_owner_visible,
+    is_revealed,
+    reveal_date_has_passed,
+)
 from app.reserving.models import GiftClaim
 from app.reserving.release import drop_gift_activity
 
@@ -70,3 +76,100 @@ def lock_authored(db: Session, user_id: uuid.UUID) -> None:
         .order_by(Gift.id)
         .with_for_update(key_share=True)
     )
+
+
+class NotRevealed(Exception):
+    """The gift is not revealed now: a 409 `not_revealed` (D5, D6)."""
+
+
+def set_received(
+    db: Session, gift: Gift, received_at: datetime | None, now: datetime
+) -> None:
+    """Marks the gift received at `received_at`, or puts it back for None
+    (D5). Both are idempotent: marking keeps the first receipt's time.
+
+    An update of `received_at` only, a non-key update: it never waits on a
+    giver's claim write, nor makes one wait (D10). The caller resolved the
+    gift through `owned_gift`; a hidden gift's occasion is then locked `FOR
+    SHARE`, so a date change at the same moment takes turns with this
+    request, and the gift is checked again under that lock: gone, or hidden
+    again, it answers 404. A received hidden gift that is not revealed now
+    (its date moved later since) is not put back: it would leave every owner
+    view, and its occasion's deletion would take it (review R2-1). Only a
+    revealed gift can have been received, so neither answer leaks anything.
+    """
+    _lock_occasion(db, gift)
+    if not is_owner_visible(db, gift, now):
+        raise not_found()
+    if received_at is None and gift.list_id is None and not is_revealed(db, gift, now):
+        # Seen by its owners, yet not revealed: received (`owner_visible`).
+        raise NotRevealed
+    update_received = update(Gift).where(Gift.id == gift.id)
+    if received_at is not None:
+        update_received = update_received.where(Gift.received_at.is_(None))
+    # `updated_at` named, or its `onupdate` would move it: nothing else is
+    # touched (D5).
+    db.execute(
+        update_received.values(
+            received_at=received_at, updated_at=Gift.updated_at
+        ).execution_options(synchronize_session=False)
+    )
+
+
+def keep_revealed(db: Session, gift: Gift, now: datetime) -> Gift:
+    """Puts a revealed gift on its list, as a new gift: the same title,
+    description, links, price and image under a new id, at the end of the
+    list, with nothing of its past (D6). Returns the new gift, flushed.
+
+    Lock order (D10): its occasion `FOR SHARE`, so a date change takes turns
+    with the keep, then the gift `FOR UPDATE`, which a giver's claim write
+    (`FOR KEY SHARE`) excludes; then the reveal is checked. Kept at the same
+    moment, or hidden again by a date moved later, it answers 404, the
+    random id's answer; a received one whose date moved later answers
+    `NotRevealed`, as does a gift on the list.
+
+    The old row's activity is dropped (D15) and the row deleted before the
+    new one is inserted, all in the caller's transaction: the image passes
+    from one to the other under the unique constraint.
+    """
+    if gift.list_id is not None:
+        raise NotRevealed
+    _lock_occasion(db, gift)
+    old = db.scalar(
+        select(Gift)
+        .where(Gift.id == gift.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if old is None:
+        raise not_found()
+    if not is_revealed(db, old, now):
+        if is_owner_visible(db, old, now):
+            raise NotRevealed
+        raise not_found()
+    kept = Gift(
+        list_id=old.for_list_id,
+        title=old.title,
+        description=old.description,
+        links=list(old.links),
+        price_amount=old.price_amount,
+        price_currency=old.price_currency,
+        image_id=old.image_id,
+    )
+    drop_gift_activity(db, [old.id])
+    db.execute(delete(Gift).where(Gift.id == old.id))
+    db.add(kept)
+    db.flush()
+    return kept
+
+
+def _lock_occasion(db: Session, gift: Gift) -> None:
+    """Locks the hidden gift's occasion `FOR SHARE`, if it has one: a date
+    change, which locks it `FOR NO KEY UPDATE`, waits or is waited for, so
+    the reveal read next is the committed one (D10)."""
+    if gift.hidden_occasion_id is not None:
+        db.execute(
+            select(Occasion.id)
+            .where(Occasion.id == gift.hidden_occasion_id)
+            .with_for_update(read=True)
+        )

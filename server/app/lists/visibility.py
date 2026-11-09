@@ -92,6 +92,31 @@ def owner_visible(list_id: ListId, now: datetime) -> ColumnElement[bool]:
     )
 
 
+def received(list_id: ListId) -> ColumnElement[bool]:
+    """The list's "Received": every gift of it its owners marked received,
+    on the list or revealed, whatever its occasion's date became since (D5,
+    review R1-1). All of them `owner_visible`."""
+    return and_(
+        or_(Gift.list_id == list_id, Gift.for_list_id == list_id),
+        Gift.received_at.is_not(None),
+    )
+
+
+# Newest first, then by id (D5).
+RECEIVED_ORDER = (Gift.received_at.desc(), Gift.id)
+
+
+def undecided(list_id: ListId, now: datetime) -> ColumnElement[bool]:
+    """The revealed gifts its owners have not marked received: what they
+    decide on (received, dismiss, keep, D6)."""
+    return and_(revealed(list_id, now), Gift.received_at.is_(None))
+
+
+# By title, then by id: never `created_at`, which is when a giver added it
+# (D6).
+REVEALED_ORDER = (Gift.title, Gift.id)
+
+
 def in_occasion(occasion: Occasion) -> ColumnElement[bool]:
     """The gifts the occasion's givers see: its list's gifts and its own
     hidden gifts, none received. The claims read, every claim write, the
@@ -126,6 +151,15 @@ def is_owner_visible(db: Session, gift: Gift, now: datetime) -> bool:
             select(
                 exists().where(Gift.id == gift.id, owner_visible(list_of(gift), now))
             )
+        )
+    )
+
+
+def is_revealed(db: Session, gift: Gift, now: datetime) -> bool:
+    """Whether the gift is revealed (`revealed`)."""
+    return bool(
+        db.scalar(
+            select(exists().where(Gift.id == gift.id, revealed(list_of(gift), now)))
         )
     )
 
