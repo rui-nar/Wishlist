@@ -123,7 +123,7 @@ occasions before the user row (R6-1).
 - Decision: Defer (D10)
 - Revisit when: an IntegrityError on a users foreign key is logged, or account deletion gains a grace period or asynchronous processing
 - Override: reopened in round 8 as Fix now by the orchestrator (standing instruction): the envelope's concurrency bullet requires that racing an account deletion never answers a 500, and R8-1 is the same family, fixed in the same unit
-- Outcome: open
+- Outcome: fixed (e835170)
 
 ## Round 7 — 2026-11-09, unit review of U7 (DELIVERY.md §5 point 3), reviewed at 33adb49
 
@@ -153,7 +153,7 @@ wrong-visible). R6-2 reopened (see its Override line).
 - Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/shared, confidence=verified
 - Decision: Fix now (D6)
 - Override: —
-- Outcome: open
+- Outcome: fixed (e835170)
 
 ### R8-2 — The gift sheet says "someone else" gives a gift the giver holds in another occasion
 - Trigger: an invitee of two occasions of a list reserves a gift in one and opens it in the other → the server answers `taken` with no participants, the sheet says someone else is giving it → false statement to the giver
@@ -176,7 +176,7 @@ orchestrator under the standing instruction, with one override (R9-3).
 - Decision: Guard (D9)
 - Guard: the test helper locks the same rows as `delete_me` (user, then occasions by id), and the test is seen failing once with the old order
 - Override: —
-- Outcome: open
+- Outcome: guard added (073efec)
 
 ### R9-2 — The plan records the lock order F3 reversed
 - Trigger: a maintainer aligns the code with D7's text (occasions, then user) → deadlock against every request's user `KEY SHARE` → 500
@@ -190,6 +190,14 @@ orchestrator under the standing instruction, with one override (R9-3).
 - Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=M/shared, confidence=verified
 - Decision: Defer (D10)
 - Override: Fix now (orchestrator): the triager's revisit condition already holds — the client gives `DELETE /api/me` a 10 s timeout, so the user sees a failure for a deletion that then succeeds
+- Outcome: fixed (073efec)
+
+### R9-4 — A sign-out racing another request's touch of the same session answers 500 (found in delivery by F3)
+- Trigger: a user signs out on a device while another request with the same token reaches the session touch → the touch's UPDATE meets the deleted row → `StaleDataError` → 500 for that request
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/shared, confidence=inferred
+- Decision: Defer (D10), by the orchestrator from the D table (not from a reviewer); account deletion no longer causes it, and image routes already lock the session before touching it
+- Revisit when: a `StaleDataError` on `user_sessions` is logged, or the client sends requests while signing out
+- Override: —
 - Outcome: open
 
 ## Delivery
@@ -209,3 +217,5 @@ ran in worktrees (W2); client units in the main tree, alongside them.
 | U7 | The recipient sees nothing, endpoint by endpoint | Opus | S5 | 1 | — | yes | R7-1 |
 | F1 | A giver sees their own claim after the date | Opus | S5 | 1 | — | yes | R3-1, R4-1 |
 | F2 | Client: mark bought after the date, actions in flight | Opus | S5 | 1 | — | yes | R3-1, R3-2, R3-3 |
+| F3 | A request racing its account deletion answers 401 | Opus | S5 | 1 | X3 twice (`lists/router.py` lock order; `media/images.py` split of `ingest`); lock-order design changed after a deadlock found before coding | yes | R8-1, R6-2, R9-1, R9-3, R9-4 |
+| F4 | Client: a gift taken for another occasion names nobody | Sonnet | — | 1 | — | yes | R8-2 |
