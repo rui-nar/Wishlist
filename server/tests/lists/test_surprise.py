@@ -29,6 +29,12 @@ Lock waits are not compared: an owner's change can wait a few milliseconds on
 a giver's write, which cannot be told from network jitter (review round 2).
 The owner of a list for someone else, a giver, is the contrast: the same
 comparison finds the activity (`test_a_giving_owner_sees_the_activity`).
+
+Hidden gifts are activity too (hidden gifts plan D11). `HIDDEN_STATES` are
+built on the `none` state of G1: only the world has the hidden gift, whose id
+and image's id are random in the control, and the recipient's calls name them
+in both. `test_a_revealed_gift_shows_as_the_gift_alone` is the decided
+exception, once the occasion has passed.
 """
 
 import io
@@ -36,7 +42,7 @@ import json
 import re
 import uuid
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any
 
@@ -45,6 +51,7 @@ from claims_invariants import assert_claims_consistent
 from PIL import Image
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from test_hidden_model import noon_after
 
 from app.accounts import sessions
 from app.media.images import VARIANTS
@@ -54,6 +61,9 @@ FUTURE = (date.today() + timedelta(days=60)).isoformat()
 LATER = (date.today() + timedelta(days=90)).isoformat()
 # Passed for good.
 PAST = "2001-01-01"
+# For the reveal: the clock is moved past them, within a session's 90 days.
+SOON = date.today() + timedelta(days=3)
+MOVED = date.today() + timedelta(days=10)
 
 OWNER = "owner"
 CO_OWNER = "co-owner"
@@ -116,6 +126,52 @@ STATES = {
     "bought for an occasion since deleted": [("dan", "D", "bought", None)],
 }
 
+ADD = ("ana", "A", "add", None)
+# What the invitees do with a hidden gift H, with its image, on top of G1's
+# `none` state (hidden gifts plan D11): in the world only, but for the owner's
+# "remove" and the invitee's "leave", which both worlds see.
+HIDDEN_STATES = {
+    "hidden gift with an image": [ADD],
+    "hidden gift reserved": [ADD, ("eve", "A", "reservation", None)],
+    "hidden group gift with pledges": [
+        ADD,
+        ("eve", "A", "pledge", "30.00"),
+        ("ben", "A", "pledge", None),
+    ],
+    "hidden gift bought": [
+        ADD,
+        ("eve", "A", "reservation", None),
+        ("eve", "A", "bought", None),
+    ],
+    # Added and bought before the owner moves P into the past (D3).
+    "hidden gift bought in the passed occasion": [
+        ("pia", "P", "add", None),
+        ("pia", "P", "bought", None),
+    ],
+    # Deleted with the occasion, which had not passed (D9).
+    "hidden gift bought in the deleted occasion": [
+        ("dan", "D", "add", None),
+        ("dan", "D", "bought", None),
+    ],
+    # Deleted by the removal (D8).
+    "hidden gift of a removed author": [
+        ("ben", "A", "add", None),
+        ("ben", "A", "remove", None),
+    ],
+    # Kept: somebody bought it (D8).
+    "hidden gift bought, its author removed": [
+        ("ben", "A", "add", None),
+        ("ana", "A", "bought", None),
+        ("ben", "A", "remove", None),
+    ],
+    "hidden gift of an author who left": [
+        ("eve", "A", "add", None),
+        ("eve", "A", "leave", None),
+    ],
+}
+# The steps of a state, of either kind.
+STEPS = STATES | HIDDEN_STATES
+
 # The activity routes but the claims read, each with its body (D6).
 ACTIVITY = [
     ("POST", "/api/occasions/{occasion_id}/gifts/{gift_id}/reservation", None),
@@ -134,6 +190,17 @@ ACTIVITY = [
     ("DELETE", "/api/occasions/{occasion_id}/hidden-gifts/{gift_id}", None),
 ]
 CLAIMS = "/api/occasions/{occasion_id}/claims"
+HIDDEN_GIFTS = "/api/occasions/{occasion_id}/hidden-gifts"
+# The routes an owner calls on a gift, each with its body.
+OWNER_GIFT_ROUTES = [
+    ("PATCH", "/api/gifts/{gift_id}", {"title": "Renamed"}),
+    ("DELETE", "/api/gifts/{gift_id}", None),
+    ("POST", "/api/gifts/{gift_id}/received", None),
+    ("DELETE", "/api/gifts/{gift_id}/received", None),
+    ("POST", "/api/gifts/{gift_id}/keep", None),
+]
+IMAGE = "/api/images/{image_id}/{variant}"
+OCCASION_IMAGE = "/api/occasions/{occasion_id}/images/{image_id}/{variant}"
 ACTIVITY_ROUTES = {route for _, route, _ in ACTIVITY} | {CLAIMS}
 MEMBERS = "/api/occasions/{occasion_id}/members"
 
@@ -157,15 +224,22 @@ TWINS = [("G1", "G2"), ("img1", "img2"), ("up1", "up2")]
 
 # How each test ends: the deletion that reaches G1's activity first.
 ENDINGS = ["gifts first", "occasions first", "list first"]
+
+
 # Each state is run for the owner and for the co-owner, with the endings in
 # turn, so that it meets two of the three: every combination would take
 # minutes, at tens of milliseconds a request. Stepping by two puts the
 # co-owner's runs of the states left unbought (`UNBOUGHT`) on all three.
-RUNS = [
-    (state, actor, ENDINGS[(2 * number + turn) % len(ENDINGS)])
-    for number, state in enumerate(STATES)
-    for turn, actor in enumerate((OWNER, CO_OWNER))
-]
+def runs_of(states: Iterable[str]) -> list[tuple[str, str, str]]:
+    return [
+        (state, actor, ENDINGS[(2 * number + turn) % len(ENDINGS)])
+        for number, state in enumerate(states)
+        for turn, actor in enumerate((OWNER, CO_OWNER))
+    ]
+
+
+RUNS = runs_of(STATES)
+HIDDEN_RUNS = runs_of(HIDDEN_STATES)
 
 
 def png() -> bytes:
@@ -298,30 +372,76 @@ class World:
 
 
 def holder(state: str) -> tuple[str, str]:
-    """Who holds G1's activity in the state, and in which occasion; Ana, in A,
-    when nobody, or nobody who is still an invitee, does."""
-    for who, occasion, _, _ in STATES[state]:
-        if occasion != "D":
+    """Who holds the state's activity, on G1 or its hidden gift, and in which
+    occasion; Ana, in A, when nobody, or nobody who is still an invitee, does."""
+    gone = departed(state)
+    for who, occasion, _, _ in STEPS[state]:
+        if occasion != "D" and who not in gone:
             return who, occasion
     return "ana", "A"
 
 
 def holders(state: str) -> set[str]:
-    """Everyone in G1's activity who is still an invitee."""
-    return {who for who, occasion, _, _ in STATES[state] if occasion != "D"}
+    """Everyone in the state's activity who is still an invitee."""
+    gone = departed(state)
+    return {
+        who
+        for who, occasion, _, _ in STEPS[state]
+        if occasion != "D" and who not in gone
+    }
 
 
-# The states whose claim on G1 is not bought: the co-owner's runs keep their
-# holders until after the deletions, which would otherwise only ever meet
-# bought claims, removal releasing the others (review R7-1).
+def departed(state: str) -> set[str]:
+    """Who the owner removed or who left, as a step of the state."""
+    return {who for who, _, action, _ in STEPS[state] if action in ("remove", "leave")}
+
+
+# The states whose claim, on G1 or the hidden gift, is not bought: the
+# co-owner's runs keep their holders until after the deletions, which would
+# otherwise only ever meet bought claims, removal releasing the others (review
+# R7-1).
 UNBOUGHT = {
     state
-    for state, done in STATES.items()
-    if done and all(action != "bought" for _, _, action, _ in done)
+    for state, done in STEPS.items()
+    if any(action in ("reservation", "pledge") for _, _, action, _ in done)
+    and all(action != "bought" for _, _, action, _ in done)
 }
 
 
-def build(client, make_account, engine, state: str, kind: str = "self") -> World:
+def add_hidden(
+    client, ids: dict[str, str], account: Any, occasion: str, name: str, title: str
+) -> None:
+    """The account adds a hidden gift with an image to the occasion: its id is
+    `name` in `ids`, its image's id `name image`."""
+    image = client.post("/api/images", content=png(), headers=account.headers)
+    assert image.status_code == 201, image.text
+    added = client.post(
+        f"/api/occasions/{ids[occasion]}/hidden-gifts",
+        json=GIFT | {"title": title, "image_id": image.json()["id"]},
+        headers=account.headers,
+    )
+    assert added.status_code == 201, added.text
+    ids[name] = added.json()["id"]
+    ids[f"{name} image"] = image.json()["id"]
+
+
+def not_added(ids: dict[str, str], name: str) -> None:
+    """The control has no hidden gift: `name` and its image are random ids."""
+    ids[name] = str(uuid.uuid4())
+    ids[f"{name} image"] = str(uuid.uuid4())
+
+
+def build(
+    client,
+    make_account,
+    engine,
+    state: str,
+    kind: str = "self",
+    control: bool = False,
+    when: str = FUTURE,
+) -> World:
+    """A world, with the state's activity unless `control`: the control keeps
+    only the steps both worlds see, an invitee removed or leaving."""
     owner = make_account(NAMES[OWNER])
     accounts = {OWNER: owner}
     ids = {
@@ -351,7 +471,7 @@ def build(client, make_account, engine, state: str, kind: str = "self") -> World
             setup.call(
                 "POST",
                 "/api/lists/{list_id}/occasions",
-                json={"name": name, "date": FUTURE},
+                json={"name": name, "date": when},
                 list_id="list",
             ),
         )
@@ -373,15 +493,37 @@ def build(client, make_account, engine, state: str, kind: str = "self") -> World
             )
             assert joined.status_code == 200, joined.text
 
-    for who, occasion, action, amount in STATES[state]:
-        path = f"/api/occasions/{ids[occasion]}/gifts/{ids['G1']}/{action}"
+    hidden = state in HIDDEN_STATES
+    if hidden and control:
+        not_added(ids, "H")
+    for who, occasion, action, amount in STEPS[state]:
         headers = accounts[who].headers
-        done = (
-            client.put(path, json={"amount": amount}, headers=headers)
-            if action == "pledge"
-            else client.post(path, headers=headers)
-        )
-        assert done.status_code == 200, done.text
+        if action == "remove":
+            removed = setup.call(
+                "DELETE",
+                "/api/occasions/{occasion_id}/members/{user_id}",
+                occasion_id=occasion,
+                user_id=who,
+            )
+            assert removed.status_code == 204, removed.text
+        elif action == "leave":
+            left = client.delete(
+                f"/api/occasions/{ids[occasion]}/membership", headers=headers
+            )
+            assert left.status_code == 204, left.text
+        elif control:
+            continue
+        elif action == "add":
+            add_hidden(client, ids, accounts[who], occasion, "H", GIFT["title"])
+        else:
+            gift = ids["H" if hidden else "G1"]
+            path = f"/api/occasions/{ids[occasion]}/gifts/{gift}/{action}"
+            done = (
+                client.put(path, json={"amount": amount}, headers=headers)
+                if action == "pledge"
+                else client.post(path, headers=headers)
+            )
+            assert done.status_code == 200, done.text
 
     # Cora saw the activity as an invitee; from now on she owns the list. No
     # endpoint adds a co-owner yet: the row is added directly.
@@ -405,13 +547,42 @@ def build(client, make_account, engine, state: str, kind: str = "self") -> World
 
     # The state is really there: its holder sees it, Ana as "taken" when it
     # was bought in the deleted occasion (D6, D8, review R3-1).
-    if STATES[state]:
+    if hidden and not control:
+        assert_hidden_gift_is_there(client, engine, state, accounts, ids)
+    elif not hidden and not control and STATES[state]:
         who, occasion = holder(state)
         seen = client.get(
             f"/api/occasions/{ids[occasion]}/claims", headers=accounts[who].headers
         )
         assert ids["G1"] in [gift["gift_id"] for gift in seen.json()["gifts"]]
     return World(accounts=accounts, ids=ids, setup=setup)
+
+
+# The hidden states whose gift no longer exists once the world is built (D8,
+# D9), so no giver can see anything of it.
+HIDDEN_GONE = {
+    "hidden gift bought in the deleted occasion",
+    "hidden gift of a removed author",
+}
+
+
+def assert_hidden_gift_is_there(client, engine, state, accounts, ids) -> None:
+    """The hidden state is really there: a giver of its occasion sees the
+    gift with its author's name, or nobody does because it was deleted."""
+    if state in HIDDEN_GONE:
+        with engine.connect() as connection:
+            assert 0 == connection.scalar(
+                text("SELECT count(*) FROM gifts WHERE id = :gift"), {"gift": ids["H"]}
+            )
+        return
+    author, occasion, _, _ = HIDDEN_STATES[state][0]
+    giver = OCCASIONS[occasion][1][0]
+    seen = client.get(
+        f"/api/occasions/{ids[occasion]}/hidden-gifts", headers=accounts[giver].headers
+    )
+    assert [(gift["id"], gift["author"]) for gift in seen.json()] == [
+        (ids["H"], NAMES[author])
+    ]
 
 
 def assert_twin_gifts(rec: Recorder, gifts: list[dict[str, Any]], order: Iterable[str]):
@@ -432,16 +603,25 @@ def swap_mapping(
     return mapping
 
 
-def reads(rec: Recorder, gifts: tuple[str, ...], images: tuple[str, str]) -> None:
+def reads(
+    rec: Recorder,
+    gifts: tuple[str, ...],
+    images: tuple[str, str],
+    revealed: tuple[str, ...] = (),
+) -> None:
     """Everything the recipient can read, the claims included, with the
-    gifts named in `gifts` and the twin images `images` on G1 and G2."""
+    gifts named in `gifts`, the twin images `images` on G1 and G2 and the
+    hidden gifts named in `revealed` shown as revealed, in their order."""
     rec.call("GET", "/api/me")
     rec.call("GET", "/api/lists")
     detail = rec.call("GET", "/api/lists/{list_id}", list_id="list")
     assert_twin_gifts(rec, detail.json()["gifts"], gifts)
-    # No hidden gift is revealed, and nothing is left received (hidden gifts
-    # plan D5, D6).
-    assert (detail.json()["received"], detail.json()["revealed"]) == ([], [])
+    # Only the expected hidden gifts are revealed, and nothing is left
+    # received (hidden gifts plan D5, D6).
+    assert detail.json()["received"] == []
+    assert [gift["id"] for gift in detail.json()["revealed"]] == [
+        rec.ids[name] for name in revealed
+    ]
     rec.call("GET", "/api/shared")
     for occasion in OCCASIONS:
         view = rec.call("GET", "/api/occasions/{occasion_id}", occasion_id=occasion)
@@ -484,10 +664,31 @@ def activity(rec: Recorder) -> None:
     rec.call("GET", CLAIMS, occasion_id="nowhere")
 
 
+def hidden_routes(rec: Recorder, gift: str, image: str) -> None:
+    """A hidden gift's id and its image's id on every route the recipient can
+    call with them, on every occasion: what random ids answer (D11)."""
+    for occasion in OCCASIONS:
+        for method, route, body in ACTIVITY:
+            if "{gift_id}" in route:
+                rec.call(method, route, json=body, occasion_id=occasion, gift_id=gift)
+        for variant in VARIANTS:
+            rec.call(
+                "GET",
+                OCCASION_IMAGE,
+                occasion_id=occasion,
+                image_id=image,
+                variant=variant,
+            )
+    for method, route, body in OWNER_GIFT_ROUTES:
+        rec.call(method, route, json=body, gift_id=gift)
+    for variant in VARIANTS:
+        rec.call("GET", IMAGE, image_id=image, variant=variant)
+
+
 def edits(rec: Recorder, state: str, keep_holders: bool) -> None:
     """Every change the recipient can make short of deleting their gifts,
-    occasions and list; the holders of G1's activity stay invitees when
-    `keep_holders`."""
+    occasions and list; the holders of the state's activity stay invitees
+    when `keep_holders`."""
     rec.call("PATCH", "/api/lists/{list_id}", json={"title": "Big day"}, list_id="list")
     rec.register(
         "new list",
@@ -664,12 +865,15 @@ def run(
     ending: str,
     unbought: int | None = None,
 ) -> Recorder:
-    """The recipient's calls, in order. The co-owner keeps the holders of
-    G1's activity in place (review R7-1); `unbought`, when given, is how many
-    unbought claims G1 must still have when the deletions start."""
+    """The recipient's calls, in order. The co-owner keeps the holders of the
+    state's activity in place (review R7-1); `unbought`, when given, is how
+    many unbought claims G1, or the hidden gift, must still have when the
+    deletions start."""
     rec = Recorder(client, built.accounts[actor].headers, built.ids)
     reads(rec, ("G1", "G2"), ("img1", "img2"))
     activity(rec)
+    if state in HIDDEN_STATES:
+        hidden_routes(rec, "H", "H image")
     edits(rec, state, keep_holders=actor == CO_OWNER)
     reads(rec, ("G1", "G2", "G3"), ("up1", "up2"))
     if unbought is not None:
@@ -679,7 +883,7 @@ def run(
                     "SELECT count(*) FROM gift_claims"
                     " WHERE gift_id = :gift AND bought_at IS NULL"
                 ),
-                {"gift": built.ids["G1"]},
+                {"gift": built.ids["H" if state in HIDDEN_STATES else "G1"]},
             )
     deletions(rec, ending, second_session(engine, built.ids[actor]))
     return rec
@@ -689,12 +893,12 @@ def answered(answer: Answer) -> tuple[int, tuple[tuple[str, str], ...], str | by
     return answer.status, answer.headers, answer.body
 
 
-@pytest.mark.parametrize(("state", "actor", "ending"), RUNS)
+@pytest.mark.parametrize(("state", "actor", "ending"), [*RUNS, *HIDDEN_RUNS])
 def test_the_recipient_sees_nothing(
     client, make_account, engine, url_fetcher, state, actor, ending
 ):
     url_fetcher.result = (png(), "image/png")
-    control = build(client, make_account, engine, "none")
+    control = build(client, make_account, engine, state, control=True)
     world = build(client, make_account, engine, state)
     meets_unbought = actor == CO_OWNER and state in UNBOUGHT
     theirs = run(client, engine, control, actor, state, ending)
@@ -758,22 +962,27 @@ def test_every_route_is_called(client, make_account, engine, url_fetcher):
     }
 
 
-# Activity no giver but its holder can see: none, or expired (D8, review R3-1).
-UNSEEN = {"none", "claim of the passed occasion, expired"}
+# Activity no giver but its holder can see: none, or expired (D8, review R3-1);
+# or a hidden gift deleted before anyone else saw it.
+UNSEEN = {"none", "claim of the passed occasion, expired"} | HIDDEN_GONE
 
 
-@pytest.mark.parametrize("state", STATES)
+@pytest.mark.parametrize("state", [*STATES, *HIDDEN_STATES])
 def test_a_giving_owner_sees_the_activity(client, make_account, engine, state):
     """The contrast: the owner of a list for someone else is a giver (D4).
     The same comparison finds the activity, through the claims route only,
-    whenever a giver who is not in it can see it. Were D4's check inverted,
+    and the hidden-gift route for a hidden gift, whenever a giver who is not
+    in it can see it. Were D4's check inverted,
     the recipient's comparisons would fail the same way."""
-    control = build(client, make_account, engine, "none", kind="other")
+    control = build(client, make_account, engine, state, kind="other", control=True)
     world = build(client, make_account, engine, state, kind="other")
     recorders = []
     for built in (world, control):
         rec = Recorder(client, built.accounts[OWNER].headers, built.ids)
         reads(rec, ("G1", "G2"), ("img1", "img2"))
+        if state in HIDDEN_STATES:
+            for occasion in OCCASIONS:
+                rec.call("GET", HIDDEN_GIFTS, occasion_id=occasion)
         recorders.append(rec)
     ours, theirs = recorders
 
@@ -783,7 +992,14 @@ def test_a_giving_owner_sees_the_activity(client, make_account, engine, state):
         for line in differences(ours.answers, theirs.answers, mapping)
     }
     claims = {f"GET {CLAIMS.format(occasion_id=name)}" for name in OCCASIONS}
-    assert differing <= claims
+    if state in STATES:
+        assert differing <= claims
+    else:
+        # Through the hidden gift's occasion alone, its claim included (D7).
+        home = HIDDEN_STATES[state][0][1]
+        hidden = f"GET {HIDDEN_GIFTS.format(occasion_id=home)}"
+        assert differing <= {f"GET {CLAIMS.format(occasion_id=home)}", hidden}
+        assert (hidden in differing) == (state not in UNSEEN)
     assert bool(differing) == (state not in UNSEEN)
     assert [answer.status for answer in ours.answers if answer.route == CLAIMS] == [
         200,
@@ -791,3 +1007,179 @@ def test_a_giving_owner_sees_the_activity(client, make_account, engine, state):
         200,
         404,
     ]
+
+
+# The hidden gifts of the reveal test, by the name of their ids: their author,
+# occasion, title and claim, if any. Bought ones are revealed, by title (D6).
+REVEAL = {
+    "H1": ("ana", "A", "Zebra", "bought"),
+    "H2": ("cleo", "B", "Apple", "bought"),
+    "H3": ("ana", "A", "Yarn", "reservation"),
+    "H4": ("ben", "A", "Xylophone", None),
+}
+REVEALED = ("H2", "H1")
+UNREVEALED = ("H3", "H4")
+GIFT_OUT_KEYS = {
+    "id",
+    "list_id",
+    "title",
+    "description",
+    "links",
+    "price_amount",
+    "price_currency",
+    "image",
+}
+# What the recipient can do with a revealed gift, without changing it: the
+# only calls whose answers may differ from a random id's (D11).
+ACTS_ON_REVEALED = {("PATCH", "/api/gifts/{gift_id}"), ("GET", IMAGE)}
+DETAIL = "/api/lists/{list_id}"
+
+
+def without_revealed(answer: Answer) -> Answer:
+    """The list detail with its `revealed` left out, and what its length says."""
+    if (answer.method, answer.route) != ("GET", DETAIL):
+        return answer
+    body = {k: v for k, v in json.loads(answer.body).items() if k != "revealed"}
+    headers = tuple(h for h in answer.headers if h[0] != "content-length")
+    return replace(answer, headers=headers, body=json.dumps(body))
+
+
+def names_revealed(answer: Answer) -> bool:
+    """Whether the answer is a call that acts on a revealed gift or its image."""
+    names = {*REVEALED, *(f"{name} image" for name in REVEALED)}
+    return (answer.method, answer.route) in ACTS_ON_REVEALED and bool(
+        names & set(answer.call.split(" ", 1)[1].split("/"))
+    )
+
+
+def compared(answers: Iterable[Answer]) -> list[Answer]:
+    """The answers that must match a world without hidden gifts, once revealed."""
+    return [without_revealed(a) for a in answers if not names_revealed(a)]
+
+
+def on_revealed(rec: Recorder) -> None:
+    """The calls on the revealed gifts that leave them as they are: an empty
+    edit, and both image routes on the occasions the gifts belong to."""
+    for name in REVEALED:
+        rec.call("PATCH", "/api/gifts/{gift_id}", json={}, gift_id=name)
+        for variant in VARIANTS:
+            rec.call("GET", IMAGE, image_id=f"{name} image", variant=variant)
+            for occasion in ("A", "B"):
+                rec.call(
+                    "GET",
+                    OCCASION_IMAGE,
+                    occasion_id=occasion,
+                    image_id=f"{name} image",
+                    variant=variant,
+                )
+
+
+@pytest.mark.parametrize("actor", (OWNER, CO_OWNER))
+def test_a_revealed_gift_shows_as_the_gift_alone(client, make_account, engine, actor):
+    """The decided exception (D3, D6, D11): once an occasion has passed, its
+    bought hidden gifts are in `ListDetail.revealed` as the gift alone, and
+    every other answer is the control's."""
+    control = build(
+        client, make_account, engine, "none", control=True, when=SOON.isoformat()
+    )
+    world = build(client, make_account, engine, "none", when=SOON.isoformat())
+    accounts = world.accounts
+    for name, (author, occasion, title, claim) in REVEAL.items():
+        add_hidden(client, world.ids, accounts[author], occasion, name, title)
+        not_added(control.ids, name)
+        if claim:
+            done = client.post(
+                f"/api/occasions/{world.ids[occasion]}/gifts/{world.ids[name]}/{claim}",
+                headers=accounts[author].headers,
+            )
+            assert done.status_code == 200, done.text
+
+    def recorders() -> tuple[Recorder, Recorder]:
+        return (
+            Recorder(client, world.accounts[actor].headers, world.ids),
+            Recorder(client, control.accounts[actor].headers, control.ids),
+        )
+
+    mapping = {world.ids[name]: control.ids[name] for name in world.ids}
+    every_hidden = [(name, f"{name} image") for name in REVEAL]
+    occasion_path = "/api/occasions/{occasion_id}"
+    gifts = ("G1", "G2")
+    images = ("img1", "img2")
+    assert differences(world.setup.answers, control.setup.answers, mapping) == []
+
+    # Past the occasions: the bought ones are revealed, the others are not.
+    client.app.state.clock = lambda: noon_after(SOON)
+    ours, theirs = recorders()
+    for rec, revealed in ((ours, REVEALED), (theirs, ())):
+        reads(rec, gifts, images, revealed)
+        for name in UNREVEALED:
+            hidden_routes(rec, name, f"{name} image")
+        on_revealed(rec)
+    assert differences(compared(ours.answers), compared(theirs.answers), mapping) == []
+    assert_shows_no_activity(ours.answers)
+    shown = client.get(
+        DETAIL.format(list_id=world.ids["list"]),
+        headers=accounts[actor].headers,
+    ).json()["revealed"]
+    assert [gift["id"] for gift in shown] == [world.ids[name] for name in REVEALED]
+    for gift, name in zip(shown, REVEALED, strict=True):
+        assert set(gift) == GIFT_OUT_KEYS
+        expected = GIFT | {"price_amount": "149.00", "title": REVEAL[name][2]}
+        assert {key: gift[key] for key in expected} == expected
+        assert gift["list_id"] == world.ids["list"]
+        assert gift["image"]["id"] == world.ids[f"{name} image"]
+
+    # Dates moved later: nothing is revealed, as if nothing was ever bought.
+    ours, theirs = recorders()
+    for rec in (ours, theirs):
+        for occasion in ("A", "B"):
+            changed = rec.call(
+                "PATCH",
+                occasion_path,
+                json={"date": MOVED.isoformat()},
+                occasion_id=occasion,
+            )
+            assert changed.status_code == 200, changed.text
+        reads(rec, gifts, images)
+        for name, image in every_hidden:
+            hidden_routes(rec, name, image)
+    assert differences(ours.answers, theirs.answers, mapping) == []
+    assert_shows_no_activity(ours.answers)
+
+    # Past them again, and an occasion deleted: its bought hidden gift stays
+    # revealed, its others go (D9).
+    client.app.state.clock = lambda: noon_after(MOVED)
+    ours, theirs = recorders()
+    for rec in (ours, theirs):
+        deleted = rec.call("DELETE", occasion_path, occasion_id="A")
+        assert deleted.status_code == 204, deleted.text
+        rec.call("GET", DETAIL, list_id="list")
+        for name in UNREVEALED:
+            hidden_routes(rec, name, f"{name} image")
+        on_revealed(rec)
+    assert differences(compared(ours.answers), compared(theirs.answers), mapping) == []
+    assert_shows_no_activity(ours.answers)
+    detail = client.get(
+        DETAIL.format(list_id=world.ids["list"]),
+        headers=accounts[actor].headers,
+    ).json()
+    assert [gift["id"] for gift in detail["revealed"]] == [
+        world.ids[name] for name in REVEALED
+    ]
+
+    # Review R1-1: marked received, it stays there whatever its occasion's
+    # date becomes, and survives the occasion's deletion.
+    ours, _ = recorders()
+    marked = ours.call("POST", "/api/gifts/{gift_id}/received", gift_id="H2")
+    assert marked.status_code == 204, marked.text
+    moved = ours.call("PATCH", occasion_path, json={"date": LATER}, occasion_id="B")
+    assert moved.status_code == 200, moved.text
+    for deleting in (False, True):
+        if deleting:
+            gone = ours.call("DELETE", occasion_path, occasion_id="B")
+            assert gone.status_code == 204, gone.text
+        detail = ours.call("GET", DETAIL, list_id="list").json()
+        assert [gift["id"] for gift in detail["received"]] == [world.ids["H2"]]
+        assert [gift["id"] for gift in detail["revealed"]] == [world.ids["H1"]]
+    assert_shows_no_activity(ours.answers)
+    assert_claims_consistent(engine)
