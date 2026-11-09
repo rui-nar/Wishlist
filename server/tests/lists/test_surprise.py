@@ -684,6 +684,10 @@ def reads(
     gifts named in `gifts`, the twin images `images` on G1 and G2 and the
     hidden gifts named in `revealed` shown as revealed, in their order."""
     rec.call("GET", "/api/me")
+    rec.call("GET", "/api/me/preferences")
+    rec.call("PATCH", "/api/me/preferences", json={"language": "fr"})
+    # A join token is no unsubscribe token.
+    rec.call("POST", "/api/unsubscribe/{token}", token="token A")
     rec.call("GET", "/api/lists")
     detail = rec.call("GET", "/api/lists/{list_id}", list_id="list")
     assert_twin_gifts(rec, detail.json()["gifts"], gifts)

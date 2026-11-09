@@ -25,6 +25,7 @@ from app.hidden_gifts.router import router as hidden_gifts_router
 from app.lists.router import router as lists_router
 from app.media.purge import MediaPurge
 from app.media.router import router as media_router
+from app.notifications.router import router as notifications_router
 from app.reserving.router import router as reserving_router
 from app.safe_fetch import SafeFetcher
 from app.settings import Settings
@@ -137,6 +138,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.include_router(reserving_router)
     app.include_router(hidden_gifts_router)
     app.include_router(comments_router)
+    app.include_router(notifications_router)
     app.add_exception_handler(RequestValidationError, _validation_error)
 
     # Registered last, so every /api route above takes precedence.
