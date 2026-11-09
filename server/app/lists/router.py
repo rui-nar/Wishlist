@@ -343,14 +343,17 @@ def remove_member(
     occasion_id: uuid.UUID, user_id: uuid.UUID, user: CurrentUser, db: DbSession
 ) -> Response:
     occasion = owned_occasion(db, user, occasion_id)
+    # Locked so that an account deleted at the same moment either waits for
+    # the removal or is not found here, never a 500 on a removal of no one.
+    # Before the occasion, in the order every request takes them (user rows,
+    # occasions, gift, claims; reserving plan D7): the deletion locks the
+    # account, then its occasions.
+    removed = db.get(User, user_id, with_for_update={"read": True, "key_share": True})
     # Exclusive until this request commits: a join of the same occasion waits
     # (its share lock), then finds the removal and answers 404. Without it, a
     # join that checked for a removal just before this one committed would
     # make the removed person a member again.
     db.execute(select(Occasion.id).where(Occasion.id == occasion.id).with_for_update())
-    # Locked so that an account deleted at the same moment either waits for
-    # the removal or is not found here, never a 500 on a removal of no one.
-    removed = db.get(User, user_id, with_for_update={"read": True, "key_share": True})
     # Owners are never invitees (D6), so there is no one to remove: the same
     # answer as an unknown user.
     if removed is None or owns_list(db, removed, occasion.list_id):

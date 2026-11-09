@@ -182,7 +182,9 @@ def test_a_reservation_waiting_on_the_reserver_going_away_is_refused(
     client, make_account, owner, list_id, gift, rows, engine, go_away
 ):
     # Deterministic: the going away is the request held; the reservation is
-    # made by the endpoint, waits on the occasion's lock, then is refused.
+    # made by the endpoint, waits on the occasion's lock (on the user's, for
+    # an account deletion), then is refused: not a giver any more, or not
+    # signed in any more.
     occasion, token = new_occasion(client, owner, list_id)
     ana = make_account("Ana")
     join(client, ana, token)
@@ -207,7 +209,12 @@ def test_a_reservation_waiting_on_the_reserver_going_away_is_refused(
             going.commit()
             response = reserving.result(timeout=TIMEOUT_SECONDS)
 
-    assert (response.status_code, response.json()) == (404, {"detail": "Not found"})
+    refused = (
+        (401, {"detail": "Not signed in"})
+        if go_away is delete_account
+        else (404, {"detail": "Not found"})
+    )
+    assert (response.status_code, response.json()) == refused
     assert rows("gift_claims") == 0
     assert_claims_consistent(engine)
 
