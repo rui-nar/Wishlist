@@ -24,21 +24,21 @@ which `latest_date` is not maintained, instead of claiming no leak.
 - Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=S/local, confidence=verified
 - Decision: Fix now (D3, floor F2)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan: D4, D5, D9; U1, U3)
 
 ### R1-2 — Cascades from gifts that COMMENTS_NOTIFICATIONS_PLAN D13 removes
 - Trigger: the comments delivery drops `gift_claims.gift_id → gifts` → D6, D9, D15 and the U3/U5 tests describe cascades that no longer exist
 - Scores: trigger=concrete, impact=maintainability, detect=logged, later=cheap, fix=S/local, confidence=verified
 - Decision: Fix now (D7)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan: D6, D9, D15; `drop_gift_activity`, U1)
 
 ### R1-3 — Dismissing or editing a revealed hidden gift emails its buyer, while keep and received do not
 - Trigger: the recipient dismisses (DELETE) or edits (PATCH) a revealed hidden gift → `gift_deleted`/`gift_changed` reaches the giver who bought it
 - Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/shared, confidence=verified (triager: was inferred)
 - Decision: Defer (D8)
 - Override: orchestrator, under the standing instruction: Fix now — the product question is decided (NEEDS, Notifications: a revealed gift's dismissal or edit notifies nobody, like keep and received); fixed in COMMENTS_NOTIFICATIONS_PLAN (whether a gift is revealed is the owner's own data, so the condition keeps D12)
-- Outcome: open
+- Outcome: fixed (in plan: COMMENTS_NOTIFICATIONS_PLAN D10)
 
 ## Round 2 — 2026-11-09, reviewed at c05577d
 
@@ -51,14 +51,14 @@ that the gift was removed (recorded in NEEDS, Notifications).
 - Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=S/local, confidence=verified
 - Decision: Fix now (D3, floor F2)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan: D5, D6; U3 `not_revealed`)
 
 ### R2-2 — Removal deletes a hidden gift right after `participants_left` listed it
 - Trigger: owner removes an invitee who wrote an unbought hidden group gift others pledged on → the gift is deleted in the same transaction → the fan-out finds no gift row; pledgers get nothing, or the whole event fails
 - Scores: trigger=concrete (triager: was plausible), impact=degraded-ux, detect=silent, later=cheap, fix=S/shared, confidence=verified
 - Decision: Defer (D8)
 - Override: orchestrator, under the standing instruction: Fix now — the notification is now a NEEDS requirement, and a failing fan-out would also drop the notifications about the leaver's other group gifts
-- Outcome: open
+- Outcome: fixed (in plan: D15; COMMENTS_NOTIFICATIONS_PLAN `gifts_removed`)
 
 ## Round 3 — 2026-11-09, unit review of U1, reviewed at 29ec85f
 
@@ -67,4 +67,8 @@ that the gift was removed (recorded in NEEDS, Notifications).
 - Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/shared, confidence=verified
 - Decision: Defer (D10)
 - Override: orchestrator, under the standing instruction: Fix now — D10's lock order (user → occasions → gifts → claims) is a stated invariant of the plan and the fix is one helper in `lifecycle.py`; account deletion answering 500 is what RESERVING R9-3 was fixed for
-- Outcome: open
+- Outcome: fixed (ff1bbbf, `lock_authored`)
+
+## Round 4 — 2026-11-09, unit review of U5, reviewed at 2322000
+
+No findings.
