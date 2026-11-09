@@ -494,7 +494,11 @@ the server's UTC clock, no background job), and these additions:
   upgraded again the reveals read that date and show its bought hidden
   gifts early. The runbook's rollback notes state this window; the
   mitigation is to keep it short and, on re-upgrade, to check occasions
-  whose date moved earlier during it.
+  whose date moved earlier during it. A client of this release against a
+  rolled-back server fails the whole occasion page for givers, because
+  `/hidden-gifts` answers 404 (ledger round 5). The web client is served by
+  the server and rolls back with it; installed mobile builds do not exist
+  yet, and the mobile release must revisit this.
 - **API contract (F4):** new routes: `POST` and `DELETE
   /api/gifts/{gift_id}/received`, `POST /api/gifts/{gift_id}/keep`, and the
   four of D7. `ListDetail` gains `received` and `revealed` (lists of

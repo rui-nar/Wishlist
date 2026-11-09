@@ -72,3 +72,18 @@ that the gift was removed (recorded in NEEDS, Notifications).
 ## Round 4 — 2026-11-09, unit review of U5, reviewed at 2322000
 
 No findings.
+
+## Round 5 — 2026-11-09, integrated review, reviewed at 316b828
+
+Envelope question, answered by the orchestrator: a new installed client
+against a rolled-back server fails the occasion page, because `/hidden-gifts`
+answers 404. Accepted and stated in the plan's rollback notes, with no code
+change: the web client rolls back with the server and no mobile build exists
+yet. To revisit with the mobile release.
+
+### R5-1 — Deleting an occasion before its reveal destroys bought hidden gifts without warning
+- Trigger: the recipient deletes the occasion the morning after the event, before 12:00 UTC on D+1 or before a later `latest_date` → the confirmation mentions only access and the link → bought hidden gifts are deleted and never revealed
+- Scores: trigger=concrete, impact=degraded-ux, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: open
