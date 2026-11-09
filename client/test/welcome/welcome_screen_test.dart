@@ -58,8 +58,9 @@ void main() {
     expect(find.text('You stay in control'), findsNothing);
     expect(
       find.text('Whoever a list is for never sees what was reserved or '
-          'bought. The people you invite see who is giving what, and can '
-          'team up on a bigger gift.'),
+          'bought. The people you invite see who is giving what, team up '
+          'on a bigger gift, and can add hidden gifts of their own: the '
+          'ones bought are revealed once the occasion has passed.'),
       findsOneWidget,
     );
     expect(find.byType(AppBar), findsNothing);
@@ -162,6 +163,14 @@ void main() {
       find.text('Rassemblez les choses que vous aimeriez recevoir, '
           'partagez-les avec votre famille et vos amis pour chaque '
           'occasion, et laissez-les choisir sans gâcher la surprise.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('La personne à qui la liste est destinée ne voit jamais ce '
+          'qui a été réservé ou acheté. Les personnes invitées voient qui '
+          'offre quoi, se regroupent pour un cadeau plus important et '
+          'peuvent ajouter leurs propres cadeaux cachés : ceux qui ont été '
+          "achetés sont dévoilés une fois l'occasion passée."),
       findsOneWidget,
     );
   });

@@ -896,7 +896,7 @@
   "@welcomeSurpriseTitle": {
     "description": "The welcome page: the title of the card about keeping the surprise."
   },
-  "welcomeSurpriseBody": "Whoever a list is for never sees what was reserved or bought. The people you invite see who is giving what, and can team up on a bigger gift.",
+  "welcomeSurpriseBody": "Whoever a list is for never sees what was reserved or bought. The people you invite see who is giving what, team up on a bigger gift, and can add hidden gifts of their own: the ones bought are revealed once the occasion has passed.",
   "@welcomeSurpriseBody": {
     "description": "The welcome page: the text of the card about keeping the surprise: the recipient sees nothing of what was reserved or bought, invitees see who gives what."
   },
