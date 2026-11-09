@@ -263,7 +263,8 @@ out of scope for the first release (NEEDS, Out of scope).
   `users` `ON DELETE CASCADE`), `occasion_id` (FK `occasions` `ON DELETE
   CASCADE`), `gift_id` (UUID, no FK), `created_at`, `email_digest_id` (FK
   `email_digests`, `ON DELETE SET NULL`, null); unique (`event_id`,
-  `user_id`), so fanning out an event twice inserts nothing twice.
+  `user_id`, `gift_id`), so fanning out an event twice inserts nothing twice,
+  and an event listing several gifts tells one person of each.
   - `gift_changed`, `gift_deleted`: the participants of the gift's claim,
     bought ones included, in the claim's occasion, **if the claim was live
     when the event was written**: `rules.is_live(event.created_at)`, the

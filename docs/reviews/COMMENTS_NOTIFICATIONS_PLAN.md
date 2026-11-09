@@ -76,3 +76,12 @@ gift edit and deletion.
 ## Round 3 — 2026-11-09, unit review of U1, reviewed at e554e46
 
 No findings.
+
+## Round 4 — 2026-11-09, unit review of U3, reviewed at 19bba44
+
+### R4-1 — Plan D11 still specifies the two-column unique key on `notifications`
+- Trigger: the worker unit's implementer follows D11 as written → re-adds the two-column constraint or builds the fan-out around it → someone sharing two group gifts with a leaver is told of only one
+- Scores: trigger=concrete, impact=maintainability, detect=silent (triager: was user-visible), later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan: D11)
