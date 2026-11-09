@@ -203,8 +203,13 @@ D12).
   gift stays under "Received" whatever happens to its occasion's date, and
   survives its occasion's deletion as a revealed row (D9, review R1-1): the
   owner's own record of what they received is never lost to a date change.
-  Put back, it is revealed again only while it is revealed by D3 (or its
-  occasion is gone). Its claim is kept
+  Putting back a received hidden gift that is not revealed at that moment
+  (its occasion exists and its reveal date has not passed, its date having
+  been moved later since the receipt) answers 409 `{"code":
+  "not_revealed"}` and changes nothing (review R2-1): put back, it would
+  leave every owner view and an occasion deletion would take it. It can be
+  put back once the reveal date has passed. The 409 leaks nothing: only a
+  revealed gift can have been received. Its claim is kept
   while it is received: putting it back must restore the activity, and a
   bought claim keeps the gift "taken" for the other occasions. Rules out
   deleting its claim on receipt (putting back could not restore it).
@@ -228,8 +233,9 @@ D12).
     (today: the claim), then, with the comments plan, by its worker's sweep.
     Nothing of the past is keyed on the new id, so "nothing of its past
     activity" (NEEDS) holds by construction. 409 `{"code": "not_revealed"}`
-    on a gift that is on the list; a received revealed gift kept is on the
-    list, not received. Rules out clearing the hidden columns in place
+    on a gift that is on the list, and on a received hidden gift that is
+    not revealed at that moment (D5, review R2-1), changing nothing; a
+    received revealed gift kept is on the list, not received. Rules out clearing the hidden columns in place
     (every activity table, present and future, would need its own cleanup
     keyed on an id that stays live, one forgotten table being an F1 leak
     once the gift is an ordinary gift again).
@@ -367,7 +373,8 @@ D12).
   from your occasions": each card the gift alone, with **Received**, **Keep
   on my list**, **Dismiss** (confirmed)), then a collapsed **Received**
   section with its count, each card with **Put back** and **Delete**
-  (confirmed). Teal and neutral only: nothing rose on an owner's list
+  (confirmed); a 409 `not_revealed` on Put back says the gift can be put
+  back once its occasion has passed again, and reloads. Teal and neutral only: nothing rose on an owner's list
   screen (RESERVING Conventions). The occasion form, when an owner moves an
   existing occasion's date earlier, shows the same warning on every
   occasion of every list, whatever its activity ("Hidden gifts added by your
@@ -402,7 +409,15 @@ D12).
   owns the hook from then on: it drops `gift_claims.gift_id → gifts` (its
   D13), its comments and follows have no foreign key to gifts, and its
   worker's sweep removes the rows of gone ids; it extends or replaces the
-  hook's body accordingly, and the contract stays. That plan also depends
+  hook's body accordingly, and the contract stays. One ordering it must
+  handle (review R2-2): an owner's removal of an invitee first releases
+  their activity (`release_activity`, which the comments plan reports as a
+  `participants_left` event naming the gifts they left), then deletes their
+  unbought hidden gifts (D8), so that event can name gifts whose rows are
+  gone by the time its worker runs. The comments plan therefore captures in
+  the event what its fan-out needs (each gift's title), and treats a missing
+  gift row per gift, never failing the whole event. Nothing in this plan
+  implements it. That plan also depends
   on: hidden gifts are `gifts` rows and keep their id while hidden;
   `visibility.in_occasion(occasion)` is how to decide whether a giver of an
   occasion sees a gift (threads of hidden gifts included); keep replaces the
@@ -724,11 +739,14 @@ the server's UTC clock, no background job), and these additions:
      hidden-gift column (U1's scan test).
   3. Routes `POST` and `DELETE /api/gifts/{gift_id}/received` (D5; 204,
      idempotent, through `owned_gift`, updating `received_at` only, through
-     a `set_received(gift, now | None)` in `hidden_gifts/lifecycle.py`) and
+     a `set_received(gift, now | None)` in `hidden_gifts/lifecycle.py`; put
+     back on a received hidden gift that is not revealed now answers 409
+     `not_revealed`, D5) and
      `POST /api/gifts/{gift_id}/keep` (D6, D10; `keep_revealed` in
      `lifecycle.py`: lock order, copy, image moved, `drop_gift_activity` on
      the old id, old row deleted; 200
-     `GiftOut` of the new row; 409 `not_revealed` on a gift on the list).
+     `GiftOut` of the new row; 409 `not_revealed` on a gift on the list or
+     a received hidden gift not revealed now).
   4. `test_roles.py`: rows for the three routes (owner 204/204/409 on the
      scenario's gift, everyone else per `expected`); the content scan
      unchanged.
@@ -747,7 +765,10 @@ the server's UTC clock, no background job), and these additions:
      near date): in `revealed` with exactly `GiftOut`'s fields, by title,
      no author or buyer name anywhere in the owner's answers; received
      moves it to `received`, and it stays there after the occasion's date
-     is moved later (review R1-1); dismiss leaves no activity reachable (the
+     is moved later (review R1-1); then put back and keep on it answer 409
+     `not_revealed` and change nothing (it is still in `received`, and an
+     occasion deletion keeps it), and put back works once the clock passes
+     the new date (review R2-1); dismiss leaves no activity reachable (the
      old id 404 on every claim route, no entry or `taken` for it in any
      occasion's `/claims`); keep returns a gift with a new id at the end of
      `gifts`, the same fields and image (readable by the owner, its bytes
@@ -800,7 +821,8 @@ the server's UTC clock, no background job), and these additions:
      `putBack`, `keep` (returns the new `Gift`); dismiss is `deleteGift`.
   2. Fake server: `received_at` per gift, a revealed list per list, the
      three routes with the server's rules (idempotent, 409
-     `not_revealed`, keep's new id), and the request log.
+     `not_revealed` on keep and on put back of a received gift marked not
+     revealed, keep's new id), and the request log.
   3. Gift form (list gifts, edit mode): **Mark as received**, then back to
      the list; a failure in a snack bar.
   4. List screen per D13: the revealed section (three actions, Dismiss
@@ -814,7 +836,9 @@ the server's UTC clock, no background job), and these additions:
   7. Tests: each repository call's method, path and body; Mark as received
      on a gift with and without links and image (same button, same call);
      the sections hidden when empty; each action calls its route and
-     reloads; keep shows the gift at the end of the list; the date warning
+     reloads; keep shows the gift at the end of the list; Put back answered
+     409 `not_revealed` shows its message, keeps the gift under Received
+     and reloads; the date warning
      shows for an earlier date and not for a later or unchanged one, on a
      "for me" and a "for someone else" list alike, and the form makes no
      extra request to decide it; French run. Goldens light and dark: list
