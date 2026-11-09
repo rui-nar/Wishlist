@@ -118,6 +118,29 @@ void main() {
       expect(find.text('Leave the occasion'), findsNothing);
     });
 
+    testWidgets('giver mode shows the thread and comments as a giver',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      server.addComment(occasion, headphones, 'The blue one?', author: 'Carol');
+      await startApp(tester, server, '/lists/$list/occasions/$occasion');
+      await tester.tap(find.widgetWithText(GiftCard, 'Headphones'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Comments'), findsOneWidget);
+      expect(find.text('The blue one?'), findsOneWidget);
+      expect(find.text('Follow'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'Yes please');
+      await tester.pump();
+      await tester.tap(find.text('Send'));
+      await tester.pumpAndSettle();
+
+      final call = 'POST /api/occasions/$occasion/gifts/$headphones/comments';
+      expect(server.bodies[call], {'body': 'Yes please'});
+      expect(find.text('Yes please'), findsOneWidget);
+    });
+
     testWidgets('giver mode acts like an invitee and loads the claims again',
         (tester) async {
       await startApp(tester, server, '/lists/$list/occasions/$occasion');
@@ -348,6 +371,28 @@ void main() {
       expect(roseChips(tester), isEmpty);
 
       expect(activityCalls(), isEmpty);
+    });
+
+    testWidgets('no request to any comment route, whichever way it is opened',
+        (tester) async {
+      server.addComment(occasion, server.gifts.first['id'] as String, 'Shh');
+      for (final location in [
+        '/lists/$list',
+        '/lists/$list/occasions/$occasion',
+        '/shared/$occasion',
+      ]) {
+        await startApp(tester, server, location);
+        expect(find.byType(ListDetailScreen), findsOneWidget, reason: location);
+      }
+
+      expect(
+        server.calls.where(
+          (call) => call.contains('/comments') || call.endsWith('/follow'),
+        ),
+        isEmpty,
+      );
+      expect(find.text('Shh'), findsNothing);
+      expect(find.text('Comments'), findsNothing);
     });
 
     testWidgets('the giver route goes to the list without asking',

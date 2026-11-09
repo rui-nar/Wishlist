@@ -116,6 +116,9 @@ class ApiClient {
   ) async =>
       _decode<Map<String, dynamic>>(await _send('PUT', path, body: body));
 
+  /// A PUT whose answer has no body (204).
+  Future<void> put(String path) => _send('PUT', path);
+
   /// A POST whose answer has no body (204).
   Future<void> post(String path) => _send('POST', path);
 
