@@ -104,6 +104,17 @@ class FakeListsServer {
   /// route finds them.
   final hiddenGifts = <String, List<Map<String, dynamic>>>{};
 
+  /// `'<occasion id>/<gift id>'` → its comments, oldest first, as
+  /// `CommentOut` gives them (COMMENTS_NOTIFICATIONS_PLAN D1, D5).
+  final threads = <String, List<Map<String, dynamic>>>{};
+
+  /// The `'<occasion id>/<gift id>'` Alice follows (D4).
+  final following = <String>{};
+
+  /// The `'<occasion id>/<gift id>'` Alice stopped following by hand: posting
+  /// does not follow them again (D4).
+  final unfollowed = <String>{};
+
   final status = <String, int>{};
 
   /// `'<METHOD> <path>'` → the `detail` code of the answer [status] forces
@@ -500,6 +511,117 @@ class FakeListsServer {
     return null;
   }
 
+  /// A comment of [giftId] in [occasionId], by [author] (null once their
+  /// account is deleted), Alice when [mine]; returns its id.
+  String addComment(
+    String occasionId,
+    String giftId,
+    String body, {
+    String? author,
+    bool mine = false,
+    bool edited = false,
+    String createdAt = '2025-03-04T09:15:00Z',
+  }) {
+    final id = 'comment-${_next++}';
+    threads.putIfAbsent('$occasionId/$giftId', () => []).add({
+      'id': id,
+      'author_name': mine ? kAliceName : author,
+      'mine': mine,
+      'body': body,
+      'created_at': createdAt,
+      'edited': edited,
+    });
+    return id;
+  }
+
+  /// The text the server keeps of a comment's [body], or null when it
+  /// refuses it (D2).
+  static String? _commentBody(Map<String, dynamic>? body) {
+    final text = (body?['body'] as String? ?? '').trim();
+    final control = text.runes.any(
+      (rune) => (rune < 32 && rune != 10 && rune != 9) || rune == 127,
+    );
+    return text.isEmpty || text.runes.length > 2000 || control ? null : text;
+  }
+
+  /// `…/gifts/{gift_id}/comments[/{comment_id}]` and `…/gifts/{gift_id}/follow`
+  /// for a giver of the occasion, with the server's rules (D2, D4, D5); null
+  /// for any other path.
+  http.Response? _threadRoutes(
+    http.Request request,
+    String occasionId,
+    String listId,
+    List<String> segments,
+    Map<String, dynamic>? body,
+    http.Response Function(Object body, [int code]) json,
+    http.Response notFound,
+    http.Response noContent,
+  ) {
+    if (segments.length < 6 || segments[3] != 'gifts') return null;
+    final route = segments[5];
+    final comments = route == 'comments' && segments.length <= 7;
+    if (!comments && !(route == 'follow' && segments.length == 6)) return null;
+    final giftId = segments[4];
+    final inOccasion = gifts.any(
+          (gift) => gift['id'] == giftId && _onList(gift, listId),
+        ) ||
+        (hiddenGifts[occasionId]?.any((gift) => gift['id'] == giftId) ?? false);
+    if (!inOccasion) return notFound;
+    final key = '$occasionId/$giftId';
+    if (route == 'follow') {
+      switch (request.method) {
+        case 'PUT':
+          following.add(key);
+          unfollowed.remove(key);
+          return noContent;
+        case 'DELETE':
+          following.remove(key);
+          unfollowed.add(key);
+          return noContent;
+      }
+      return null;
+    }
+    final thread = threads.putIfAbsent(key, () => []);
+    final refused = http.Response('{"detail":"Invalid comment"}', 422);
+    if (segments.length == 6) {
+      switch (request.method) {
+        case 'GET':
+          return json({'following': following.contains(key), 'comments': thread});
+        case 'POST':
+          final text = _commentBody(body);
+          if (text == null) return refused;
+          final id = addComment(
+            occasionId,
+            giftId,
+            text,
+            mine: true,
+            createdAt: DateTime.now().toUtc().toIso8601String(),
+          );
+          if (!unfollowed.contains(key)) following.add(key);
+          return json(thread.firstWhere((comment) => comment['id'] == id), 201);
+      }
+      return null;
+    }
+    // Someone else's is as if it did not exist.
+    final comment = thread
+        .where((comment) => comment['id'] == segments[6] && comment['mine'] == true)
+        .firstOrNull;
+    if (comment == null) return notFound;
+    switch (request.method) {
+      case 'PATCH':
+        final text = _commentBody(body);
+        if (text == null) return refused;
+        comment
+          ..['body'] = text
+          ..['edited'] = true;
+        return json(comment);
+      case 'DELETE':
+        thread.remove(comment);
+        return noContent;
+    }
+    return null;
+  }
+
   /// `/api/occasions/{id}/hidden-gifts[/{gift_id}]` for a giver of the
   /// occasion, with the server's rules (HIDDEN_GIFTS_PLAN D7, D8); null for
   /// any other path.
@@ -876,6 +998,9 @@ class FakeListsServer {
       final hidden =
           _hiddenRoutes(request, id, segments, body, json, notFound, noContent);
       if (hidden != null) return hidden;
+      final thread = _threadRoutes(request, id, of.list['id'] as String,
+          segments, body, json, notFound, noContent);
+      if (thread != null) return thread;
       switch ((request.method, rest)) {
         case ('GET', ''):
           return json({
@@ -904,6 +1029,9 @@ class FakeListsServer {
       final hidden =
           _hiddenRoutes(request, id, segments, body, json, notFound, noContent);
       if (hidden != null) return hidden;
+      final thread = _threadRoutes(request, id, of.list['id'] as String,
+          segments, body, json, notFound, noContent);
+      if (thread != null) return thread;
     }
     switch ((request.method, rest)) {
       case ('GET', ''):

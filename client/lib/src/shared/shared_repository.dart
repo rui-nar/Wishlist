@@ -296,6 +296,59 @@ class HiddenGiftRefused implements Exception {
   String toString() => 'HiddenGiftRefused: ${refusal.name}';
 }
 
+/// A comment under a gift, in one occasion (COMMENTS_NOTIFICATIONS_PLAN D3,
+/// D5). No user id: [mine] says whether the user wrote it.
+class Comment {
+  const Comment({
+    required this.id,
+    required this.authorName,
+    required this.mine,
+    required this.body,
+    required this.createdAt,
+    required this.edited,
+  });
+
+  factory Comment.fromJson(Map<String, dynamic> json) => Comment(
+        id: json['id'] as String,
+        authorName: json['author_name'] as String?,
+        mine: json['mine'] as bool,
+        body: json['body'] as String,
+        createdAt: DateTime.parse(json['created_at'] as String),
+        edited: json['edited'] as bool,
+      );
+
+  final String id;
+
+  /// Null once the author's account is deleted (D3).
+  final String? authorName;
+
+  /// The user wrote it: they alone may edit or delete it (D2).
+  final bool mine;
+
+  /// Plain text, shown as it is.
+  final String body;
+  final DateTime createdAt;
+  final bool edited;
+}
+
+/// A gift's comments in one occasion, and whether the user follows it (D5).
+class GiftThread {
+  const GiftThread({required this.following, required this.comments});
+
+  factory GiftThread.fromJson(Map<String, dynamic> json) => GiftThread(
+        following: json['following'] as bool,
+        comments: [
+          for (final comment in json['comments'] as List<dynamic>)
+            Comment.fromJson(comment as Map<String, dynamic>),
+        ],
+      );
+
+  final bool following;
+
+  /// Oldest first.
+  final List<Comment> comments;
+}
+
 /// Who opens a link, for the join screen.
 enum JoinRole {
   /// Owns the list: opens it instead of joining (D6).
@@ -497,6 +550,55 @@ class SharedRepository {
       _changeHidden(
         () => _api.delete('${_hiddenGifts(occasionId)}/${_segment(giftId)}'),
       );
+
+  /// The gift's comments and whether the user follows it, for a giver of the
+  /// occasion; never called for a recipient (COMMENTS_NOTIFICATIONS_PLAN D5,
+  /// D20).
+  Future<GiftThread> thread(String occasionId, String giftId) async =>
+      GiftThread.fromJson(await _api.getJson(_comments(occasionId, giftId)));
+
+  /// Posts a comment, which follows the gift unless the user stopped (D4).
+  Future<Comment> comment(
+    String occasionId,
+    String giftId,
+    String body,
+  ) async =>
+      Comment.fromJson(
+        await _api.postJson(_comments(occasionId, giftId), {'body': body}),
+      );
+
+  /// Changes the user's comment.
+  Future<Comment> editComment(
+    String occasionId,
+    String giftId,
+    String commentId,
+    String body,
+  ) async =>
+      Comment.fromJson(
+        await _api.patchJson(
+          '${_comments(occasionId, giftId)}/${_segment(commentId)}',
+          {'body': body},
+        ),
+      );
+
+  /// Deletes the user's comment.
+  Future<void> deleteComment(
+    String occasionId,
+    String giftId,
+    String commentId,
+  ) =>
+      _api.delete('${_comments(occasionId, giftId)}/${_segment(commentId)}');
+
+  /// Follows the gift; following it already is fine.
+  Future<void> follow(String occasionId, String giftId) =>
+      _api.put('${_gift(occasionId, giftId)}/follow');
+
+  /// Stops following the gift, for good until followed by hand again (D4).
+  Future<void> unfollow(String occasionId, String giftId) =>
+      _api.delete('${_gift(occasionId, giftId)}/follow');
+
+  static String _comments(String occasionId, String giftId) =>
+      '${_gift(occasionId, giftId)}/comments';
 
   static String _hiddenGifts(String occasionId) =>
       '/api/occasions/${_segment(occasionId)}/hidden-gifts';

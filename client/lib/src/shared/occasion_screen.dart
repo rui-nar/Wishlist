@@ -180,6 +180,8 @@ class _OccasionScreenState extends State<OccasionScreen>
     }
     final action = await showGiftSheet(
       context,
+      repository: _repository,
+      occasionId: widget.occasionId,
       gift: gift,
       claim: claim,
       passed: passed,

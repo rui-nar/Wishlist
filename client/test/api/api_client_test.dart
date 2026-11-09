@@ -77,6 +77,24 @@ void main() {
     expect(jsonDecode(seen.single.body), {'amount': null});
   });
 
+  test('put sends a PUT with no body and takes a 204', () async {
+    final seen = <http.Request>[];
+    final api = ApiClient(
+      MockClient((request) async {
+        seen.add(request);
+        return http.Response('', 204);
+      }),
+      baseUrl: 'http://api.test',
+    )..token = 'secret';
+
+    await api.put('/api/thing/follow');
+
+    expect(seen.single.method, 'PUT');
+    expect(seen.single.url, Uri.parse('http://api.test/api/thing/follow'));
+    expect(seen.single.headers['Authorization'], 'Bearer secret');
+    expect(seen.single.body, isEmpty);
+  });
+
   test('getJsonList reads an array; an object where an array is expected '
       'is not a usable answer, nor the reverse', () async {
     ApiClient answering(String body) => ApiClient(
