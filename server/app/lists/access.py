@@ -8,6 +8,7 @@ a random UUID.
 """
 
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from fastapi import HTTPException, status
@@ -15,6 +16,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.accounts.models import User
+from app.lists import visibility
 from app.lists.models import OTHER, Gift, List, ListOwner, Occasion, OccasionMember
 
 OWNER = "owner"
@@ -39,12 +41,20 @@ def owned_list(db: Session, user: User, list_id: uuid.UUID) -> List:
     return found
 
 
-def owned_gift(db: Session, user: User, gift_id: uuid.UUID) -> Gift:
-    """The gift, if the user owns its list (through `owned_list`); otherwise 404."""
+def owned_gift(db: Session, user: User, gift_id: uuid.UUID, now: datetime) -> Gift:
+    """The gift, if the user owns its list (through `owned_list`) and its
+    owners see it (`visibility.owner_visible`); otherwise 404.
+
+    A hidden gift not revealed at `now` answers what a random id answers, to
+    every owner, those of a "for someone else" list included: they reach it
+    as givers (hidden gifts plan D4, D7).
+    """
     gift = db.get(Gift, gift_id)
     if gift is None:
         raise not_found()
-    owned_list(db, user, gift.list_id)
+    owned_list(db, user, visibility.list_of(gift))
+    if not visibility.is_owner_visible(db, gift, now):
+        raise not_found()
     return gift
 
 

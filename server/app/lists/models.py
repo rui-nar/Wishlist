@@ -76,7 +76,14 @@ class ListOwner(Base):
 
 
 class Gift(Base):
-    """A gift wish on a list (D3)."""
+    """A gift wish on a list (D3), or a hidden gift a giver added for it
+    (hidden gifts plan D1).
+
+    A hidden or revealed gift has no `list_id`: it names its list in
+    `for_list_id`, so no query reading "the gifts of a list" by `list_id`
+    can pick one up. Which gifts each person sees is decided in
+    `app.lists.visibility` only (D4).
+    """
 
     __tablename__ = "gifts"
     __table_args__ = (
@@ -85,12 +92,39 @@ class Gift(Base):
         CheckConstraint(
             "(price_amount IS NULL) = (price_currency IS NULL)", "price_currency"
         ),
+        # On a list, or hidden (or revealed) for one: exactly one of the two.
+        CheckConstraint("(list_id IS NULL) <> (for_list_id IS NULL)", "list_reference"),
+        # Only a gift for a list, never one on it, has an occasion or an
+        # author. The code also keeps the occasion of the same list
+        # (`claims_invariants.py`).
+        CheckConstraint(
+            "hidden_occasion_id IS NULL OR for_list_id IS NOT NULL",
+            "hidden_occasion_id",
+        ),
+        CheckConstraint("hidden_by IS NULL OR for_list_id IS NOT NULL", "hidden_by"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    list_id: Mapped[uuid.UUID] = mapped_column(
+    # Null for a hidden or revealed gift (hidden gifts plan D1).
+    list_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("lists.id", ondelete="CASCADE"), index=True
     )
+    # The list a hidden or revealed gift is for.
+    for_list_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("lists.id", ondelete="CASCADE"), index=True
+    )
+    # The occasion a hidden gift belongs to; null once revealed by its
+    # occasion's deletion. Its deletion settles its hidden gifts first (D9),
+    # so the cascade only removes rows whose claims are already gone.
+    hidden_occasion_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("occasions.id", ondelete="CASCADE"), index=True
+    )
+    # Its author; null once their account is deleted (D8).
+    hidden_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    # When an owner marked it received (D5), on any gift.
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     title: Mapped[str] = mapped_column(String(GIFT_TITLE_MAX_LENGTH))
     description: Mapped[str] = mapped_column(String(GIFT_DESCRIPTION_MAX_LENGTH))
     # Shop links, in the order the owner gave them.
@@ -124,6 +158,11 @@ class Occasion(Base):
     name: Mapped[str] = mapped_column(String(OCCASION_NAME_MAX_LENGTH))
     # A calendar date, no time of day.
     date: Mapped[dt.date]
+    # The latest of the dates it had before its current one; null if never
+    # moved.
+    # Hidden gifts are revealed by the later of the two, so moving the date
+    # earlier never brings a reveal forward (hidden gifts plan D3).
+    latest_date: Mapped[dt.date | None]
     # The share link's token, stored as is so the owner can copy the link
     # again (D5). Null: no link, nobody can join. Shown to owners only.
     join_token: Mapped[str | None] = mapped_column(
