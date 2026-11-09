@@ -59,6 +59,36 @@ def settle_occasion_deletion(db: Session, occasion: Occasion, now: datetime) -> 
     db.execute(delete(Gift).where(Gift.id.in_(gone)))
 
 
+def delete_unbought_by(db: Session, user_id: uuid.UUID, occasion_id: uuid.UUID) -> None:
+    """After an owner's removal released their activity: the hidden gifts the
+    removed user added to the occasion and nobody bought are deleted, their
+    activity dropped first (D8, D15). The bought ones stay, with their name.
+
+    The caller has locked the occasion `FOR UPDATE`, so no hidden gift is
+    added, edited, claimed or bought in it meanwhile. Only the gifts about to
+    go are locked, in one order: never a bought one, which an owner dismissing
+    it locks before its claims while this removal already holds the claims of
+    the user's purchases (`release_activity`; review R3-1). An unbought hidden
+    gift is not revealed, so no owner route reaches it.
+    """
+    gone = list(
+        db.scalars(
+            select(Gift.id)
+            .where(
+                Gift.hidden_by == user_id,
+                Gift.hidden_occasion_id == occasion_id,
+                ~exists().where(
+                    GiftClaim.gift_id == Gift.id, GiftClaim.bought_at.is_not(None)
+                ),
+            )
+            .order_by(Gift.id)
+            .with_for_update()
+        )
+    )
+    drop_gift_activity(db, gone)
+    db.execute(delete(Gift).where(Gift.id.in_(gone)))
+
+
 def lock_authored(db: Session, user_id: uuid.UUID) -> None:
     """Before an account deletion releases its claims: the hidden and
     revealed gifts the user authored, locked `FOR NO KEY UPDATE` in id

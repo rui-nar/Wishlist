@@ -123,6 +123,15 @@ ACTIVITY = [
     ("POST", "/api/occasions/{occasion_id}/gifts/{gift_id}/bought", None),
     ("PUT", "/api/occasions/{occasion_id}/gifts/{gift_id}/pledge", {"amount": "20.00"}),
     ("DELETE", "/api/occasions/{occasion_id}/gifts/{gift_id}/pledge", None),
+    # The hidden gifts of the occasion (hidden gifts plan D7).
+    ("GET", "/api/occasions/{occasion_id}/hidden-gifts", None),
+    ("POST", "/api/occasions/{occasion_id}/hidden-gifts", {"title": "Lamp"}),
+    (
+        "PATCH",
+        "/api/occasions/{occasion_id}/hidden-gifts/{gift_id}",
+        {"title": "Renamed"},
+    ),
+    ("DELETE", "/api/occasions/{occasion_id}/hidden-gifts/{gift_id}", None),
 ]
 CLAIMS = "/api/occasions/{occasion_id}/claims"
 ACTIVITY_ROUTES = {route for _, route, _ in ACTIVITY} | {CLAIMS}
@@ -138,6 +147,8 @@ ACTIVITY_KEYS = {
     "expired",
     "passed",
     "taken",
+    "author",
+    "mine",
 }
 
 # The twins of a world, by the names of their ids: swapped, each answer about
@@ -463,8 +474,9 @@ def reads(rec: Recorder, gifts: tuple[str, ...], images: tuple[str, str]) -> Non
 
 
 def activity(rec: Recorder) -> None:
-    """Every activity write on G1 in every occasion, and every activity route
-    on ids that exist nowhere. `reads` reads each occasion's claims."""
+    """Every activity route on G1 in every occasion, hidden gifts included,
+    and every activity route on ids that exist nowhere. `reads` reads each
+    occasion's claims."""
     targets = [(occasion, "G1") for occasion in OCCASIONS]
     for occasion, gift in [*targets, ("nowhere", "nowhere gift")]:
         for method, route, body in ACTIVITY:
