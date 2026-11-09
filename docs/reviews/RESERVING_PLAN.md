@@ -160,6 +160,36 @@ wrong-visible). R6-2 reopened (see its Override line).
 - Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
 - Decision: Fix now (D6)
 - Override: —
+- Outcome: fixed (1f644be)
+
+## Round 9 — 2026-11-09, unit review of fix unit F3 (DELIVERY.md §5 point 3), reviewed at e835170
+
+Approved deviations recorded for F3: the lock order is reversed from R6-1's
+(user rows first, then occasions, gift, claims; every signed-in request holds
+its user `FOR KEY SHARE`); `DELETE /api/me` locks the user `FOR UPDATE` in its
+own dependency; `remove_member` changed under X3. Table approved by the
+orchestrator under the standing instruction, with one override (R9-3).
+
+### R9-1 — The deterministic lock-order test locks member rows, not occasions
+- Trigger: a maintainer reverts `remove_member` to lock the occasion before the removed user → the deterministic test stays green → owner removal racing the account deletion deadlocks → 500
+- Scores: trigger=plausible, impact=maintainability, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Guard (D9)
+- Guard: the test helper locks the same rows as `delete_me` (user, then occasions by id), and the test is seen failing once with the old order
+- Override: —
+- Outcome: open
+
+### R9-2 — The plan records the lock order F3 reversed
+- Trigger: a maintainer aligns the code with D7's text (occasions, then user) → deadlock against every request's user `KEY SHARE` → 500
+- Scores: trigger=concrete, impact=maintainability, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan: Current state, D7, D10, U5 Do 3)
+
+### R9-3 — An account deletion waits for the same user's image upload or URL fetch
+- Trigger: a user uploads an image (or adds one by URL) on one device and deletes the account on another → the deletion waits on the user row for the whole body read or fetch (up to 60 s or 20 s)
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=M/shared, confidence=verified
+- Decision: Defer (D10)
+- Override: Fix now (orchestrator): the triager's revisit condition already holds — the client gives `DELETE /api/me` a 10 s timeout, so the user sees a failure for a deletion that then succeeds
 - Outcome: open
 
 ## Delivery
