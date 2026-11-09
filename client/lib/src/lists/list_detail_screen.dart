@@ -21,8 +21,10 @@ import 'share_link.dart';
 enum _ListAction { rename, delete }
 
 /// A list the user owns: who it is for, its gifts, oldest first, each
-/// opening its edit form, and its occasions with their links. The menu
-/// renames or deletes the list.
+/// opening its edit form, the gifts revealed from its occasions (received,
+/// keep, dismiss), its received gifts (put back, delete), and its occasions
+/// with their links (HIDDEN_GIFTS_PLAN D13). The menu renames or deletes the
+/// list.
 class ListDetailScreen extends StatefulWidget {
   const ListDetailScreen({super.key, required this.listId});
 
@@ -37,6 +39,13 @@ class _ListDetailScreenState extends State<ListDetailScreen>
   late final _repository = ListsRepository.of(context);
   late Future<ListDetail> _list;
   bool _deleting = false;
+
+  /// A received or revealed gift's action is running.
+  bool _acting = false;
+
+  /// The Received section is open; closed until the owner opens it, and
+  /// kept across reloads.
+  bool _receivedOpen = false;
 
   /// Where share links start, once `/api/config` answered: the server's
   /// public base URL, or the web client's origin (D5). Null until then.
@@ -152,7 +161,6 @@ class _ListDetailScreenState extends State<ListDetailScreen>
   Widget _content(BuildContext context, ListDetail list) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final locale = Localizations.localeOf(context).toString();
     return ListView(
       padding: PageFrame.paddingOf(context, ContentWidths.reading),
       children: [
@@ -186,21 +194,9 @@ class _ListDetailScreenState extends State<ListDetailScreen>
         ],
         for (final gift in list.gifts) ...[
           const SizedBox(height: Spacing.s12),
-          GiftCard(
-            title: gift.title,
-            image: gift.image == null
-                ? null
-                : ApiImage(context.read<ApiClient>(), gift.image!.thumbUrl),
-            onImageTap: gift.image == null
-                ? null
-                : () => showImageViewer(
-                      context,
-                      ApiImage(context.read<ApiClient>(), gift.image!.url),
-                      semanticLabel: gift.title,
-                    ),
-            metadata: gift.priceAmount == null
-                ? null
-                : formatPrice(gift.priceAmount!, gift.priceCurrency!, locale),
+          _giftCard(
+            context,
+            gift,
             chips: [
               if (gift.links.isNotEmpty)
                 StatusChip(
@@ -208,8 +204,52 @@ class _ListDetailScreenState extends State<ListDetailScreen>
                   icon: Icons.link,
                 ),
             ],
-            action: giftLinkAction(gift.links),
             onTap: () => context.push('$_location/gifts/${gift.id}/edit'),
+          ),
+        ],
+        if (list.revealed.isNotEmpty) ...[
+          const SizedBox(height: Spacing.s32),
+          Text(l10n.revealedTitle, style: theme.textTheme.headlineMedium),
+          for (final gift in list.revealed) ...[
+            const SizedBox(height: Spacing.s12),
+            _giftCard(
+              context,
+              gift,
+              chips: _actions([
+                (l10n.revealedReceived, () => _markReceived(gift)),
+                (l10n.revealedKeep, () => _keep(gift)),
+                (l10n.revealedDismiss, () => _dismiss(gift)),
+              ]),
+            ),
+          ],
+        ],
+        if (list.received.isNotEmpty) ...[
+          const SizedBox(height: Spacing.s24),
+          ExpansionTile(
+            key: const ValueKey('received-section'),
+            title: Text(
+              l10n.receivedTitle(list.received.length),
+              style: theme.textTheme.titleLarge,
+            ),
+            initiallyExpanded: _receivedOpen,
+            onExpansionChanged: (open) => _receivedOpen = open,
+            tilePadding: EdgeInsets.zero,
+            shape: const Border(),
+            collapsedShape: const Border(),
+            children: [
+              for (final gift in list.received)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Spacing.s12),
+                  child: _giftCard(
+                    context,
+                    gift,
+                    chips: _actions([
+                      (l10n.putBack, () => _putBack(gift)),
+                      (l10n.delete, () => _deleteReceived(gift)),
+                    ]),
+                  ),
+                ),
+            ],
           ),
         ],
         const SizedBox(height: Spacing.s32),
@@ -222,5 +262,110 @@ class _ListDetailScreenState extends State<ListDetailScreen>
         ),
       ],
     );
+  }
+
+  /// [gift]'s card: its image, price and links, with [chips].
+  Widget _giftCard(
+    BuildContext context,
+    Gift gift, {
+    required List<Widget> chips,
+    VoidCallback? onTap,
+  }) {
+    final api = context.read<ApiClient>();
+    final locale = Localizations.localeOf(context).toString();
+    return GiftCard(
+      title: gift.title,
+      image: gift.image == null ? null : ApiImage(api, gift.image!.thumbUrl),
+      onImageTap: gift.image == null
+          ? null
+          : () => showImageViewer(
+                context,
+                ApiImage(api, gift.image!.url),
+                semanticLabel: gift.title,
+              ),
+      metadata: gift.priceAmount == null
+          ? null
+          : formatPrice(gift.priceAmount!, gift.priceCurrency!, locale),
+      chips: chips,
+      action: giftLinkAction(gift.links),
+      onTap: onTap,
+    );
+  }
+
+  /// The buttons of a received or revealed gift, under its title. Teal like
+  /// any button: nothing on an owner's list is rose (DESIGN.md, Invitee
+  /// colour).
+  List<Widget> _actions(List<(String, Future<void> Function())> actions) => [
+        for (final (label, onPressed) in actions)
+          TextButton(
+            onPressed: _acting ? null : onPressed,
+            child: Text(label),
+          ),
+      ];
+
+  Future<void> _markReceived(Gift gift) =>
+      _act(() => _repository.markReceived(gift.id));
+
+  Future<void> _keep(Gift gift) => _act(() => _repository.keep(gift.id));
+
+  Future<void> _dismiss(Gift gift) async {
+    final l10n = AppLocalizations.of(context);
+    if (await confirmAction(
+      context,
+      title: l10n.dismissGiftTitle,
+      body: l10n.dismissGiftBody,
+      action: l10n.revealedDismiss,
+    )) {
+      await _act(() => _repository.deleteGift(gift.id), deleting: true);
+    }
+  }
+
+  Future<void> _putBack(Gift gift) =>
+      _act(() => _repository.putBack(gift.id));
+
+  Future<void> _deleteReceived(Gift gift) async {
+    final l10n = AppLocalizations.of(context);
+    if (await confirmDelete(
+      context,
+      title: l10n.deleteGiftTitle,
+      body: l10n.deleteReceivedBody,
+    )) {
+      await _act(() => _repository.deleteGift(gift.id), deleting: true);
+    }
+  }
+
+  /// Runs [call], then loads the list again whatever the outcome: a gift
+  /// that is gone (404), or not revealed any more, shows as it now is.
+  /// [deleting] when a 404 is what the user asked for.
+  Future<void> _act(
+    Future<Object?> Function() call, {
+    bool deleting = false,
+  }) async {
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _acting = true);
+    try {
+      await call();
+    } on NotRevealed {
+      messenger.showSnackBar(
+        SnackBar(content: Text(l10n.putBackNotRevealed)),
+      );
+    } catch (error) {
+      if (!(deleting && isNotFound(error))) {
+        messenger.showSnackBar(SnackBar(
+          content: Text(
+            isNotFound(error)
+                ? l10n.giftNotFound
+                : deleting
+                    ? l10n.deleteFailed
+                    : l10n.saveFailed,
+          ),
+        ));
+      }
+    }
+    if (!mounted) return;
+    setState(() => _acting = false);
+    reload();
   }
 }

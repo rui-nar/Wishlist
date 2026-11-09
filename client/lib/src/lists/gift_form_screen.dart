@@ -21,8 +21,8 @@ const kLinkMaxLength = 2048;
 
 /// Adds a gift to the list [listId], or edits its gift [giftId]: image,
 /// title, description, shop links and an indicative price. Editing also
-/// deletes the gift, after confirmation. Goes back to the list once saved or
-/// deleted.
+/// marks the gift received, or deletes it after confirmation. Goes back to
+/// the list once saved, received or deleted.
 class GiftFormScreen extends StatefulWidget {
   const GiftFormScreen({super.key, required this.listId, this.giftId});
 
@@ -158,6 +158,24 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
 
   String _goneMessage(AppLocalizations l10n) =>
       _adding ? l10n.listNotFound : l10n.giftNotFound;
+
+  /// Offered on every gift alike, so it says nothing about which ones were
+  /// bought (HIDDEN_GIFTS_PLAN D5). Reversible from the list: no
+  /// confirmation.
+  Future<void> _markReceived() async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      await _repository.markReceived(widget.giftId!);
+      if (mounted) context.pop();
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(isNotFound(error) ? l10n.giftNotFound : l10n.saveFailed),
+      ));
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   Future<void> _delete() async {
     final l10n = AppLocalizations.of(context);
@@ -364,6 +382,12 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
                     child: Text(_adding ? l10n.addGift : l10n.save),
                   ),
                   if (!_adding) ...[
+                    const SizedBox(height: Spacing.s12),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _markReceived,
+                      icon: const Icon(Icons.inventory_2_outlined),
+                      label: Text(l10n.markReceived),
+                    ),
                     const SizedBox(height: Spacing.s12),
                     TextButton.icon(
                       onPressed: _busy ? null : _delete,

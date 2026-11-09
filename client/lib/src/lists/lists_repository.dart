@@ -49,7 +49,8 @@ class ListSummary {
   final int giftCount;
 }
 
-/// A list with its gifts, oldest first, and its occasions, by date, as
+/// A list with its gifts, oldest first, its occasions, by date, and the
+/// gifts off the list, received and revealed (HIDDEN_GIFTS_PLAN D5, D6), as
 /// `GET /api/lists/{id}` gives it.
 class ListDetail {
   const ListDetail({
@@ -59,6 +60,8 @@ class ListDetail {
     required this.recipientName,
     required this.gifts,
     this.occasions = const [],
+    this.received = const [],
+    this.revealed = const [],
   });
 
   factory ListDetail.fromJson(Map<String, dynamic> json) => ListDetail(
@@ -74,7 +77,15 @@ class ListDetail {
           for (final occasion in json['occasions'] as List<dynamic>)
             Occasion.fromJson(occasion as Map<String, dynamic>),
         ],
+        received: _gifts(json['received']),
+        revealed: _gifts(json['revealed']),
       );
+
+  /// Empty when absent: a server older than hidden gifts has neither key.
+  static List<Gift> _gifts(Object? json) => [
+        for (final gift in (json as List<dynamic>?) ?? const [])
+          Gift.fromJson(gift as Map<String, dynamic>),
+      ];
 
   final String id;
   final String title;
@@ -82,6 +93,13 @@ class ListDetail {
   final String? recipientName;
   final List<Gift> gifts;
   final List<Occasion> occasions;
+
+  /// Gifts its owners marked received, newest first (D5).
+  final List<Gift> received;
+
+  /// Gifts an occasion's givers added hidden and bought, once the occasion
+  /// has passed: the gift alone, by title (D6).
+  final List<Gift> revealed;
 }
 
 /// An occasion as its list's owners see it (D4, D8).
@@ -289,6 +307,17 @@ class Gift extends GiftDraft {
   final GiftImage? image;
 }
 
+/// Putting back or keeping a gift the server answered 409 `not_revealed`
+/// (HIDDEN_GIFTS_PLAN D5, D6): its occasion's date was moved later since it
+/// was revealed, so it can be put back once that date has passed. Nothing
+/// changed.
+class NotRevealed implements Exception {
+  const NotRevealed();
+
+  @override
+  String toString() => 'NotRevealed';
+}
+
 /// The list, gift and occasion calls of a list's owner. Errors are
 /// [ApiClient]'s: a list, gift or occasion that is gone, or not the user's,
 /// is an [ApiException] with status 404 (D7).
@@ -352,8 +381,42 @@ class ListsRepository {
         await _api.patchJson('/api/gifts/${_segment(giftId)}', gift.toJson()),
       );
 
+  /// Deletes the gift; also how a revealed gift is dismissed (D6).
   Future<void> deleteGift(String giftId) =>
       _api.delete('/api/gifts/${_segment(giftId)}');
+
+  /// Takes the gift off the list and out of every occasion, under
+  /// "Received" (D5). Marking it twice is fine.
+  Future<void> markReceived(String giftId) =>
+      _api.post('/api/gifts/${_segment(giftId)}/received');
+
+  /// Puts a received gift back where it was, with its reservations (D5). A
+  /// gift that is not received is fine; [NotRevealed] when it cannot be put
+  /// back yet.
+  Future<void> putBack(String giftId) => _revealedOnly(
+        () => _api.delete('/api/gifts/${_segment(giftId)}/received'),
+      );
+
+  /// Keeps a revealed gift on the list; the answer is the gift now on it,
+  /// under a new id (D6). [NotRevealed] for a gift that is not revealed.
+  Future<Gift> keep(String giftId) async => Gift.fromJson(
+        await _revealedOnly(
+          () => _api.postJson('/api/gifts/${_segment(giftId)}/keep', {}),
+        ),
+      );
+
+  /// A 409 `not_revealed` becomes [NotRevealed]; anything else stays
+  /// [ApiClient]'s.
+  static Future<T> _revealedOnly<T>(Future<T> Function() call) async {
+    try {
+      return await call();
+    } on ApiException catch (error) {
+      if (error.statusCode == 409 && error.body?['code'] == 'not_revealed') {
+        throw const NotRevealed();
+      }
+      rethrow;
+    }
+  }
 
   /// Sends the image's bytes; the answer is a pending image that saving a
   /// gift attaches (GIFT_IMAGES D1). A refusal is an [ApiException] whose
