@@ -12,6 +12,7 @@ import 'l10n/app_localizations.dart';
 import 'src/api/api_client.dart';
 import 'src/app_router.dart';
 import 'src/auth/auth_controller.dart';
+import 'src/auth/language_report.dart';
 import 'src/auth/start_gate.dart';
 import 'src/auth/token_store.dart';
 import 'src/config.dart';
@@ -89,7 +90,8 @@ class _WishlistAppState extends State<WishlistApp> {
         darkTheme: buildDarkTheme(),
         themeMode: ThemeMode.system,
         routerConfig: _router,
-        builder: (context, child) => StartGate(child: child!),
+        builder: (context, child) =>
+            LanguageReport(child: StartGate(child: child!)),
       ),
     );
   }
