@@ -182,6 +182,23 @@ step 7) without a triage pass, since the floors fix their decisions.
 - Override: —
 - Outcome: guard added (8d15b81)
 
+## Round 6 — 2026-11-09, integrated diff review (DELIVERY.md §5), reviewed at 1269cce
+
+Table approved by the orchestrator under the owner's standing instruction of
+2026-11-08 (no floor applies). Envelope question answered with the
+recommendation: D18's "never modified" is about content, not modification
+time; the off-site backups open decision carries the two constraints (restore
+media with fresh modification times; a time-based sync sees every live file
+change daily), in this plan and in DEPLOYMENT.md's open item.
+
+### R6-1 — "Busy" answered before the body is read can reach a mobile client as "server unreachable"
+- Trigger: three owners upload at the same moment from the Android or iOS app → the third gets 503 `image_busy` unread, Caddy closes the connection mid-body → the app shows "The server could not be reached" instead of "busy, try again"
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: a log or report shows a 503 `image_busy` or 413 on `POST /api/images` followed by a connection reset or "could not be reached"; reproduced from a mobile app over HTTP/1.1 against VAL; or the upload slots fill routinely. A fix must discard the body without buffering it (or be client-side), so R2-4's bound holds
+- Override: —
+- Outcome: open
+
 ## Delivery
 
 Orchestrated under the owner's standing instruction of 2026-11-08, in the

@@ -1430,6 +1430,12 @@ Each item of the plan's Definition of done, and where it is checked:
 - [ ] **Off-site backups** of the dumps **and** the media directory (shared
       problem with TraxJourney). Today both are lost with the VPS, its disk or
       OVH's datacenter. Needed before PROD holds real users' data.
+      Two constraints from the media purge: the copy's retention joins the
+      purge horizon, and media restored from it must get the current time as
+      modification time (copy without preserving times, or touch after), since
+      the purge reads an old modification time as "not live". The purge also
+      touches every live image daily, so a time-based sync sees every file
+      change each day.
 - [ ] **Observability**: logs and metrics for VAL and PROD (reusing
       TraxJourney's Loki/Prometheus on the NAS is the candidate). A later plan;
       until then, the [daily check](#daily-check) and `docker compose logs`.

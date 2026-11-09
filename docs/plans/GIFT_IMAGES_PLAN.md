@@ -478,7 +478,7 @@ REVIEW.md defaults apply, with these additions:
 | Storage per account (NEEDS.md "Image limits"; size and count are decided here: 10 MB in, one per gift) | Disk on the shared VPS, premium | The premium plan |
 | HEIC if a device still uploads one after `image_picker`'s re-encoding (D5): add client conversion | iOS and Android picking | Before the first store release (device check) |
 | Raising the app's memory limit if VAL's measurement (Definition of done) leaves under 32 MB headroom | `deploy/*/docker-compose.yml` | Before releasing to PROD |
-| Off-site backups: their retention must join the horizon (D9) when they exist | Media purge | The off-site backups item of DEPLOYMENT.md |
+| Off-site backups: their retention must join the horizon (D9) when they exist; media restored from them gets fresh modification times, and the daily touch makes every live file look changed to a time-based sync (review round 6) | Media purge | The off-site backups item of DEPLOYMENT.md |
 | Image from a shop link (D12) | A new route reusing D6 and D4 | After the Amazon spike |
 | Images on disk for offline reading on mobile | Client cache | The offline plan |
 | VAL's media are never purged (no backups) | VAL disk | If VAL's media directory grows beyond 1 GB |
