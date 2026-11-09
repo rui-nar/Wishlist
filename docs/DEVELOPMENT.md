@@ -124,6 +124,40 @@ in on a device also needs an Android OAuth client registered with the app's
 package name and signing key, and the package name is still a placeholder:
 see [DEPLOYMENT](DEPLOYMENT.md#android-oauth-client).
 
+## Email notifications in DEV
+
+DEV sends no email unless the variables are set, and `.env.example` leaves
+them out. Everything else works without them: the worker marks each email due
+as skipped and logs at start which variables are missing. The server tests
+never reach Brevo.
+
+To try one, against your own address only:
+
+1. **`.env`**: add these lines, then stop both panes and run `.\dev.ps1`
+   again (it loads `.env` only when it starts).
+
+   ```text
+   BREVO_API_KEY=<brevo-api-key>
+   EMAIL_SENDER_ADDRESS=<sender-address>
+   NOTIFICATION_SECRET=<a generated secret>
+   PUBLIC_BASE_URL=http://localhost:5500
+   EMAIL_ALLOWED_RECIPIENTS=<your-address>
+   ```
+
+   The key and the verified sender are the Brevo account's
+   ([DEPLOYMENT](DEPLOYMENT.md#placeholders)). Generate the secret with
+   `python -c "import secrets; print(secrets.token_hex(32))"`.
+   `PUBLIC_BASE_URL` is the client's fixed port: the links in the email are
+   built on it. `<your-address>` is the address your account signs in with.
+   Outside production only the listed addresses are emailed, and an empty list
+   emails nobody, so a database holding other people's addresses is safe. None
+   of these values goes in a committed file.
+2. **The email**: signed in with that account, in an occasion where it is a
+   giver, press **Follow** on a gift. From another account of that occasion,
+   comment on it. The email arrives within about two minutes.
+
+Delete the `BREVO_API_KEY` line and restart to turn it off again.
+
 ## Tests
 
 ```powershell
