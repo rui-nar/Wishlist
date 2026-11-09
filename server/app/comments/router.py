@@ -4,8 +4,8 @@ Every route resolves the gift through `giving_gift` (D6), so a recipient
 gets the random-id 404 on every route and for every state of the thread.
 Writes follow the claims' lock order (D7): the user `FOR KEY SHARE` (taken by
 `current_session`), the occasion `FOR SHARE`, the gift `FOR KEY SHARE`, then
-the comment `FOR UPDATE` for an edit or delete. They write `comments` and
-`gift_follows` only, never a row an owner reads.
+the comment `FOR UPDATE` for an edit or delete. They write `comments`,
+`gift_follows` and the outbox only (D9), never a row an owner reads.
 """
 
 import uuid
@@ -21,6 +21,7 @@ from app.comments.models import Comment, GiftFollow
 from app.comments.schemas import CommentIn, CommentOut, GiftThread
 from app.db import DbSession
 from app.lists.access import giving_gift, not_found
+from app.notifications import events
 
 router = APIRouter(
     prefix="/api/occasions/{occasion_id}/gifts/{gift_id}", tags=["comments"]
@@ -65,6 +66,7 @@ def post_comment(
     db.add(comment)
     db.flush()
     auto_follow(db, occasion_id, gift_id, user.id)
+    events.comment_added(db, occasion_id, gift_id, user.id, comment.id)
     return _comment_out(comment, user.display_name, user)
 
 

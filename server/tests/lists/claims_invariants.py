@@ -1,8 +1,11 @@
 """What every claim in the database must satisfy, whatever raced (reserving
 plan D2): checked at the end of every concurrency and release test.
 
-The database enforces one claim per gift, its kind, and an occasion for an
-unbought claim. The code keeps the rest, checked here:
+The database enforces one claim per gift and its kind. A deleted gift leaves
+its claim, out of reach, until the worker's sweep (comments plan D13): those
+orphaned claims, and unbought claims with no occasion, are allowed here, and
+no API read returns them (`assert_unreachable`). The code keeps the rest,
+checked here on claims of a gift that exists:
 
 - an unbought claim has at least one participant;
 - a reservation has at most one participant;
@@ -21,6 +24,7 @@ from sqlalchemy import Engine, text
 VIOLATIONS = {
     "unbought claims with no participant": """
         SELECT c.gift_id FROM gift_claims c
+        JOIN gifts g ON g.id = c.gift_id
         WHERE c.bought_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM claim_participants p
                           WHERE p.gift_id = c.gift_id)
@@ -56,6 +60,7 @@ VIOLATIONS = {
     """,
     "participants of an unbought claim who are not givers of its occasion": """
         SELECT c.gift_id FROM gift_claims c
+        JOIN gifts g ON g.id = c.gift_id
         JOIN claim_participants p ON p.gift_id = c.gift_id
         JOIN occasions o ON o.id = c.occasion_id
         JOIN lists l ON l.id = o.list_id
@@ -77,3 +82,15 @@ def assert_claims_consistent(engine: Engine) -> None:
         }
     # One assertion, so a failure shows every broken invariant at once.
     assert found == {name: [] for name in VIOLATIONS}
+
+
+def assert_unreachable(client, account, occasion: str, gift: str) -> None:
+    """A deleted gift's claim and thread reach a giver through no read
+    (comments plan D13)."""
+    claims = client.get(f"/api/occasions/{occasion}/claims", headers=account.headers)
+    assert claims.status_code == 200, claims.text
+    assert gift not in [claim["gift_id"] for claim in claims.json()["gifts"]]
+    thread = client.get(
+        f"/api/occasions/{occasion}/gifts/{gift}/comments", headers=account.headers
+    )
+    assert thread.status_code == 404, thread.text

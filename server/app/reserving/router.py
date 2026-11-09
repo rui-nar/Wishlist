@@ -5,8 +5,8 @@ Every route resolves its occasion through `giving_occasion`, so a recipient
 gets the random-id 404 for every route and every state of their gifts (D4).
 Writes follow one lock order (D7): the user `FOR KEY SHARE` (taken by
 `current_session`), the occasion `FOR SHARE`, the gift `FOR KEY SHARE`, then
-the claim; they write `gift_claims` and
-`claim_participants` only, never a row an owner reads (D3).
+the claim; they write `gift_claims`, `claim_participants` and
+`gift_follows` only, never a row an owner reads (D3).
 
 A 409 is returned, not raised, so it keeps the `code` its body needs. The
 only write it can commit is the purge of an expired claim, which changes
@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.accounts.deps import CurrentUser
 from app.accounts.models import User
+from app.comments.follows import auto_follow
 from app.db import DbSession
 from app.lists.access import giving_gift, giving_occasion
 from app.lists.models import Gift
@@ -127,6 +128,8 @@ def reserve(
         and _is_mine(db, held, occasion.id, user)
     ):
         return _conflict(TAKEN)
+    if created:
+        auto_follow(db, occasion.id, gift_id, user.id)
     return _gift_claim_out(db, gift_id, occasion.id, user, now)
 
 
@@ -183,6 +186,7 @@ def mark_bought(
         # A free gift is reserved and bought at once.
         created, claim = _take(db, gift_id, occasion.id, user, now, bought_at=now)
         if created:
+            auto_follow(db, occasion.id, gift_id, user.id)
             return _gift_claim_out(db, gift_id, occasion.id, user, now)
         # My reservation, or a group gift I am in, here.
         if claim is None or not _is_mine(db, claim, occasion.id, user):
@@ -233,6 +237,7 @@ def pledge(
         db, gift_id, occasion.id, user, now, bought_at=None, kind=GROUP_KIND, **pledged
     )
     if created:
+        auto_follow(db, occasion.id, gift_id, user.id)
         return _gift_claim_out(db, gift_id, occasion.id, user, now)
     # A reservation, mine included (release it first), or anything held from
     # another occasion.
@@ -251,6 +256,7 @@ def pledge(
             set_=pledged,
         )
     )
+    auto_follow(db, occasion.id, gift_id, user.id)
     return _gift_claim_out(db, gift_id, occasion.id, user, now)
 
 

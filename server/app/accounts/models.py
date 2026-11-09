@@ -6,7 +6,15 @@ Keys are random UUIDs, so no identifier reveals how many users exist.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+    func,
+    true,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -14,6 +22,7 @@ from app.db import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (CheckConstraint("language IN ('en', 'fr')", "language"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # Copied from the identity provider at each sign-in, for display only: an
@@ -23,6 +32,10 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # The language of their emails, reported by the client (comments plan D17).
+    language: Mapped[str] = mapped_column(String(2), server_default="en")
+    # On by default (comments plan D18).
+    email_notifications: Mapped[bool] = mapped_column(server_default=true())
 
 
 class UserIdentity(Base):

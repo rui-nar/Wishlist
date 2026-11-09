@@ -83,6 +83,7 @@ from app.media.gift_images import (
 )
 from app.media.images import ImageRejected
 from app.media.models import Image
+from app.notifications import events
 from app.reserving.release import (
     delete_gift_claims,
     delete_unbought_claims,
@@ -94,6 +95,15 @@ from app.reserving.release import (
 router = APIRouter(prefix="/api", tags=["lists"])
 
 _NOT_REVEALED_RESPONSE = {status.HTTP_409_CONFLICT: {"model": GiftConflict}}
+# The fields whose change notifies the gift's givers (comments plan D10).
+_NOTIFIED_FIELDS = (
+    "title",
+    "description",
+    "links",
+    "price_amount",
+    "price_currency",
+    "image_id",
+)
 
 
 @router.get("/lists")
@@ -237,6 +247,7 @@ def update_gift(
         # same moment take turns, so each one detaches, and stamps, the image
         # the other attached.
         db.refresh(gift, with_for_update=True)
+    before = {field: getattr(gift, field) for field in _NOTIFIED_FIELDS}
     for field in body.model_fields_set - {"image_id"}:
         setattr(gift, field, getattr(body, field))
     if "image_id" in body.model_fields_set:
@@ -247,6 +258,12 @@ def update_gift(
         raise _invalid("price_currency", "a price has both an amount and a currency")
     db.flush()
     db.refresh(gift)
+    # Stored against stored, as read back: decided by the owner's input and
+    # the gift alone, never by its activity (comments plan D10, D12). A
+    # revealed gift has no place on the list, and notifies nobody.
+    changed = [f for f in _NOTIFIED_FIELDS if getattr(gift, f) != before[f]]
+    if changed and gift.list_id is not None:
+        events.gift_changed(db, gift.id, user.id, changed)
     return _gift_out(gift, _image_of(db, gift))
 
 
@@ -255,13 +272,26 @@ def delete_gift(
     gift_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
 ) -> Response:
     gift = owned_gift(db, user, gift_id, request.app.state.clock())
-    # Locked before its claims, in the order every request takes them
-    # (reserving plan D7: gift, then claims): a claim write holding it waits
-    # to commit, a later one finds it gone. Its activity is dropped
-    # explicitly (hidden gifts plan D15), then the row. Deleted at the same
-    # moment: nothing is left to do, the same answer.
-    db.execute(select(Gift.id).where(Gift.id == gift.id).with_for_update())
+    # Locked as every claim write expects (reserving plan D7): one holding
+    # the gift waits to commit, a later one finds it gone. Its activity stays,
+    # out of reach, for the worker (comments plan D13), so the same statements
+    # run whatever it was (D12). Deleted at the same moment: nothing is left
+    # to do, no second event, the same answer.
+    locked = db.execute(
+        select(
+            Gift.title,
+            Gift.list_id,
+            visibility.received(visibility.list_of(gift)).label("received"),
+        )
+        .where(Gift.id == gift.id)
+        .with_for_update()
+    ).one_or_none()
+    if locked is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     drop_gift_activity(db, [gift.id])
+    # A revealed gift has no place on the list, and notifies nobody (D10).
+    if locked.list_id is not None:
+        events.gift_deleted(db, gift.id, user.id, locked.title, locked.received)
     db.execute(delete(Gift).where(Gift.id == gift.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -490,8 +520,9 @@ def remove_member(
     release_activity(db, user_id, occasion.id)
     # And the hidden gifts they added that nobody bought: the owner's remedy
     # against an abusive invitee (hidden gifts plan D8). Same answer either
-    # way.
-    delete_unbought_by(db, user_id, occasion.id)
+    # way, and one event, listing them or none (comments plan D10, D12).
+    gone = delete_unbought_by(db, user_id, occasion.id)
+    events.gifts_removed(db, occasion.id, user.id, gone)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
