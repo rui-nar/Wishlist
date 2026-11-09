@@ -458,11 +458,10 @@ def delete_first(client, world):
 
 
 def assert_gone(client, world, engine, gifts):
-    """The gifts and their claims are gone, and nothing of them is reachable
-    by the other occasion's givers."""
+    """The gifts are gone, and nothing of them is reachable by the other
+    occasion's givers (the worker sweeps their claims, comments plan D13)."""
     for gift in gifts:
         assert gift_row(engine, gift) is None
-        assert claim_count(engine, gift) == 0
         assert claim_routes(client, world.cleo, world.second, gift) == [404] * 5
     assert not claimed_ids(client, world.cleo, world.second) & set(gifts)
 
@@ -621,15 +620,15 @@ def test_deleting_the_authors_account_leaves_the_gift_with_no_author(
     assert_claims_consistent(engine)
 
 
-def test_deleting_a_gift_drops_its_activity(client, world, engine):
+def test_deleting_a_gift_leaves_no_activity_reachable(client, world, engine):
     gift = world.gifts[0]
     add_group(engine, gift, world.first, (world.ana, "30.00"), (world.ben, None))
 
     response = client.delete(f"/api/gifts/{gift}", headers=world.owner.headers)
 
     assert response.status_code == 204
-    assert claim_count(engine, gift) == 0
     assert claim_routes(client, world.ana, world.first, gift) == [404] * 5
+    assert gift not in claimed_ids(client, world.ana, world.first)
     assert_claims_consistent(engine)
 
 

@@ -11,7 +11,7 @@ from functools import partial
 from types import SimpleNamespace
 
 import pytest
-from claims_invariants import assert_claims_consistent
+from claims_invariants import assert_claims_consistent, assert_unreachable
 from locks import TIMEOUT_SECONDS, together, wait_until_blocked_on_a_lock
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -198,7 +198,7 @@ def test_a_reservation_racing_the_gifts_deletion(
         assert reserved.status_code in (200, 404), reserved.text
         assert deleted.status_code == 204, deleted.text
         assert rows("gifts") == 0
-        assert rows("gift_claims") == 0
+        assert_unreachable(client, ana, occasion, gift)
     assert_claims_consistent(engine)
 
 

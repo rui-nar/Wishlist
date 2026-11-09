@@ -272,5 +272,8 @@ def test_a_pledge_racing_mark_bought(
         # Bought is final: the next round takes a new gift.
         with engine.begin() as connection:
             connection.execute(
+                text("DELETE FROM gift_claims WHERE gift_id = :gift"), {"gift": gift}
+            )
+            connection.execute(
                 text("DELETE FROM gifts WHERE id = :gift"), {"gift": gift}
             )

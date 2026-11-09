@@ -24,21 +24,18 @@ class GiftClaim(Base):
     The gift is the key, so a gift has at most one claim across every
     occasion of its list: of two givers claiming it at the same moment, the
     database lets exactly one in, whatever the code does.
+
+    No foreign key to `gifts` (comments plan D13): a deleted gift leaves its
+    claim in place, unreachable, for the worker to read and then sweep.
     """
 
     __tablename__ = "gift_claims"
-    __table_args__ = (
-        CheckConstraint(f"kind IN ('{RESERVATION}', '{GROUP}')", "kind"),
-        # Only a bought claim outlives its occasion (D11).
-        CheckConstraint(
-            "occasion_id IS NOT NULL OR bought_at IS NOT NULL", "occasion_id"
-        ),
-    )
+    __table_args__ = (CheckConstraint(f"kind IN ('{RESERVATION}', '{GROUP}')", "kind"),)
 
-    gift_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("gifts.id", ondelete="CASCADE"), primary_key=True
-    )
-    # Indexed: an occasion's claims and its deletion look it up.
+    gift_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    # Null once its occasion is deleted: a claim not bought is then expired
+    # (`rules.is_live`) until swept (comments plan D13). Indexed: an
+    # occasion's claims and its deletion look it up.
     occasion_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("occasions.id", ondelete="SET NULL"), index=True
     )

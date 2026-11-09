@@ -1,8 +1,8 @@
 """Following a gift in an occasion, by hand and on commenting (comments plan
 D4, D5).
 
-Automatic follows from the claim routes and follows dropped on leaving come
-later (unit U3). The world of `test_reservations.py`.
+Automatic follows from the claim routes and follows dropped on leaving are in
+`test_notification_events.py`. The world of `test_reservations.py`.
 """
 
 import test_reservations

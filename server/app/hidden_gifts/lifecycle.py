@@ -59,10 +59,14 @@ def settle_occasion_deletion(db: Session, occasion: Occasion, now: datetime) -> 
     db.execute(delete(Gift).where(Gift.id.in_(gone)))
 
 
-def delete_unbought_by(db: Session, user_id: uuid.UUID, occasion_id: uuid.UUID) -> None:
+def delete_unbought_by(
+    db: Session, user_id: uuid.UUID, occasion_id: uuid.UUID
+) -> list[tuple[uuid.UUID, str]]:
     """After an owner's removal released their activity: the hidden gifts the
     removed user added to the occasion and nobody bought are deleted, their
     activity dropped first (D8, D15). The bought ones stay, with their name.
+    Returns the deleted gifts' ids and titles, for the removal's notification
+    (comments plan D10).
 
     The caller has locked the occasion `FOR UPDATE`, so no hidden gift is
     added, edited, claimed or bought in it meanwhile. Only the gifts about to
@@ -71,9 +75,10 @@ def delete_unbought_by(db: Session, user_id: uuid.UUID, occasion_id: uuid.UUID) 
     the user's purchases (`release_activity`; review R3-1). An unbought hidden
     gift is not revealed, so no owner route reaches it.
     """
-    gone = list(
-        db.scalars(
-            select(Gift.id)
+    gone = [
+        (gift, title)
+        for gift, title in db.execute(
+            select(Gift.id, Gift.title)
             .where(
                 Gift.hidden_by == user_id,
                 Gift.hidden_occasion_id == occasion_id,
@@ -84,9 +89,11 @@ def delete_unbought_by(db: Session, user_id: uuid.UUID, occasion_id: uuid.UUID) 
             .order_by(Gift.id)
             .with_for_update()
         )
-    )
-    drop_gift_activity(db, gone)
-    db.execute(delete(Gift).where(Gift.id.in_(gone)))
+    ]
+    ids = [gift for gift, _ in gone]
+    drop_gift_activity(db, ids)
+    db.execute(delete(Gift).where(Gift.id.in_(ids)))
+    return gone
 
 
 def lock_authored(db: Session, user_id: uuid.UUID) -> None:

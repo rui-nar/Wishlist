@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 import pytest
-from claims_invariants import assert_claims_consistent
+from claims_invariants import assert_claims_consistent, assert_unreachable
 
 # Relative to today: a fixed date would turn into a passed occasion (D8).
 FUTURE = (date.today() + timedelta(days=60)).isoformat()
@@ -356,7 +356,8 @@ def test_deleting_a_list_owners_account_deletes_its_claims(client, world, rows, 
     assert_claims_consistent(engine)
 
 
-def test_deleting_a_gift_deletes_its_claim(client, world, rows, engine):
+def test_a_deleted_gift_s_claim_reaches_no_giver(client, world, engine):
+    # Left for the worker, out of reach (comments plan D13).
     gift = world.gifts[0]
     pledge(client, world.ana, world.first, gift)
     pledge(client, world.ben, world.first, gift)
@@ -365,6 +366,5 @@ def test_deleting_a_gift_deletes_its_claim(client, world, rows, engine):
     response = client.delete(f"/api/gifts/{gift}", headers=world.owner.headers)
 
     assert (response.status_code, response.content) == (204, b"")
-    assert rows("gift_claims") == 0
-    assert rows("claim_participants") == 0
+    assert_unreachable(client, world.ana, world.first, gift)
     assert_claims_consistent(engine)
