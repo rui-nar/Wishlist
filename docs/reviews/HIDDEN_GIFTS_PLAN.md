@@ -39,3 +39,23 @@ which `latest_date` is not maintained, instead of claiming no leak.
 - Decision: Defer (D8)
 - Override: orchestrator, under the standing instruction: Fix now — the product question is decided (NEEDS, Notifications: a revealed gift's dismissal or edit notifies nobody, like keep and received); fixed in COMMENTS_NOTIFICATIONS_PLAN (whether a gift is revealed is the owner's own data, so the condition keeps D12)
 - Outcome: open
+
+## Round 2 — 2026-11-09, reviewed at c05577d
+
+Envelope question, answered by the orchestrator: when an owner's removal of
+an author deletes their hidden gift, its remaining participants are notified
+that the gift was removed (recorded in NEEDS, Notifications).
+
+### R2-1 — Put back on a received hidden gift whose reveal date moved later loses it
+- Trigger: owner marks a revealed hidden gift received → moves the occasion's date later → puts the gift back → it leaves every owner view → deleting the occasion deletes it
+- Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D3, floor F2)
+- Override: —
+- Outcome: open
+
+### R2-2 — Removal deletes a hidden gift right after `participants_left` listed it
+- Trigger: owner removes an invitee who wrote an unbought hidden group gift others pledged on → the gift is deleted in the same transaction → the fan-out finds no gift row; pledgers get nothing, or the whole event fails
+- Scores: trigger=concrete (triager: was plausible), impact=degraded-ux, detect=silent, later=cheap, fix=S/shared, confidence=verified
+- Decision: Defer (D8)
+- Override: orchestrator, under the standing instruction: Fix now — the notification is now a NEEDS requirement, and a failing fan-out would also drop the notifications about the leaver's other group gifts
+- Outcome: open

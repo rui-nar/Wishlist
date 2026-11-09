@@ -255,6 +255,8 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
   the gift again.
 - A first email waits about a minute, so a quick correction or a burst of
   comments arrives as one email.
+- When the owner removes an invitee and that deletes a hidden gift they
+  added, its other participants are told the gift was removed.
 - Not notified for now: a gift marked received, an occasion or list
   deleted, a hidden gift edited or deleted by its author, and anything the
   recipient does with a revealed gift (received, dismiss, keep, or editing

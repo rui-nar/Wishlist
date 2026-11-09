@@ -56,3 +56,19 @@ gift edit and deletion.
 - Decision: Fix now (D7)
 - Override: —
 - Outcome: open
+
+## Round 2 — 2026-11-09, reviewed at c05577d
+
+### R2-1 — `participants_left` notifies about expired group gifts
+- Trigger: a member of a passed occasion's unbought group gift leaves or deletes their account → the remaining participants are emailed about a group gift that already ended
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Override: —
+- Outcome: open
+
+### R2-2 — U3 keeps in the ORM a check constraint the migration drops
+- Trigger: the U3 implementer follows Scope ("drop the FK only") → `GiftClaim` still declares `ck_gift_claims_occasion_id`; `alembic check` does not notice
+- Scores: trigger=concrete, impact=maintainability, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: open
