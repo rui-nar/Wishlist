@@ -20,33 +20,50 @@ R1-1 remains a defect only for the wait it passes on to `add_gift`.
 - Scores: trigger=plausible, impact=security, detect=silent, later=cheap, fix=S/local, confidence=verified (triager: was inferred)
 - Decision: Fix now (D3, floor F1)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan)
 
 ### R1-2 — Webhook, portal and account deletion are gated on being able to sell
 - Trigger: the owner withdraws the offer or clears any selling setting → the webhook answers 404 → Stripe drops events after its retries → a renewal paid in that window loses Premium silently, and every subscriber's account deletion answers 409
 - Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=M/local, confidence=verified (triager: was inferred)
 - Decision: Fix now (D3, floor F3)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan)
 
 ### R1-3 — No way back after a webhook delivery window is missed
 - Trigger: the webhook is unreachable across a renewal for longer than Stripe's retries → the paying subscriber becomes free at `period_end` + 3 days until the next event, up to a year later
 - Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=verified (triager: was inferred)
 - Decision: Fix now (D3, floor F3)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan)
 
 ### R1-4 — `past_due` can keep Premium for a whole unpaid period
 - Trigger: a card declines at renewal, and Stripe's "if all retries fail" setting leaves the subscription as it is → Premium persists up to a year unpaid
 - Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=inferred
 - Decision: Fix now (D3, floor F3)
 - Override: —
-- Outcome: open
+- Outcome: fixed (in plan)
 
 ### R1-5 — Account deletion when the customer was deleted at Stripe
 - Trigger: the customer is deleted by hand in the Stripe dashboard → `cancel_all` gets `resource_missing` → the deletion is unspecified and retries fail
 - Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified (triager: was inferred)
 - Decision: Defer (D10): the plan's own flow keeps customers, and proceeding on `resource_missing` is unsafe, since a key for another Stripe account answers the same
 - Revisit when: a `DELETE /api/me` fails on `MissingAtStripe`, or a procedure starts deleting Stripe customers
+- Override: —
+- Outcome: open
+
+## Round 2 — 2026-11-10, reviewed at a678d55
+
+### R2-1 — "Clear any selling variable" also breaks the portal when that variable is `PUBLIC_BASE_URL`
+- Trigger: the owner clears `PUBLIC_BASE_URL` to withdraw the offer → subscribers lose Manage subscription, and share and email links break too
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Override: orchestrator, under the standing instruction: Fix now — the revisit condition holds, because U3 is about to write this runbook; the fix is naming the variables
+- Outcome: fixed (in plan: D9, U3 Do 1)
+
+### R2-2 — No recovery step for a canceled subscription whose lost event is past Stripe's 30 days
+- Trigger: a cancellation's final event is lost during a gap and nobody reads the status for 30 days → the event cannot be resent → the WARNING repeats at each read of that user; Premium is not wrongly granted
+- Scores: trigger=plausible, impact=maintainability, detect=logged, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: the WARNING is traced to such a subscription, or the repeated line hides other lapses
 - Override: —
 - Outcome: open
