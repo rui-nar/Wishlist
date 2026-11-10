@@ -4,10 +4,17 @@ No `.env` file is read here: the dev scripts load it into the environment, and
 the compose files pass it with `env_file:`.
 """
 
+import re
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
+
+# ASCII digits, in major units of a two-decimal currency (premium plan D12):
+# what Decimal alone would also take, NaN, exponents or a sign, is no price.
+_PRICE_AMOUNT = re.compile(r"[0-9]+(\.[0-9]{1,2})?")
 
 
 class Settings(BaseSettings):
@@ -49,6 +56,88 @@ class Settings(BaseSettings):
     email_allowed_recipients: str = ""
     # False: the worker does not run, and activity waits in the outbox (D16).
     notifications_worker: bool = True
+    # Asks for the free plan's limits; they apply only while the app is selling
+    # (premium plan D9).
+    billing_enforce_limits: bool = False
+    free_max_lists: int = Field(default=1, ge=0)
+    free_max_gifts_per_list: int = Field(default=20, ge=0)
+    # The two secrets make the gateway: webhooks, the portal, cancellation at
+    # account deletion. The rest of Stripe's are for selling (D9, D16).
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_id: str = ""
+    stripe_automatic_tax: bool = False
+    # The price displayed, a text so that a wrong one withdraws the offer
+    # rather than stopping the app (D17). Empty: no offer.
+    billing_price_amount: str = ""
+    billing_price_currency: str = "EUR"
+    # The consent at checkout. Empty outside production: test placeholders; in
+    # production: no sale (D16, D17).
+    billing_terms_version: str = ""
+    billing_consent_text_en: str = ""
+    billing_consent_text_fr: str = ""
+    # Empty: the client links to its own placeholder pages (D17).
+    legal_terms_url: str = ""
+    legal_privacy_url: str = ""
+    legal_withdrawal_url: str = ""
+
+    @property
+    def billing_price(self) -> Decimal | None:
+        amount = self.billing_price_amount.strip()
+        price = Decimal(amount) if _PRICE_AMOUNT.fullmatch(amount) else None
+        # Nothing is sold for nothing: zero is no price either.
+        return price or None
+
+    @property
+    def missing_gateway_settings(self) -> list[str]:
+        """The variables that keep the app from talking to Stripe (D16)."""
+        key = self.stripe_secret_key.strip()
+        # VAL is seeded from PROD: outside production, a live key could charge
+        # the real customers it holds.
+        live = key.startswith(("sk_live_", "rk_live_"))
+        values = {
+            "STRIPE_SECRET_KEY": key if live == (self.app_env == "production") else "",
+            "STRIPE_WEBHOOK_SECRET": self.stripe_webhook_secret,
+        }
+        return [name for name, value in values.items() if not value.strip()]
+
+    @property
+    def missing_selling_settings(self) -> list[str]:
+        """The variables that keep the app from offering a purchase (D16)."""
+        values = {
+            "STRIPE_PRICE_ID": self.stripe_price_id,
+            "BILLING_PRICE_AMOUNT": "set" if self.billing_price else "",
+            "BILLING_PRICE_CURRENCY": self.billing_price_currency,
+            "PUBLIC_BASE_URL": self.public_base_url.strip().rstrip("/"),
+        }
+        if self.app_env == "production":
+            # A first real sale needs the EU obligations in place.
+            values |= {
+                "STRIPE_AUTOMATIC_TAX": "set" if self.stripe_automatic_tax else "",
+                "BILLING_TERMS_VERSION": self.billing_terms_version,
+                "BILLING_CONSENT_TEXT_EN": self.billing_consent_text_en,
+                "BILLING_CONSENT_TEXT_FR": self.billing_consent_text_fr,
+                "LEGAL_TERMS_URL": self.legal_terms_url,
+                "LEGAL_PRIVACY_URL": self.legal_privacy_url,
+                "LEGAL_WITHDRAWAL_URL": self.legal_withdrawal_url,
+            }
+        return self.missing_gateway_settings + [
+            name for name, value in values.items() if not value.strip()
+        ]
+
+    @property
+    def billing_gateway_configured(self) -> bool:
+        return not self.missing_gateway_settings
+
+    @property
+    def billing_selling(self) -> bool:
+        return not self.missing_selling_settings
+
+    @property
+    def limits_enforced(self) -> bool:
+        # Nobody can be blocked from growing a list while there is no way to
+        # pay (D9).
+        return self.billing_enforce_limits and self.billing_selling
 
     @property
     def missing_email_settings(self) -> list[str]:
