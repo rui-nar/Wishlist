@@ -76,7 +76,7 @@ can see, with no instance-wide total.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (8c3f279)
 
 ### R2-2 — The backfill's lock comment claims attaches never wait
 - Trigger: a maintainer relies on the comment; in fact an attach's `FOR UPDATE` waits for one batch.
@@ -85,7 +85,7 @@ can see, with no instance-wide total.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (8c3f279)
 
 ### R2-3 — A malformed `ADMIN_USER_IDS` entry is dropped with no log
 - Trigger: the owner mistypes the id, restarts, and sees no admin and no reason.
@@ -94,4 +94,4 @@ can see, with no instance-wide total.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (8c3f279)
