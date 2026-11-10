@@ -22,6 +22,7 @@ void main() {
   // The golden's name and the location the app opens at.
   const screens = {
     'sign_in_with_email': '/sign-in',
+    'sign_in_with_apple': '/sign-in',
     'email_sign_up': '/email-sign-up',
     'check_inbox': '/email-sign-up',
     'create_account': '/create-account#$kEmailLinkToken',
@@ -49,7 +50,12 @@ void main() {
           installFakeGoogleSignIn();
           SharedPreferences.setMockInitialValues({});
 
-          final app = buildApp(FakeServer(emailSignIn: true));
+          final apple = screen == 'sign_in_with_apple';
+          final app = buildApp(FakeServer(
+            emailSignIn: true,
+            appleClientId: apple ? kAppleClientId : null,
+            appleRedirectUri: apple ? kAppleRedirectUri : null,
+          ));
           await tester.pumpWidget(app.app);
           await app.auth.restore();
           await tester.pumpAndSettle();

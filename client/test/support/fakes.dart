@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:sign_in_with_apple_platform_interface/sign_in_with_apple_platform_interface.dart';
 import 'package:wishlist/l10n/app_localizations.dart';
 import 'package:wishlist/main.dart';
 import 'package:wishlist/src/api/api_client.dart';
@@ -20,6 +21,13 @@ const kApiBase = 'http://api.test';
 
 /// The ID token [FakeServer] accepts.
 const kValidIdToken = 'valid-google-id-token';
+
+/// The Apple ID token [FakeServer] accepts.
+const kValidAppleIdToken = 'valid-apple-id-token';
+
+/// What a server with Apple configured gives in `/api/config`.
+const kAppleClientId = 'test.apple.service';
+const kAppleRedirectUri = 'https://app.test/api/auth/apple/callback';
 
 const kAlice = {
   'id': '7b0c2f1e-0000-4000-8000-000000000001',
@@ -80,9 +88,19 @@ class FakeServer {
     this.googleClientId = 'test-client-id',
     this.publicBaseUrl,
     this.emailSignIn = false,
+    this.appleClientId,
+    this.appleRedirectUri,
   });
 
   String? googleClientId;
+
+  /// `apple_client_id` and `apple_redirect_uri` in `/api/config` (sign-in
+  /// plan D18); not configured by default.
+  String? appleClientId;
+  String? appleRedirectUri;
+
+  /// The body of every `POST /api/auth/apple`, oldest first.
+  final appleBodies = <Map<String, dynamic>>[];
 
   /// `email_sign_in` in `/api/config` (sign-in plan D18); off by default.
   bool emailSignIn;
@@ -154,7 +172,14 @@ class FakeServer {
           'google_client_id': googleClientId,
           'public_base_url': publicBaseUrl,
           'email_sign_in': emailSignIn,
+          'apple_client_id': appleClientId,
+          'apple_redirect_uri': appleRedirectUri,
         });
+      case 'POST /api/auth/apple':
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        appleBodies.add(body);
+        if (body['id_token'] != kValidAppleIdToken) return unauthorized;
+        return json({'token': addSession(), 'user': kAlice});
       case 'POST /api/auth/email/start':
         emailBodies[call] = jsonDecode(request.body) as Map<String, dynamic>;
         return http.Response('', 202);
@@ -295,6 +320,56 @@ FakeGoogleSignIn installFakeGoogleSignIn() {
   resetGoogleSignInInitialized();
   final fake = FakeGoogleSignIn();
   GoogleSignInPlatform.instance = fake;
+  return fake;
+}
+
+/// Apple's platform implementation: records each request. Answers with
+/// [credential], or throws [error], or stays pending while [pending] is set,
+/// as Android does when the custom tab is closed.
+class FakeAppleSignIn extends SignInWithApplePlatform {
+  final nonces = <String?>[];
+  final options = <WebAuthenticationOptions?>[];
+  final scopes = <List<AppleIDAuthorizationScopes>>[];
+
+  AuthorizationCredentialAppleID credential = appleCredential();
+  Object? error;
+  Completer<AuthorizationCredentialAppleID>? pending;
+
+  @override
+  Future<AuthorizationCredentialAppleID> getAppleIDCredential({
+    required List<AppleIDAuthorizationScopes> scopes,
+    WebAuthenticationOptions? webAuthenticationOptions,
+    String? nonce,
+    String? state,
+  }) async {
+    this.scopes.add(scopes);
+    options.add(webAuthenticationOptions);
+    nonces.add(nonce);
+    if (pending case final completer?) return completer.future;
+    if (error case final thrown?) throw thrown;
+    return credential;
+  }
+
+  static AuthorizationCredentialAppleID appleCredential({
+    String? identityToken = kValidAppleIdToken,
+    String? givenName,
+    String? familyName,
+  }) =>
+      AuthorizationCredentialAppleID(
+        userIdentifier: null,
+        givenName: givenName,
+        familyName: familyName,
+        authorizationCode: 'code',
+        email: null,
+        identityToken: identityToken,
+        state: null,
+      );
+}
+
+/// Installs a fresh [FakeAppleSignIn].
+FakeAppleSignIn installFakeAppleSignIn() {
+  final fake = FakeAppleSignIn();
+  SignInWithApplePlatform.instance = fake;
   return fake;
 }
 
