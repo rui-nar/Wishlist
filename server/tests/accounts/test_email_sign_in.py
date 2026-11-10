@@ -134,8 +134,11 @@ def answer(response: Any) -> tuple:
 
 
 def test_start_answers_the_same_for_known_and_unknown_addresses(
-    client, engine, account
+    client, engine, account, clock
 ):
+    # Links of one instant would come back in the order of their random ids.
+    clock.advance(timedelta(seconds=1))
+
     known = start(client, ADDRESS)
     unknown = start(client, "nobody@example.test")
 
