@@ -1265,5 +1265,149 @@
   "unsubscribeOpenAccount": "Go to my account",
   "@unsubscribeOpenAccount": {
     "description": "The unsubscribe page: the button that opens the account screen, after signing in if needed."
+  },
+  "planSectionTitle": "Your plan",
+  "@planSectionTitle": {
+    "description": "Account screen: the title of the section showing the plan."
+  },
+  "planFree": "Free plan",
+  "@planFree": {
+    "description": "The plan an account is on when it is not Premium."
+  },
+  "planPremium": "Premium",
+  "@planPremium": {
+    "description": "The name of the paid plan."
+  },
+  "planRenews": "Renews on {date}",
+  "@planRenews": {
+    "description": "The Premium plan: the date it renews.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 March 2027"
+      }
+    }
+  },
+  "planEnds": "Ends on {date}",
+  "@planEnds": {
+    "description": "The Premium plan: the date it ends.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 March 2027"
+      }
+    }
+  },
+  "planPastDue": "Your last payment failed. Update your card to keep Premium.",
+  "@planPastDue": {
+    "description": "The Premium plan: the last payment failed."
+  },
+  "planSee": "See Premium",
+  "@planSee": {
+    "description": "The button opening the Premium page."
+  },
+  "planManage": "Manage subscription",
+  "@planManage": {
+    "description": "The button opening the payment provider's subscription portal."
+  },
+  "planFreeLimits": "Free: {lists, plural, =1{1 list} other{{lists} lists}}, up to {gifts} gifts per list",
+  "@planFreeLimits": {
+    "description": "The Premium page: what the free plan includes, from the server's limits.",
+    "placeholders": {
+      "lists": {
+        "type": "int",
+        "example": "1"
+      },
+      "gifts": {
+        "type": "int",
+        "example": "20"
+      }
+    }
+  },
+  "planPremiumLimits": "Premium: unlimited lists and gifts",
+  "@planPremiumLimits": {
+    "description": "The Premium page: what Premium includes."
+  },
+  "planPricePerYear": "{price} per year, VAT included",
+  "@planPricePerYear": {
+    "description": "The Premium page: the yearly price, already formatted.",
+    "placeholders": {
+      "price": {
+        "type": "String",
+        "example": "€19.99"
+      }
+    }
+  },
+  "planBuy": "Continue to payment",
+  "@planBuy": {
+    "description": "The Premium page: the button leading to the payment page."
+  },
+  "planMobileUnavailable": "Subscriptions are not available in the app yet.",
+  "@planMobileUnavailable": {
+    "description": "The Premium page in a phone app: subscribing is not offered there."
+  },
+  "planCheckoutCancelled": "Payment cancelled. Nothing was charged.",
+  "@planCheckoutCancelled": {
+    "description": "The Premium page, back from a cancelled payment."
+  },
+  "planCheckoutProcessing": "Your payment is being processed. Your plan will update shortly.",
+  "@planCheckoutProcessing": {
+    "description": "The Premium page, back from a payment not yet confirmed."
+  },
+  "planThanks": "You are on Premium. Thank you.",
+  "@planThanks": {
+    "description": "The Premium page, once the payment is confirmed."
+  },
+  "planLoadFailed": "Could not load your plan.",
+  "@planLoadFailed": {
+    "description": "The plan could not be read from the server."
+  },
+  "planActionFailed": "That did not work. Try again in a moment.",
+  "@planActionFailed": {
+    "description": "A plan action (payment, subscription portal) failed."
+  },
+  "planLimitTitle": "Free plan limit reached",
+  "@planLimitTitle": {
+    "description": "The dialog shown when a free plan limit is reached: its title."
+  },
+  "planLimitLists": "The free plan includes {limit, plural, =1{1 list} other{{limit} lists}}. Your lists stay as they are.",
+  "@planLimitLists": {
+    "description": "The limit dialog: the lists limit was reached.",
+    "placeholders": {
+      "limit": {
+        "type": "int",
+        "example": "1"
+      }
+    }
+  },
+  "planLimitGifts": "The free plan includes {limit} gifts per list. The gifts on this list stay as they are.",
+  "@planLimitGifts": {
+    "description": "The limit dialog: the gifts per list limit was reached.",
+    "placeholders": {
+      "limit": {
+        "type": "int",
+        "example": "20"
+      }
+    }
+  },
+  "planNotNow": "Not now",
+  "@planNotNow": {
+    "description": "The limit dialog: the button dismissing it."
+  },
+  "legalTerms": "Terms of service",
+  "@legalTerms": {
+    "description": "A link to the terms of service, and the title of its page."
+  },
+  "legalPrivacy": "Privacy",
+  "@legalPrivacy": {
+    "description": "A link to the privacy policy, and the title of its page."
+  },
+  "legalWithdrawal": "Right of withdrawal",
+  "@legalWithdrawal": {
+    "description": "A link to the right of withdrawal, and the title of its page."
+  },
+  "legalPlaceholderBody": "This page is a placeholder. Its text has not been supplied yet, and nothing here is binding.",
+  "@legalPlaceholderBody": {
+    "description": "The legal pages: the text is provisional and binds no one."
   }
 }

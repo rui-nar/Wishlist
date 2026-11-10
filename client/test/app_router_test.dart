@@ -85,6 +85,23 @@ void main() {
       }
     });
 
+    test('the legal pages pass, signed out and in (PREMIUM_PLAN D17)', () {
+      for (final status in [
+        AuthStatus.signedOut,
+        AuthStatus.failed,
+        AuthStatus.signingIn,
+        AuthStatus.signedIn,
+      ]) {
+        for (final path in [
+          '/legal/terms',
+          '/legal/privacy',
+          '/legal/withdrawal',
+        ]) {
+          expect(redirect(status, path), isNull, reason: '$status $path');
+        }
+      }
+    });
+
     test('signed out: a gift link keeps its gift through sign-in (D20)', () {
       final target = redirect(AuthStatus.signedOut, '/shared/o1?gift=g1');
       expect(
