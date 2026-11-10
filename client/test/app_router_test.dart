@@ -85,6 +85,37 @@ void main() {
       }
     });
 
+    test('the pages a mailed link opens pass, signed out and in (D8)', () {
+      for (final status in [
+        AuthStatus.signedOut,
+        AuthStatus.failed,
+        AuthStatus.signingIn,
+        AuthStatus.signedIn,
+      ]) {
+        for (final path in [
+          '/create-account',
+          '/create-account#abc',
+          '/reset-password',
+          '/reset-password#abc',
+        ]) {
+          expect(redirect(status, path), isNull, reason: '$status $path');
+        }
+      }
+    });
+
+    test('the page asking for a link: public signed out, home signed in', () {
+      for (final status in [
+        AuthStatus.signedOut,
+        AuthStatus.failed,
+        AuthStatus.signingIn,
+      ]) {
+        expect(redirect(status, '/email-sign-up'), isNull, reason: '$status');
+        expect(redirect(status, '/email-sign-up?from=%2Fjoin'), isNull,
+            reason: '$status');
+      }
+      expect(redirect(AuthStatus.signedIn, '/email-sign-up'), '/');
+    });
+
     test('the legal pages pass, signed out and in (PREMIUM_PLAN D17)', () {
       for (final status in [
         AuthStatus.signedOut,

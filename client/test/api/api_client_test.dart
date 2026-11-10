@@ -381,6 +381,43 @@ void main() {
       );
     });
 
+    test('reads what the sign-in screen offers (sign-in plan D18)', () async {
+      final config = await fetchClientConfig(answering({
+        'google_client_id': 'abc',
+        'apple_client_id': 'com.example.service',
+        'apple_redirect_uri': 'https://wishlist.example/api/auth/apple/callback',
+        'email_sign_in': true,
+      }));
+
+      expect(config.appleClientId, 'com.example.service');
+      expect(config.appleRedirectUri,
+          'https://wishlist.example/api/auth/apple/callback');
+      expect(config.emailSignIn, isTrue);
+    });
+
+    test('email sign-in is off when false, null or absent', () async {
+      for (final body in [
+        {'google_client_id': 'abc', 'email_sign_in': false},
+        {'google_client_id': 'abc', 'email_sign_in': null},
+        {'google_client_id': 'abc'},
+      ]) {
+        final config = await fetchClientConfig(answering(body));
+        expect(config.emailSignIn, isFalse, reason: '$body');
+        expect(config.appleClientId, isNull, reason: '$body');
+        expect(config.appleRedirectUri, isNull, reason: '$body');
+      }
+    });
+
+    test('an email_sign_in that is not a bool is not a usable answer',
+        () async {
+      await expectLater(
+        fetchClientConfig(
+          answering({'google_client_id': 'abc', 'email_sign_in': 'yes'}),
+        ),
+        throwsA(isA<ApiUnreachableException>()),
+      );
+    });
+
     test('a field that is not a string is not a usable answer', () async {
       await expectLater(
         fetchClientConfig(

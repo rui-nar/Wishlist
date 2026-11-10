@@ -2,6 +2,10 @@
 /// the join screen uses it (LISTS_GIFTS_SHARING_PLAN D5).
 library;
 
+import 'dart:convert';
+
+import 'package:shared_preferences/shared_preferences.dart';
+
 // Web: the browser's session storage and history. Android and iOS: memory,
 // since their links do not open the app yet (mobile app links, a later plan).
 import 'join_browser_stub.dart'
@@ -9,6 +13,12 @@ import 'join_browser_stub.dart'
 
 /// The path of an occasion link: `<origin>/join#<token>`.
 const kJoinPath = '/join';
+
+/// How long an occasion link waits for the mailed link that follows it
+/// (sign-in plan D19): as long as that link works.
+const kJoinHandoverLifetime = Duration(hours: 1);
+
+const _kHandoverKey = 'wishlist.join_handover';
 
 /// Where the pending token outlives a reload, and the address bar.
 abstract class JoinBrowser {
@@ -100,5 +110,54 @@ class PendingJoin {
   void clear() {
     _token = null;
     _browser.clear();
+  }
+
+  /// Copies the pending token where the tab a mailed link opens can read it,
+  /// for [kJoinHandoverLifetime] (sign-in plan D19): that tab cannot see this
+  /// one's session storage. With nothing pending, an earlier copy is removed,
+  /// so that this link cannot join someone else's occasion.
+  Future<void> handOverForEmailLink({DateTime? now}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = _token;
+      if (token == null) {
+        await prefs.remove(_kHandoverKey);
+        return;
+      }
+      final expires = (now ?? DateTime.now()).add(kJoinHandoverLifetime);
+      await prefs.setString(
+        _kHandoverKey,
+        jsonEncode({
+          'token': token,
+          'expires_at': expires.millisecondsSinceEpoch,
+        }),
+      );
+    } catch (_) {
+      // Storage can be refused: the person opens the invitation again.
+    }
+  }
+
+  /// Takes back what [handOverForEmailLink] left, once a mailed link has
+  /// signed in. What this tab already has pending wins, being more recent.
+  /// The copy is gone afterwards, used or not.
+  Future<void> resumeAfterEmailLink({DateTime? now}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Another tab wrote it, after this one read its preferences.
+      await prefs.reload();
+      final stored = prefs.getString(_kHandoverKey);
+      await prefs.remove(_kHandoverKey);
+      if (stored == null || _token != null) return;
+      final handover = jsonDecode(stored) as Map<String, dynamic>;
+      final expires = DateTime.fromMillisecondsSinceEpoch(
+        handover['expires_at'] as int,
+      );
+      if (!(now ?? DateTime.now()).isBefore(expires)) return;
+      final token = handover['token'] as String;
+      _token = token;
+      _browser.write(token);
+    } catch (_) {
+      // Unreadable or refused: the same as none.
+    }
   }
 }
