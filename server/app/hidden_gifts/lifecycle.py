@@ -14,15 +14,18 @@ from datetime import datetime
 from sqlalchemy import delete, exists, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.billing import limits
 from app.lists.access import not_found
 from app.lists.models import Gift, Occasion
 from app.lists.visibility import (
     is_owner_visible,
     is_revealed,
+    list_of,
     reveal_date_has_passed,
 )
 from app.reserving.models import GiftClaim
 from app.reserving.release import drop_gift_activity
+from app.settings import Settings
 
 
 def settle_occasion_deletion(db: Session, occasion: Occasion, now: datetime) -> None:
@@ -120,7 +123,11 @@ class NotRevealed(Exception):
 
 
 def set_received(
-    db: Session, gift: Gift, received_at: datetime | None, now: datetime
+    db: Session,
+    settings: Settings,
+    gift: Gift,
+    received_at: datetime | None,
+    now: datetime,
 ) -> None:
     """Marks the gift received at `received_at`, or puts it back for None
     (D5). Both are idempotent: marking keeps the first receipt's time.
@@ -134,13 +141,27 @@ def set_received(
     (its date moved later since) is not put back: it would leave every owner
     view, and its occasion's deletion would take it (review R2-1). Only a
     revealed gift can have been received, so neither answer leaks anything.
+
+    Putting back a gift on the list is growth (premium plan D6): the list's
+    growth lock is taken first and the gift read again under it, so a repeat
+    is a no-op and only a gift still received can be refused. A revealed gift
+    put back has no `list_id` and never counts.
     """
+    back_on_list = gift.list_id if received_at is None else None
+    if back_on_list is not None:
+        limits.lock_gift_growth(db, settings, back_on_list)
     _lock_occasion(db, gift)
     if not is_owner_visible(db, gift, now):
         raise not_found()
     if received_at is None and gift.list_id is None and not is_revealed(db, gift, now):
         # Seen by its owners, yet not revealed: received (`owner_visible`).
         raise NotRevealed
+    if (
+        back_on_list is not None
+        and settings.limits_enforced
+        and _still_received(db, gift)
+    ):
+        limits.ensure_room_for_gift(db, settings, back_on_list, now)
     update_received = update(Gift).where(Gift.id == gift.id)
     if received_at is not None:
         update_received = update_received.where(Gift.received_at.is_(None))
@@ -153,7 +174,15 @@ def set_received(
     )
 
 
-def keep_revealed(db: Session, gift: Gift, now: datetime) -> Gift:
+def _still_received(db: Session, gift: Gift) -> bool:
+    return bool(
+        db.scalar(
+            select(exists().where(Gift.id == gift.id, Gift.received_at.is_not(None)))
+        )
+    )
+
+
+def keep_revealed(db: Session, settings: Settings, gift: Gift, now: datetime) -> Gift:
     """Puts a revealed gift on its list, as a new gift: the same title,
     description, links, price and image under a new id, at the end of the
     list, with nothing of its past (D6). Returns the new gift, flushed.
@@ -164,6 +193,12 @@ def keep_revealed(db: Session, gift: Gift, now: datetime) -> Gift:
     moment, or hidden again by a date moved later, it answers 404, the
     random id's answer; a received one whose date moved later answers
     `NotRevealed`, as does a gift on the list.
+
+    The free plan's limit comes last (premium plan D6, D8): after the reveal,
+    so a gift not revealed answers as it does anywhere; and the list's growth
+    lock after the wait on the gift, which a giver's `FOR KEY SHARE` can
+    prolong, so no add queues behind that wait (review R1-1). A refusal writes
+    nothing: the gift stays revealed.
 
     The old row's activity is dropped (D15) and the row deleted before the
     new one is inserted, all in the caller's transaction: the image passes
@@ -184,6 +219,9 @@ def keep_revealed(db: Session, gift: Gift, now: datetime) -> Gift:
         if is_owner_visible(db, old, now):
             raise NotRevealed
         raise not_found()
+    list_id = list_of(old)
+    limits.lock_gift_growth(db, settings, list_id)
+    limits.ensure_room_for_gift(db, settings, list_id, now)
     kept = Gift(
         list_id=old.for_list_id,
         title=old.title,

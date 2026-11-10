@@ -23,6 +23,14 @@ from sqlalchemy.orm import Session
 
 from app.accounts.deps import CurrentUser
 from app.accounts.models import User
+from app.billing.limits import (
+    PLAN_LIMIT,
+    PlanLimitReached,
+    PlanLimitRefusal,
+    ensure_room_for_gift,
+    ensure_room_for_list,
+    lock_gift_growth,
+)
 from app.db import DbSession
 from app.hidden_gifts.lifecycle import (
     NotRevealed,
@@ -95,6 +103,7 @@ from app.reserving.release import (
 router = APIRouter(prefix="/api", tags=["lists"])
 
 _NOT_REVEALED_RESPONSE = {status.HTTP_409_CONFLICT: {"model": GiftConflict}}
+_PLAN_LIMIT_RESPONSE = {status.HTTP_402_PAYMENT_REQUIRED: {"model": PlanLimitRefusal}}
 # The fields whose change notifies the gift's givers (comments plan D10).
 _NOTIFIED_FIELDS = (
     "title",
@@ -134,8 +143,21 @@ def my_lists(user: CurrentUser, db: DbSession) -> list[ListSummary]:
     ]
 
 
-@router.post("/lists", status_code=status.HTTP_201_CREATED)
-def create_list(body: ListCreate, user: CurrentUser, db: DbSession) -> ListOut:
+@router.post(
+    "/lists",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ListOut,
+    responses=_PLAN_LIMIT_RESPONSE,
+)
+def create_list(
+    body: ListCreate, request: Request, user: CurrentUser, db: DbSession
+) -> ListOut | JSONResponse:
+    try:
+        ensure_room_for_list(
+            db, request.app.state.settings, user.id, request.app.state.clock()
+        )
+    except PlanLimitReached as refused:
+        return _plan_limit(refused)
     created = List(
         title=body.title,
         recipient_kind=body.recipient_kind,
@@ -207,15 +229,27 @@ def delete_list(list_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Respons
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/lists/{list_id}/gifts", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/lists/{list_id}/gifts",
+    status_code=status.HTTP_201_CREATED,
+    response_model=GiftOut,
+    responses=_PLAN_LIMIT_RESPONSE,
+)
 def add_gift(
     list_id: uuid.UUID,
     body: GiftCreate,
     request: Request,
     user: CurrentUser,
     db: DbSession,
-) -> GiftOut:
+) -> GiftOut | JSONResponse:
     found = owned_list(db, user, list_id)
+    settings = request.app.state.settings
+    now = request.app.state.clock()
+    lock_gift_growth(db, settings, found.id)
+    try:
+        ensure_room_for_gift(db, settings, found.id, now)
+    except PlanLimitReached as refused:
+        return _plan_limit(refused)
     gift = Gift(
         list_id=found.id,
         title=body.title,
@@ -224,7 +258,7 @@ def add_gift(
         price_amount=body.price_amount,
         price_currency=body.price_currency,
     )
-    _set_image(db, user, gift, body.image_id, request.app.state.clock())
+    _set_image(db, user, gift, body.image_id, now)
     db.add(gift)
     db.flush()
     # Read back as stored: an amount of 149 is answered as "149.00".
@@ -308,14 +342,14 @@ def mark_received(
     # so putting it back restores it.
     now = request.app.state.clock()
     gift = owned_gift(db, user, gift_id, now)
-    set_received(db, gift, now, now)
+    set_received(db, request.app.state.settings, gift, now, now)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete(
     "/gifts/{gift_id}/received",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses=_NOT_REVEALED_RESPONSE,
+    responses=_NOT_REVEALED_RESPONSE | _PLAN_LIMIT_RESPONSE,
 )
 def put_back(
     gift_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
@@ -324,14 +358,18 @@ def put_back(
     now = request.app.state.clock()
     gift = owned_gift(db, user, gift_id, now)
     try:
-        set_received(db, gift, None, now)
+        set_received(db, request.app.state.settings, gift, None, now)
     except NotRevealed:
         return _not_revealed()
+    except PlanLimitReached as refused:
+        return _plan_limit(refused)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
-    "/gifts/{gift_id}/keep", response_model=GiftOut, responses=_NOT_REVEALED_RESPONSE
+    "/gifts/{gift_id}/keep",
+    response_model=GiftOut,
+    responses=_NOT_REVEALED_RESPONSE | _PLAN_LIMIT_RESPONSE,
 )
 def keep_gift(
     gift_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
@@ -340,9 +378,11 @@ def keep_gift(
     now = request.app.state.clock()
     gift = owned_gift(db, user, gift_id, now)
     try:
-        kept = keep_revealed(db, gift, now)
+        kept = keep_revealed(db, request.app.state.settings, gift, now)
     except NotRevealed:
         return _not_revealed()
+    except PlanLimitReached as refused:
+        return _plan_limit(refused)
     db.refresh(kept)
     return _gift_out(kept, _image_of(db, kept))
 
@@ -641,6 +681,20 @@ def _not_revealed() -> JSONResponse:
         status_code=status.HTTP_409_CONFLICT,
         content=GiftConflict(
             detail="This gift is not revealed", code=NOT_REVEALED
+        ).model_dump(),
+    )
+
+
+def _plan_limit(refused: PlanLimitReached) -> JSONResponse:
+    # Returned, not raised, so the body keeps its `code`. Nothing was
+    # written (premium plan D4).
+    return JSONResponse(
+        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        content=PlanLimitRefusal(
+            detail="The free plan's limit is reached",
+            code=PLAN_LIMIT,
+            resource=refused.resource,
+            limit=refused.limit,
         ).model_dump(),
     )
 
