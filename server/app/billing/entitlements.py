@@ -152,6 +152,22 @@ def warn_if_lapsed(db: Session, user_id: uuid.UUID, now: datetime) -> None:
         _log.warning(
             "entitlement past its grace: id=%s source=%s", entitlement_id, source
         )
+    # Not a lost event, so not the wording the runbook's resend answers: the
+    # provider's facts came with no period end, and such a row grants nothing
+    # (review R3-1).
+    undated = db.execute(
+        select(Entitlement.id, Entitlement.source).where(
+            Entitlement.user_id == user_id,
+            Entitlement.status.in_(_GRANTING),
+            Entitlement.period_end.is_(None),
+        )
+    )
+    for entitlement_id, source in undated:
+        _log.warning(
+            "entitlement granting status without a period end: id=%s source=%s",
+            entitlement_id,
+            source,
+        )
 
 
 def summary(db: Session, user_id: uuid.UUID, now: datetime) -> EntitlementSummary:

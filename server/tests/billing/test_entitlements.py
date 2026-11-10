@@ -382,9 +382,8 @@ def test_each_lapsed_row_is_logged_even_beside_one_in_force(
         {"period_end": NOW - GRACE + timedelta(seconds=1)},
         {"status": "ended", "period_end": NOW - GRACE},
         {"status": "incomplete", "period_end": NOW - GRACE},
-        {"period_end": None},
     ],
-    ids=["in period", "in the grace", "ended", "incomplete", "no period end"],
+    ids=["in period", "in the grace", "ended", "incomplete"],
 )
 def test_no_warning_for_a_row_not_lapsed(engine, user, record, caplog, overrides):
     record(facts(user, **overrides))
@@ -393,6 +392,24 @@ def test_no_warning_for_a_row_not_lapsed(engine, user, record, caplog, overrides
         warn_if_lapsed(db, user, NOW)
 
     assert caplog.records == []
+
+
+@pytest.mark.parametrize("status", ["active", "past_due"])
+def test_a_granting_row_without_a_period_end_logs_its_own_warning(
+    engine, user, record, rows, caplog, status
+):
+    """Review R3-1: not the lapse's wording, whose recovery does not apply."""
+    record(facts(user, status=status, period_end=None))
+    row = rows()[0]
+
+    with caplog.at_level(logging.DEBUG, logger=LOGGER), Session(engine) as db:
+        warn_if_lapsed(db, user, NOW)
+
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelno == logging.WARNING
+    assert caplog.records[0].getMessage() == (
+        f"entitlement granting status without a period end: id={row.id} source=stripe"
+    )
 
 
 def test_no_warning_for_another_persons_row(engine, make_account, record, caplog):
