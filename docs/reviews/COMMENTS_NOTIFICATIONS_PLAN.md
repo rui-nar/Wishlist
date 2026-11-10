@@ -93,3 +93,29 @@ token reaches uvicorn's access log, because RFC 8058 puts it in the URL.
 Accepted and recorded as the one exception in the plan's Conventions: the
 token can only turn one account's email off, the account screen turns it back
 on, and only the admin reads that log. Unlike a join token, it grants nothing.
+
+## Round 6 — 2026-11-10, unit review of U7, reviewed at 3f9629f
+
+### R6-1 — The sweep and a giver's release lock the same orphaned claims in different orders
+- Trigger: an owner deletes two gifts an invitee holds → the sweep's unordered `DELETE FROM gift_claims` locks those rows in scan order while the invitee leaves, is removed or deletes their account → `release_activity` locks them in `gift_id` order → deadlock, and when the request is the victim, a 500
+- Scores: trigger=plausible, impact=degraded-ux (triager: was wrong-visible), detect=user-visible, later=cheap, fix=S/local, confidence=verified (triager: was inferred)
+- Decision: Defer (D10)
+- Revisit when: a PostgreSQL deadlock involving `gift_claims` appears in the logs
+- Override: orchestrator, under the standing instruction: Fix now — the fix is inside the sweep and touches no request path; a 500 on account deletion is what RESERVING R9-3 and hidden gifts R3-1 were fixed for
+- Outcome: open
+
+### R6-2 — A digest row deleted during a refused send aborts the rest of the run
+- Trigger: an account or occasion is deleted while Brevo answers 429 or 5xx for that digest → `_requeue`'s `get_one` raises → the remaining digests of the run wait for the next one, 15 s later; nothing is sent twice
+- Scores: trigger=plausible, impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: `notifications: run failed (NoResultFound)` recurs in the logs, or the run interval grows
+- Override: —
+- Outcome: open
+
+### R6-3 — `claimed_at` is the run's start time
+- Trigger: a run lasting over 10 minutes during a deploy's two-process overlap → the other process's `_fail_stale` marks in-flight digests `failed/unknown` → one email per affected digest is lost or mis-recorded; no duplicates
+- Scores: trigger=plausible, impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: a worker run lasts over 10 minutes, a digest ends `failed/unknown` while its process was alive, `SEND_BATCH` or the mailer timeouts increase, or several app processes run permanently
+- Override: —
+- Outcome: open
