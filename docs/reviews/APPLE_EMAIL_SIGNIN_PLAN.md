@@ -98,3 +98,41 @@ No findings.
 ## Round 4 — 2026-11-10, unit review of U3, reviewed at 376fdad
 
 No findings.
+
+## Round 5 — 2026-11-10, integrated review, reviewed at 01120d6
+
+Decisions approved as triaged, floors enforced, under the owner's standing
+instruction of 2026-11-10.
+
+### R5-1 — A Google failure masks the outcome of a later email sign-in
+- Trigger: Google's flow fails with a non-cancel error → the person submits a wrong password in the email form → the error line keeps reading the Google message.
+- Scores: trigger=plausible (corrected from concrete: a blocked script hangs and never sets the failure), impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: a person reports the Google message after an email sign-in attempt, non-cancel Google failures are seen on Android or the web, or a change makes Google's script load able to report failure
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R5-2 — Android offers Apple when `APPLE_ANDROID_PACKAGE` is empty
+- Trigger: the operator sets `APPLE_CLIENT_IDS` and leaves the package empty → an Android user authorises → the callback answers a JSON 503 in the custom tab, and the app's attempt stays pending.
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: an environment that Android builds point at is deliberately run with Apple on the web only, the runbook stops setting both together, or a 503 on `POST /api/auth/apple/callback` is logged or reported
+- Guard: —
+- Override: —
+- Outcome: open
+
+## Delivery
+
+Delivered under the owner's standing instruction of 2026-11-10, with no stop
+after the split.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Schema, settings, identities, throttle, passwords | Opus | S4 | 1 | — | yes | R1-1, R1-5 |
+| U2 | The email routes and the worker's step | Opus | S5 | 1 | — | yes | R1-2, R1-4, R3-1, R3-2, R3-3 |
+| U3 | Server: Apple | Opus | S5 | 1 | — | yes | R1-3, R1-6 |
+| U4 | Client: email sign-in | Opus | S5 | 1 | — (goldens run by the orchestrator: the worktree refuses pwsh) | yes | R5-1 |
+| U6 | Docs and deployment | Sonnet | — | 1 | — | yes | — |
+| U5 | Client: the Apple button | Opus | S5 | 1 | — (goldens run by the orchestrator) | yes | R5-2 |
+| F1 | A flaky test of U2 | Opus | S5 | 1 | — | yes (20 runs; full suite) | — |
