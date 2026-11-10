@@ -601,6 +601,7 @@ GUARDED_PREFIXES = (
     "/api/join",
     "/api/shared",
     "/api/images",
+    "/api/billing",
 )
 
 # Routes under those prefixes that name no object of a list, so they cannot
@@ -613,6 +614,10 @@ COVERED_ELSEWHERE = {
     ("POST", "/api/join"),  # test_join_by_role
     ("POST", "/api/images"),  # test_uploading_an_image_by_role
     ("POST", "/api/images/from-url"),  # test_image_from_url_by_role
+    ("GET", "/api/billing"),  # test_billing_status_by_role
+    ("POST", "/api/billing/checkout"),  # test_billing_sessions_by_role
+    ("POST", "/api/billing/portal"),  # test_billing_sessions_by_role
+    ("POST", "/api/billing/webhook"),  # test_stripe_webhook_by_role
 }
 
 
@@ -963,6 +968,80 @@ def test_attaching_a_lists_image_elsewhere_by_role(client, scenario, list_key, a
         422,
         {"detail": "image_not_attachable"},
     )
+    assert owners_view(client, scenario) == before
+
+
+@pytest.fixture
+def billing_client(make_client, billing_on):
+    """A client for the same database with the gateway configured (a fake)."""
+    return make_client(**billing_on)
+
+
+@pytest.mark.parametrize("actor", ACTORS)
+def test_billing_status_by_role(client, billing_client, scenario, actor):
+    """Everyone's status is their own plan; nothing of a list shows."""
+    before = owners_view(client, scenario)
+
+    response = billing_client.get("/api/billing", headers=scenario.headers(actor))
+
+    assert owners_view(client, scenario) == before
+    if actor == SIGNED_OUT:
+        assert response.status_code == 401
+        return
+    assert response.status_code == 200
+    assert response.json()["plan"] == "free"
+    assert_reveals_nothing(
+        response.json(), scenario.hidden_from(actor), recipient=actor == ME_OWNER
+    )
+
+
+@pytest.mark.parametrize("actor", ACTORS)
+def test_billing_sessions_by_role(client, billing_client, scenario, actor):
+    """The same answers for every role: a session is about the caller alone."""
+    before = owners_view(client, scenario)
+    headers = scenario.headers(actor)
+
+    before_any_customer = billing_client.post("/api/billing/portal", headers=headers)
+    checkout = billing_client.post("/api/billing/checkout", headers=headers)
+    portal = billing_client.post("/api/billing/portal", headers=headers)
+
+    assert owners_view(client, scenario) == before
+    if actor == SIGNED_OUT:
+        assert {
+            before_any_customer.status_code,
+            checkout.status_code,
+            portal.status_code,
+        } == {401}
+        return
+    assert before_any_customer.status_code == 409
+    assert before_any_customer.json()["code"] == "no_subscription"
+    assert checkout.status_code == 200
+    assert portal.status_code == 200
+    assert_reveals_nothing(checkout.json(), scenario.hidden_from(actor))
+    assert_reveals_nothing(portal.json(), scenario.hidden_from(actor))
+
+
+@pytest.mark.parametrize("actor", ACTORS)
+def test_stripe_webhook_by_role(client, billing_client, scenario, actor):
+    """A session is nothing to the webhook: without a signature, every actor
+    gets the same refusal and changes nothing, and with no gateway the same
+    404."""
+    before = owners_view(client, scenario)
+    gateway = billing_client.app.state.stripe_gateway
+
+    refused = billing_client.post(
+        "/api/billing/webhook", content=b"{}", headers=scenario.headers(actor)
+    )
+    absent = client.post(
+        "/api/billing/webhook", content=b"{}", headers=scenario.headers(actor)
+    )
+
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {"detail": "Invalid webhook"},
+    )
+    assert (absent.status_code, absent.json()) == (404, {"detail": "Not found"})
+    assert gateway.calls == []
     assert owners_view(client, scenario) == before
 
 

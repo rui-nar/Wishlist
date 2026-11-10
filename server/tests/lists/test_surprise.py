@@ -725,6 +725,10 @@ def reads(
     rec.call("PATCH", "/api/me/preferences", json={"language": "fr"})
     # A join token is no unsubscribe token.
     rec.call("POST", "/api/unsubscribe/{token}", token="token A")
+    rec.call("GET", "/api/billing")
+    rec.call("POST", "/api/billing/checkout")
+    rec.call("POST", "/api/billing/portal")
+    rec.call("POST", "/api/billing/webhook", content=b"{}")
     rec.call("GET", "/api/lists")
     detail = rec.call("GET", "/api/lists/{list_id}", list_id="list")
     assert_twin_gifts(rec, detail.json()["gifts"], gifts)
