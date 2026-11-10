@@ -8,6 +8,8 @@ import 'api/api_client.dart';
 import 'auth/account_screen.dart';
 import 'auth/auth_controller.dart';
 import 'auth/sign_in_screen.dart';
+import 'billing/billing_repository.dart';
+import 'billing/plan_screen.dart';
 import 'home/home_screen.dart';
 import 'lists/common.dart';
 import 'lists/gift_form_screen.dart';
@@ -16,6 +18,7 @@ import 'lists/list_form_screen.dart';
 import 'lists/occasion_form_screen.dart';
 import 'lists/occasion_members_screen.dart';
 import 'shared/join_screen.dart';
+import 'legal/legal_placeholder_screen.dart';
 import 'shared/occasion_screen.dart';
 import 'shared/pending_join.dart';
 import 'unsubscribe/unsubscribe_screen.dart';
@@ -33,7 +36,14 @@ const kRegisterMode = 'register';
 /// Locations shown signed out as well as signed in: they show no user data
 /// (WEB_LAYOUT_PLAN D6, review R1-1). The unsubscribe link has to work without
 /// a session (COMMENTS_NOTIFICATIONS_PLAN D18).
-const _publicPaths = {kWelcomePath, kAboutPath, kUnsubscribePath};
+const _publicPaths = {
+  kWelcomePath,
+  kAboutPath,
+  kUnsubscribePath,
+  kLegalTermsPath,
+  kLegalPrivacyPath,
+  kLegalWithdrawalPath,
+};
 
 /// Where the guard sends a request for [uri], or null to let it through.
 ///
@@ -250,6 +260,11 @@ GoRouter buildRouter({
         builder: (context, state) => const AccountScreen(),
       ),
       GoRoute(
+        path: kPlanPath,
+        builder: (context, state) =>
+            PlanScreen(checkout: state.uri.queryParameters['checkout']),
+      ),
+      GoRoute(
         path: kAboutPath,
         builder: (context, state) => VersionScreen(
           httpClient: api.httpClient,
@@ -262,6 +277,21 @@ GoRouter buildRouter({
         builder: (context, state) => UnsubscribeScreen(
           token: unsubscribeTokenFrom(state.uri) ?? unsubscribeToken,
         ),
+      ),
+      GoRoute(
+        path: kLegalTermsPath,
+        builder: (context, state) =>
+            const LegalPlaceholderScreen(document: LegalDocument.terms),
+      ),
+      GoRoute(
+        path: kLegalPrivacyPath,
+        builder: (context, state) =>
+            const LegalPlaceholderScreen(document: LegalDocument.privacy),
+      ),
+      GoRoute(
+        path: kLegalWithdrawalPath,
+        builder: (context, state) =>
+            const LegalPlaceholderScreen(document: LegalDocument.withdrawal),
       ),
     ],
   );

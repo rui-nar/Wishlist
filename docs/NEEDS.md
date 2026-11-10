@@ -280,6 +280,24 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
 - EU obligations from the first sale: VAT (OSS, Stripe Tax, tax-inclusive
   prices), the 14-day withdrawal right, terms of service. TraxJourney's
   `docs/BILLING.md` is the reference.
+- Decided 2026-11-10 (owner's instruction to proceed silently):
+  - **Co-owned lists:** a list has no gift limit when at least one of its
+    owners is premium, and then counts for none of its free co-owners.
+  - **Keep and put back are growth:** refused at the limit, like a new gift.
+    The gift stays where it is (revealed or received); the owner can still
+    mark it received, dismiss it, delete it, free a place or go premium.
+    Limits apply only when something would actually grow.
+  - **Premium ends** at the end of the paid period, with a 3-day tolerance; a
+    failed renewal keeps premium while Stripe retries the card.
+  - **Limits are a switch of their own**, off by default, and never apply
+    while no purchase is possible. All numbers are configurable.
+  - **Purchases are on the web only** until the mobile apps have store
+    purchases; the apps show the plan and the limits, and no price or
+    purchase.
+  - **Deleting an account** cancels its subscription at once; Stripe keeps the
+    customer and invoices for accounting.
+  - **Withdrawal:** acknowledged at checkout; for now a refund is made by hand
+    in Stripe. An in-app withdrawal is decided before the first real sale.
 
 ## Constraints
 
@@ -318,4 +336,5 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
 |---|---|
 | Who can add co-owners, and can they remove each other? What happens to a co-owned list when one co-owner deletes their account? | Roles, access control, account deletion |
 | Offline edits by two co-owners on the same gift: last write wins, or a conflict shown? | Sync design |
+| Paywall placeholders the owner supplies before the first real sale: the price, the Stripe account and keys, the legal texts and consent wording, and whether an in-app withdrawal is required (EU Directive 2023/2673, to confirm with legal counsel) | Premium |
 | Image storage per account (size and count per gift are decided: 10 MB per image, one image per gift, gift images plan D4, D11) | VPS disk, backups, premium |

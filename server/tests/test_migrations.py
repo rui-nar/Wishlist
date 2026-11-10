@@ -48,6 +48,96 @@ def test_upgrade_head_then_check_on_an_empty_database(empty_database_url):
     assert check.returncode == 0, check.stderr
 
 
+def _insert_a_purchase(connection, user: uuid.UUID) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO entitlements (id, user_id, source, external_id, status,"
+            " cancel_at_period_end, read_at)"
+            " VALUES (:id, :user, 'stripe', :external, 'active', false, now())"
+        ),
+        {"id": uuid.uuid4(), "user": user, "external": f"sub_{user}"},
+    )
+    connection.execute(
+        text(
+            "INSERT INTO billing_customers (user_id, source, customer_id)"
+            " VALUES (:user, 'stripe', :customer)"
+        ),
+        {"user": user, "customer": f"cus_{user}"},
+    )
+
+
+def _insert_user(connection, user: uuid.UUID) -> None:
+    connection.execute(
+        text("INSERT INTO users (id, email, display_name) VALUES (:id, :email, 'U')"),
+        {"id": user, "email": f"{user}@example.com"},
+    )
+
+
+def test_the_billing_revision_upgrades_and_downgrades_with_rows_present(
+    empty_database_url,
+):
+    """Premium plan, Boundaries crossed: new tables only, so an account made
+    before the revision stays through it, and a downgrade loses only them."""
+    before = alembic(empty_database_url, "upgrade", "c4f7d2a81e65")
+    assert before.returncode == 0, before.stderr
+    user = uuid.uuid4()
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        _insert_user(connection, user)
+    engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        _insert_a_purchase(connection, user)
+    engine.dispose()
+
+    downgrade = alembic(empty_database_url, "downgrade", "c4f7d2a81e65")
+    assert downgrade.returncode == 0, downgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM users")) == 1
+            assert connection.scalar(text("SELECT to_regclass('entitlements')")) is None
+            assert (
+                connection.scalar(text("SELECT to_regclass('billing_customers')"))
+                is None
+            )
+    finally:
+        engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+    check = alembic(empty_database_url, "check")
+    assert check.returncode == 0, check.stderr
+
+
+def test_deleting_an_account_deletes_its_purchases_and_no_others(empty_database_url):
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+    deleted, kept = uuid.uuid4(), uuid.uuid4()
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.begin() as connection:
+            for user in (deleted, kept):
+                _insert_user(connection, user)
+                _insert_a_purchase(connection, user)
+
+            connection.execute(
+                text("DELETE FROM users WHERE id = :id"), {"id": deleted}
+            )
+
+        with engine.connect() as connection:
+            for table in ("entitlements", "billing_customers"):
+                owners = connection.scalars(text(f"SELECT user_id FROM {table}"))
+                assert list(owners) == [kept]
+    finally:
+        engine.dispose()
+
+
 def test_the_comments_revision_makes_claim_holders_follow_their_gifts(
     empty_database_url,
 ):

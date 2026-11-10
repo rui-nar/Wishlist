@@ -92,7 +92,7 @@ def lock_the_user_to_delete(connection, user):
 
 
 def lock_their_occasions_and_delete(connection, user):
-    """The rest of the deletion, as `delete_me` runs it once its dependency
+    """The rest of the deletion, as `delete_me` runs it once `lock_for_deletion`
     has locked the user (`lock_the_user_to_delete`): the `occasions` rows of
     the lists they own and of the occasions they are a member of, locked
     `FOR UPDATE` in id order as `lock_occasions` locks them, then the user
@@ -313,8 +313,8 @@ def test_a_removal_racing_the_removed_persons_account_deletion(
 
 
 def test_two_deletions_of_one_account_at_once(client, make_account, rows):
-    # Each takes the user `FOR UPDATE` in its dependency, never upgrading a
-    # share lock, so the second waits, then finds no one.
+    # Each takes the user `FOR UPDATE` in `lock_for_deletion`, never upgrading
+    # a share lock, so the second waits, then finds no one.
     for _ in range(ROUNDS):
         ana = make_account("Ana")
         responses = together(

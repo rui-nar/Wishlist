@@ -45,6 +45,11 @@ and the answers that follow are still the control's. Cora's follow and
 reservation from when she was an invitee, and a follow the owner cannot have
 but through a list handed over, are what it could wrongly tell them about.
 `test_a_giving_owner_is_told` is the contrast.
+
+All of it holds at the free plan's limits, enforced, too (premium plan D7): the
+`..._at_the_limit` tests fill the list and the recipient's lists, and every
+refusal, count and read is the control's. Keep on a revealed gift, the 402
+only its owners can have (D6), is the exception `compared` already allows.
 """
 
 import io
@@ -53,7 +58,7 @@ import re
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -62,8 +67,10 @@ from PIL import Image
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 from test_hidden_model import noon_after
+from test_roles import enforce, plan_limit
 
 from app.accounts import sessions
+from app.billing.entitlements import EntitlementFacts, apply
 from app.media.images import VARIANTS
 from app.notifications.digests import SETTLE, WINDOW, EmailConfig
 from app.notifications.models import COMMENT_ADDED, GIFT_CHANGED
@@ -725,6 +732,10 @@ def reads(
     rec.call("PATCH", "/api/me/preferences", json={"language": "fr"})
     # A join token is no unsubscribe token.
     rec.call("POST", "/api/unsubscribe/{token}", token="token A")
+    rec.call("GET", "/api/billing")
+    rec.call("POST", "/api/billing/checkout")
+    rec.call("POST", "/api/billing/portal")
+    rec.call("POST", "/api/billing/webhook", content=b"{}")
     rec.call("GET", "/api/lists")
     detail = rec.call("GET", "/api/lists/{list_id}", list_id="list")
     assert_twin_gifts(rec, detail.json()["gifts"], gifts)
@@ -1272,7 +1283,12 @@ GIFT_OUT_KEYS = {
 }
 # What the recipient can do with a revealed gift, without changing it: the
 # only calls whose answers may differ from a random id's (D11).
-ACTS_ON_REVEALED = {("PATCH", "/api/gifts/{gift_id}"), ("GET", IMAGE)}
+ACTS_ON_REVEALED = {
+    ("PATCH", "/api/gifts/{gift_id}"),
+    ("GET", IMAGE),
+    # At the limit: 402 for a revealed gift, a random id's 404 (premium D6).
+    ("POST", "/api/gifts/{gift_id}/keep"),
+}
 DETAIL = "/api/lists/{list_id}"
 
 
@@ -1315,6 +1331,21 @@ def on_revealed(rec: Recorder) -> None:
                 )
 
 
+def add_reveal_gifts(client, world: World, control: World) -> None:
+    """The hidden gifts of `REVEAL`, in the world only: random ids in the
+    control, which the recipient's calls name in both."""
+    for name, (author, occasion, title, claim) in REVEAL.items():
+        account = world.accounts[author]
+        add_hidden(client, world.ids, account, occasion, name, title)
+        not_added(control.ids, name)
+        if claim:
+            done = client.post(
+                f"/api/occasions/{world.ids[occasion]}/gifts/{world.ids[name]}/{claim}",
+                headers=account.headers,
+            )
+            assert done.status_code == 200, done.text
+
+
 @pytest.mark.parametrize("actor", (OWNER, CO_OWNER))
 def test_a_revealed_gift_shows_as_the_gift_alone(client, make_account, engine, actor):
     """The decided exception (D3, D6, D11): once an occasion has passed, its
@@ -1325,15 +1356,7 @@ def test_a_revealed_gift_shows_as_the_gift_alone(client, make_account, engine, a
     )
     world = build(client, make_account, engine, "none", when=SOON.isoformat())
     accounts = world.accounts
-    for name, (author, occasion, title, claim) in REVEAL.items():
-        add_hidden(client, world.ids, accounts[author], occasion, name, title)
-        not_added(control.ids, name)
-        if claim:
-            done = client.post(
-                f"/api/occasions/{world.ids[occasion]}/gifts/{world.ids[name]}/{claim}",
-                headers=accounts[author].headers,
-            )
-            assert done.status_code == 200, done.text
+    add_reveal_gifts(client, world, control)
 
     def recorders() -> tuple[Recorder, Recorder]:
         return (
@@ -1422,5 +1445,219 @@ def test_a_revealed_gift_shows_as_the_gift_alone(client, make_account, engine, a
         detail = ours.call("GET", DETAIL, list_id="list").json()
         assert [gift["id"] for gift in detail["received"]] == [world.ids["H2"]]
         assert [gift["id"] for gift in detail["revealed"]] == [world.ids["H1"]]
+    assert_shows_no_activity(ours.answers)
+    assert_claims_consistent(engine)
+
+
+# The free plan's limits, enforced (premium plan U9): the world's two gifts are
+# all a list may hold, and its one list all an owner may have.
+LIMITS = {"free_max_gifts_per_list": 2, "free_max_lists": 1}
+GIFTS = "/api/lists/{list_id}/gifts"
+RECEIVED = "/api/gifts/{gift_id}/received"
+KEEP = "/api/gifts/{gift_id}/keep"
+NEW_LIST = {"title": "Next", "recipient_kind": "self"}
+NEW_GIFT = {"title": "Lamp"}
+
+
+def assert_refused(response: Any, resource: str, limit: int) -> None:
+    assert (response.status_code, response.json()) == (
+        402,
+        plan_limit(resource, limit),
+    )
+
+
+def at_the_limit(rec: Recorder, state: str) -> None:
+    """The recipient's calls with the list full and their lists at the limit
+    (D4, D6). G1 and G2 received make two places; new gifts fill them, so
+    putting the twins back is refused; the new gifts deleted, the twins go
+    back and the list is full again for the reads."""
+    assert_refused(rec.call("POST", "/api/lists", json=NEW_LIST), "lists", 1)
+    assert_refused(rec.call("POST", GIFTS, json=NEW_GIFT, list_id="list"), "gifts", 2)
+    rec.call("GET", "/api/billing")
+    rec.twin("POST", RECEIVED, {"gift_id": ("G1", "G2")})
+    for name in ("G3", "G4"):
+        rec.register(name, rec.call("POST", GIFTS, json=NEW_GIFT, list_id="list"))
+    assert_refused(rec.call("POST", GIFTS, json=NEW_GIFT, list_id="list"), "gifts", 2)
+    rec.twin("DELETE", RECEIVED, {"gift_id": ("G1", "G2")})
+    assert [answer.status for answer in rec.answers[-2:]] == [402, 402]
+    assert [json.loads(answer.body) for answer in rec.answers[-2:]] == [
+        plan_limit("gifts", 2)
+    ] * 2
+    # A gift on the list still answers 409, and a hidden gift's id what a
+    # random id gets (D6).
+    rec.twin("POST", KEEP, {"gift_id": ("G1", "G2")})
+    assert [answer.status for answer in rec.answers[-2:]] == [409, 409]
+    if state in HIDDEN_STATES:
+        rec.twin("POST", KEEP, {"gift_id": ("H", "nowhere gift")})
+        assert [answer.status for answer in rec.answers[-2:]] == [404, 404]
+    for name in ("G3", "G4"):
+        rec.call("DELETE", "/api/gifts/{gift_id}", gift_id=name)
+    rec.twin("DELETE", RECEIVED, {"gift_id": ("G1", "G2")})
+    assert [answer.status for answer in rec.answers[-2:]] == [204, 204]
+    reads(rec, ("G1", "G2"), ("img1", "img2"))
+
+
+def assert_same_answers(world: World, control: World, ours, theirs) -> None:
+    """World against control, after renaming, and each twin as the other."""
+    assert world.ids.keys() == control.ids.keys()
+    mapping = {world.ids[name]: control.ids[name] for name in world.ids}
+    assert differences(world.setup.answers, control.setup.answers, mapping) == []
+    assert differences(ours.answers, theirs.answers, mapping) == []
+    for first, second, pairs in ours.twins:
+        swap = renamer(swap_mapping(world.ids, [*TWINS, *pairs]))
+        assert answered(first.renamed(swap)) == answered(second), first.call
+
+
+@pytest.mark.parametrize("actor", (OWNER, CO_OWNER))
+@pytest.mark.parametrize("state", [*STATES, *HIDDEN_STATES])
+def test_the_recipient_sees_nothing_at_the_limit(
+    client, make_account, engine, billing_on, state, actor
+):
+    """With limits enforced and the list full: the same refusals, statuses and
+    reads as the control, from the owner's first call of the setup on (D7)."""
+    control = build(client, make_account, engine, state, control=True)
+    world = build(client, make_account, engine, state, recipients_hold=True)
+    enforce(client, billing_on, **LIMITS)
+    theirs = Recorder(client, control.accounts[actor].headers, control.ids)
+    ours = Recorder(client, world.accounts[actor].headers, world.ids)
+
+    at_the_limit(theirs, state)
+    at_the_limit(ours, state)
+
+    assert_same_answers(world, control, ours, theirs)
+    assert_shows_no_activity(
+        [*world.setup.answers, *ours.answers, *control.setup.answers, *theirs.answers]
+    )
+    assert_claims_consistent(engine)
+
+
+def give_premium(engine, user_id: str, period_end: datetime) -> None:
+    """A purchase in force, recorded as a provider's translator records it."""
+    now = datetime.now(UTC)
+    with Session(engine) as db, db.begin():
+        apply(
+            db,
+            EntitlementFacts(
+                source="stripe",
+                external_id=uuid.uuid4().hex,
+                user_id=uuid.UUID(user_id),
+                status="active",
+                period_end=period_end,
+                cancel_at_period_end=False,
+                started_at=now,
+            ),
+            now,
+        )
+
+
+def owners_turn(rec: Recorder, who: str) -> None:
+    """Each growing path, once, with G1 received in between. What a call
+    created is named after `who`, so that both owners take a turn."""
+
+    def named(name: str, response: Any) -> None:
+        if response.status_code == 201:
+            rec.register(f"{who} {name}", response)
+
+    named("list", rec.call("POST", "/api/lists", json=NEW_LIST))
+    named("first", rec.call("POST", GIFTS, json=NEW_GIFT, list_id="list"))
+    rec.call("POST", RECEIVED, gift_id="G1")
+    named("second", rec.call("POST", GIFTS, json=NEW_GIFT, list_id="list"))
+    rec.call("DELETE", RECEIVED, gift_id="G1")
+    for name in ("first", "second"):
+        if f"{who} {name}" in rec.ids:
+            rec.call("DELETE", "/api/gifts/{gift_id}", gift_id=f"{who} {name}")
+    rec.call("DELETE", RECEIVED, gift_id="G1")
+    rec.call("GET", "/api/billing")
+
+
+# List, first gift (refused), received, a gift in the freed place, put back
+# (refused), that gift deleted, put back.
+FREE_TURN = [402, 402, 204, 201, 402, 204, 204, 200]
+# Nothing is refused: both new gifts deleted, and the last put back a no-op.
+COVERED_TURN = [201, 201, 204, 201, 204, 204, 204, 204, 200]
+
+
+@pytest.mark.parametrize("payer", ("nobody", OWNER, CO_OWNER))
+@pytest.mark.parametrize(
+    "state",
+    [
+        "reserved and bought",
+        "group gift with pledges",
+        "commented",
+        "hidden gift reserved",
+    ],
+)
+def test_a_premium_owner_and_a_free_one_get_the_same_answers_at_the_limit(
+    client, make_account, engine, billing_on, state, payer
+):
+    """One owner's premium covers the list for both of them (D5): whoever
+    pays, the two owners of a world meet the same refusals, or none, and each
+    gets the control's answers, with activity and without."""
+    control = build(client, make_account, engine, state, control=True)
+    world = build(client, make_account, engine, state, recipients_hold=True)
+    until = datetime.now(UTC) + timedelta(days=30)
+    if payer != "nobody":
+        for built in (world, control):
+            give_premium(engine, built.ids[payer], until)
+    enforce(client, billing_on, **LIMITS)
+
+    def turns(built: World) -> dict[str, Recorder]:
+        recorders = {}
+        for actor in (OWNER, CO_OWNER):
+            rec = Recorder(client, built.accounts[actor].headers, built.ids)
+            owners_turn(rec, actor)
+            recorders[actor] = rec
+        return recorders
+
+    theirs, ours = turns(control), turns(world)
+
+    turn = FREE_TURN if payer == "nobody" else COVERED_TURN
+    for recorders in (ours, theirs):
+        for rec in recorders.values():
+            assert [answer.status for answer in rec.answers] == turn
+    for actor in (OWNER, CO_OWNER):
+        assert_same_answers(world, control, ours[actor], theirs[actor])
+    assert_shows_no_activity([*ours[OWNER].answers, *ours[CO_OWNER].answers])
+    assert_claims_consistent(engine)
+
+
+@pytest.mark.parametrize("actor", (OWNER, CO_OWNER))
+def test_keep_is_refused_at_the_limit_for_a_revealed_gift_only(
+    client, make_account, engine, billing_on, actor
+):
+    """Past the occasions, with the list full (D6): a revealed gift's keep
+    answers 402, where the control's random id answers 404, as the reveal
+    already allows; it stays revealed, and every other answer is the
+    control's, the unrevealed hidden gifts' included."""
+    control = build(
+        client, make_account, engine, "none", control=True, when=SOON.isoformat()
+    )
+    world = build(client, make_account, engine, "none", when=SOON.isoformat())
+    add_reveal_gifts(client, world, control)
+    client.app.state.clock = lambda: noon_after(SOON)
+    enforce(client, billing_on, **LIMITS)
+    ours = Recorder(client, world.accounts[actor].headers, world.ids)
+    theirs = Recorder(client, control.accounts[actor].headers, control.ids)
+
+    def calls(rec: Recorder, revealed: tuple[str, ...]) -> list[Any]:
+        assert_refused(rec.call("POST", "/api/lists", json=NEW_LIST), "lists", 1)
+        assert_refused(
+            rec.call("POST", GIFTS, json=NEW_GIFT, list_id="list"), "gifts", 2
+        )
+        kept = [rec.call("POST", KEEP, gift_id=name) for name in REVEALED]
+        reads(rec, ("G1", "G2"), ("img1", "img2"), revealed)
+        for name in UNREVEALED:
+            hidden_routes(rec, name, f"{name} image")
+        on_revealed(rec)
+        return kept
+
+    for refused in calls(ours, REVEALED):
+        assert_refused(refused, "gifts", 2)
+    for random in calls(theirs, ()):
+        assert (random.status_code, random.json()) == (404, {"detail": "Not found"})
+
+    mapping = {world.ids[name]: control.ids[name] for name in world.ids}
+    assert differences(world.setup.answers, control.setup.answers, mapping) == []
+    assert differences(compared(ours.answers), compared(theirs.answers), mapping) == []
     assert_shows_no_activity(ours.answers)
     assert_claims_consistent(engine)

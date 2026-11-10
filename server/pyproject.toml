@@ -21,6 +21,9 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "requests>=2.34.2",
     "sqlalchemy>=2.1.8,<3",
+    # Checkout, the Customer Portal and the webhook (premium plan D10); imported
+    # only in app/billing/stripe_gateway.py. Major capped: its API follows Stripe's.
+    "stripe>=16.0.0,<17",
     "uvicorn>=0.54.0",
 ]
 

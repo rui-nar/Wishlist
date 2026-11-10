@@ -4,13 +4,17 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
+import '../billing/billing_repository.dart';
+import '../billing/legal_links.dart';
+import '../billing/plan_screen.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import 'auth_controller.dart';
 import 'preferences_repository.dart';
 
 /// The signed-in user's name and email, the email notifications switch
-/// (COMMENTS_NOTIFICATIONS_PLAN D20), the version screen, sign-out and
+/// (COMMENTS_NOTIFICATIONS_PLAN D20), their plan when there is one to show
+/// (PREMIUM_PLAN D18), the version screen, sign-out and
 /// account deletion (ACCOUNTS_PLAN D10). Signing out or deleting ends the
 /// session; the router's guard then shows the sign-in screen.
 class AccountScreen extends StatefulWidget {
@@ -33,10 +37,32 @@ class _AccountScreenState extends State<AccountScreen> {
   /// A change of the switch is on its way: no second one starts meanwhile.
   bool _savingEmail = false;
 
+  late final _billing = BillingRepository.of(context);
+
+  /// The plan section's data; null until read, and when the read fails: the
+  /// section is simply not there.
+  BillingStatus? _billingStatus;
+
   @override
   void initState() {
     super.initState();
     _loadPreferences();
+    _loadBilling();
+  }
+
+  Future<void> _loadBilling() async {
+    try {
+      final status = await _billing.status();
+      if (mounted) setState(() => _billingStatus = status);
+    } catch (_) {
+      // Nobody came here for the plan: no error, and a 401 signs out anyway.
+    }
+  }
+
+  /// The plan page, and the plan again on the way back: it may have changed.
+  Future<void> _seePremium() async {
+    await context.push(kPlanPath);
+    if (mounted) await _loadBilling();
   }
 
   Future<void> _loadPreferences() async {
@@ -144,6 +170,15 @@ class _AccountScreenState extends State<AccountScreen> {
                             : _setEmailNotifications,
                       ),
                       const SizedBox(height: Spacing.s12),
+                      if (_billingStatus case final billing?
+                          when !billing.nothingToShow) ...[
+                        _PlanSection(
+                          status: billing,
+                          onSeePremium: _seePremium,
+                          onStale: _loadBilling,
+                        ),
+                        const SizedBox(height: Spacing.s12),
+                      ],
                     ],
                     OutlinedButton.icon(
                       onPressed: () => context.push('/about'),
@@ -172,6 +207,52 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Your plan": what it is, and the way to Premium or to manage it. On Android
+/// and iOS, the plan and its limits only (PREMIUM_PLAN D18).
+class _PlanSection extends StatelessWidget {
+  const _PlanSection({
+    required this.status,
+    required this.onSeePremium,
+    required this.onStale,
+  });
+
+  final BillingStatus status;
+  final VoidCallback onSeePremium;
+  final VoidCallback onStale;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final maxLists = status.maxLists;
+    final maxGifts = status.maxGiftsPerList;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(l10n.planSectionTitle, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: Spacing.s8),
+        PlanSummary(status: status),
+        // The apps show the limits too (NEEDS), and link to no plan page.
+        if (!onTheWeb && maxLists != null && maxGifts != null) ...[
+          const SizedBox(height: Spacing.s8),
+          Text(l10n.planFreeLimits(maxLists, maxGifts)),
+        ],
+        if (onTheWeb && !status.isPremium && status.offer != null) ...[
+          const SizedBox(height: Spacing.s12),
+          OutlinedButton(onPressed: onSeePremium, child: Text(l10n.planSee)),
+        ],
+        if (onTheWeb && status.canManage) ...[
+          const SizedBox(height: Spacing.s12),
+          ManageSubscriptionButton(onStale: onStale),
+        ],
+        if (onTheWeb) ...[
+          const SizedBox(height: Spacing.s8),
+          LegalLinks(legal: status.legal),
+        ],
+      ],
     );
   }
 }
