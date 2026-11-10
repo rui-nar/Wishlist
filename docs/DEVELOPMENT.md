@@ -158,6 +158,45 @@ To try one, against your own address only:
 
 Delete the `BREVO_API_KEY` line and restart to turn it off again.
 
+## Billing in DEV
+
+DEV has no billing unless the variables are set, and `.env.example` leaves
+them out: every account is unlimited, no purchase or plan section shows, and
+`/api/billing/checkout`, `/portal` and `/webhook` answer 404. The server tests
+never reach Stripe.
+
+To try a purchase, in a Stripe sandbox set up as for VAL
+([DEPLOYMENT](DEPLOYMENT.md#stripe-test-on-val), steps 1 to 4 and 7):
+
+1. **Webhooks**: the Stripe CLI forwards them to the API. Leave it running. It
+   prints a signing secret, `whsec_…`, for the next step.
+
+   ```powershell
+   stripe login
+   stripe listen --forward-to localhost:8000/api/billing/webhook
+   ```
+
+2. **`.env`**: add these lines, then stop both panes and run `.\dev.ps1`
+   again (it loads `.env` only when it starts).
+
+   ```text
+   STRIPE_SECRET_KEY=<stripe-secret-key>
+   STRIPE_WEBHOOK_SECRET=<stripe-webhook-secret>
+   STRIPE_PRICE_ID=<stripe-price-id>
+   BILLING_PRICE_AMOUNT=<price-amount>
+   PUBLIC_BASE_URL=http://localhost:5500
+   BILLING_ENFORCE_LIMITS=true
+   ```
+
+   The key is the sandbox's: a live key is refused outside production. The
+   webhook secret is the one `stripe listen` printed, not an endpoint's.
+   `PUBLIC_BASE_URL` is the client's fixed port: Checkout returns to it. Leave
+   out `BILLING_ENFORCE_LIMITS` for no limits. None of these values goes in a
+   committed file ([DEPLOYMENT](DEPLOYMENT.md#placeholders)).
+3. **The purchase**: card `4242 4242 4242 4242`, any future date, any CVC.
+
+Delete the `STRIPE_SECRET_KEY` line and restart to turn it off again.
+
 ## Tests
 
 ```powershell

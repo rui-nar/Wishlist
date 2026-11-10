@@ -38,6 +38,14 @@ below; replace them as you run the commands.
 | `<brevo-api-key>` | an API key of the Brevo account that sends Wishlist's emails ([Release-specific steps](#release-specific-steps)). Secret: pasted at a prompt, never typed into a command or committed |
 | `<sender-address>` | the address emails come from, a sender verified in that Brevo account. Never committed |
 | `<owner-address>` | the owner's own email address, the one their account on VAL signs in with. Never committed |
+| `<stripe-secret-key>` | the secret API key of the Stripe sandbox (VAL) or of the live account (PROD), `sk_test_…` or `sk_live_…`. Secret: pasted at a prompt, never typed into a command or committed |
+| `<stripe-webhook-secret>` | the signing secret Stripe shows for a webhook endpoint, `whsec_…`, a different one per endpoint. Secret, handled like the key |
+| `<stripe-price-id>` | the id of Wishlist's yearly price, `price_…`, which belongs to one Stripe account and mode. Never committed |
+| `<price-amount>` | that price's amount in major units, as it is in Stripe: digits, a dot, two decimals. Never committed |
+| `<account-address>` | the email address of an account, when it has to be looked up. Never committed |
+| `<user-id>` | an account's id, printed by the query that looked it up |
+| `<entitlement-id>` | the row id in a log line `entitlement past its grace` |
+| `<subscription-id>`, `<customer-id>`, `<event-id>`, `<webhook-endpoint-id>`, `<test-clock-id>`, `<good-card-id>`, `<failing-card-id>` | Stripe's ids, shown in its dashboard or printed by the command that creates them. Never committed |
 
 Four placeholders are also the literal text of files in `deploy/`:
 `<prod-host>` and `<val-host>` in `Caddyfile.snippet`, `<deploy-user>` in
@@ -48,8 +56,9 @@ files. Inside the `sed` and `grep` patterns that fill in or check those files
 Commands are marked **[VPS]** (bash, logged in as `<deploy-user>`),
 **[dev]** (PowerShell in the repository checkout on the Windows dev machine),
 **[GitHub]** (the web UI of `rui-nar/Wishlist`), **[Brevo]** (the console of
-the Brevo account that sends the emails) or **[Google Cloud]** (the
-Google Cloud console, in Wishlist's project).
+the Brevo account that sends the emails), **[Stripe]** (the dashboard of the
+Stripe account selling Wishlist: a sandbox for VAL, live mode for PROD) or
+**[Google Cloud]** (the Google Cloud console, in Wishlist's project).
 
 ## What Wishlist adds to the VPS
 
@@ -307,7 +316,8 @@ then the app runs and answers sign-in with "Google sign-in is not
 configured". `PUBLIC_BASE_URL` stays empty until Caddy serves the hosts
 ([step 6](#6-caddy)). Email stays off until its variables are filled in
 ([Release-specific steps](#release-specific-steps)): the app runs without
-them. Never add `MEDIA_DIR` or `APP_VERSION`: the image sets both, and
+them. Billing stays off the same way ([Billing with Stripe](#billing-with-stripe)).
+Never add `MEDIA_DIR` or `APP_VERSION`: the image sets both, and
 the comments in `.env.example` say what breaks otherwise.
 
 Things to know about these files:
@@ -1110,6 +1120,9 @@ What it does, and what to expect:
 - PROD's role does not exist in VAL (its own role and password, D2):
   objects are restored with `--no-owner --no-privileges` and belong to
   VAL's role.
+- PROD's purchases stay on PROD: `entitlements` and `billing_customers` are
+  emptied right after the restore, before VAL's app starts (premium plan
+  D16). Their ids mean nothing to VAL's Stripe test account.
 - Media: PROD's files are hard-linked (no extra disk; safe because files are
   never modified), by uid 10001 in a one-shot container that mounts
   `/opt/wishlist-media` once. Files VAL already has are kept.
@@ -1120,7 +1133,10 @@ If it fails, it says `FAILED: VAL may be left stopped`. Fix the cause and run
 it again. A failure while hard-linking a media file that no longer exists
 means PROD's daily [media purge](#media) deleted it during the copy: just run
 it again (gift images review R1-10). To bring VAL back empty instead:
-`docker compose -f /opt/wishlist-val/docker-compose.yml up -d`.
+`docker compose -f /opt/wishlist-val/docker-compose.yml up -d`. Only if it
+failed before `database restored`: later, that database is PROD's, and
+before `PROD's purchases removed` it still holds PROD's purchases. Run the
+script again in that case.
 
 ## Later releases
 
@@ -1280,6 +1296,32 @@ Run these on the host **before** deploying the release named, once.
   ```powershell
   git grep -n -F -e <sender-address> -e <owner-address>     # nothing
   ```
+
+- **The release with premium** (the first with `STRIPE_SECRET_KEY` in the
+  `.env.example` files).
+
+  Its migration runs on deploy, by itself, and only adds two tables. Nothing
+  is sold, limited or charged until the owner fills in the variables below:
+  the release runs normally without them, and
+  [Billing with Stripe](#billing-with-stripe) says how, VAL first.
+
+  **[VPS]** Each `.env` gets the new lines, from the examples at the release
+  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  adding them twice. The new `seed-from-prod.sh` goes in **before the next
+  seed**: the old one would bring PROD's purchases to VAL once PROD has any.
+
+  ```bash
+  cd /opt/wishlist-val
+  grep -q '^BILLING_ENFORCE_LIMITS=' .env || \
+      grep -E '^(BILLING_|FREE_MAX_|STRIPE_|LEGAL_)' "$SRC/deploy/val/.env.example" >> .env
+  cd /opt/wishlist
+  grep -q '^BILLING_ENFORCE_LIMITS=' .env || \
+      grep -E '^(BILLING_|FREE_MAX_|STRIPE_|LEGAL_)' "$SRC/deploy/prod/.env.example" >> .env
+  grep -c -E '^(BILLING_|FREE_MAX_|STRIPE_|LEGAL_)' /opt/wishlist-val/.env /opt/wishlist/.env   # :15 for both
+  install -m 755 "$SRC/deploy/val/seed-from-prod.sh" /opt/wishlist-val/
+  ```
+
+  Nothing needs `docker compose up -d` yet: every value is its default.
 
 ### Updating the files on the host
 
@@ -1552,6 +1594,307 @@ answer within 5 minutes:
 `docker compose -f /opt/wishlist-val/docker-compose.yml logs app`.
 `FAILED <short sha>: docker compose pull` is usually the GHCR login
 ([step 3](#3-the-ghcr-package)).
+
+## Billing with Stripe
+
+Premium is sold on the web through Stripe Checkout and managed in Stripe's
+Customer Portal (premium plan, `plans/PREMIUM_PLAN.md`). The app has two
+states: the **gateway**, the two secrets, receives webhooks, opens the portal
+and cancels at account deletion; **selling**, the gateway plus the rest,
+offers the purchase and lets limits apply. Every variable is described in the
+`.env.example` files. VAL always comes first, in a Stripe sandbox, with test
+keys.
+
+**[VPS]** The queries below use this function, in the directory of the
+environment (`/opt/wishlist-val`, or `/opt/wishlist` on PROD). A new shell
+needs it again:
+
+```bash
+pg() { docker compose exec -T -u postgres db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1'; }
+```
+
+### Stripe test on VAL
+
+VAL must run this release, with `PUBLIC_BASE_URL` set ([step 6](#6-caddy)).
+
+**[Stripe]** In a sandbox of the Stripe account chosen for Wishlist (sandboxes
+are separate accounts: everything below has to be set in each one):
+
+1. A product with one **yearly, tax-inclusive** price, in the currency of
+   `BILLING_PRICE_CURRENCY`. The app refuses to sell any other shape of price.
+   Note `<stripe-price-id>` and `<price-amount>`.
+2. Settings → Public details → Terms of service: `https://<val-host>/legal/terms`.
+   Checkout fails without it, and the server cannot check it ahead of time.
+3. The Customer Portal configuration: cancellation **at period end**, updating
+   the card and reading invoices allowed, **no plan change**.
+4. The Checkout setting **Limit customers to one subscription**.
+5. The failed-payment setting in the subscription settings, under revenue
+   recovery, "if all retries fail": **cancel the subscription or mark it
+   unpaid, never leave it past due**. `past_due` keeps Premium, so a
+   subscription left past due goes on granting it to a card that never pays
+   (plan D2).
+6. A webhook endpoint at `https://<val-host>/api/billing/webhook`, subscribed
+   to exactly these four events: `checkout.session.completed`,
+   `customer.subscription.created`, `customer.subscription.updated`,
+   `customer.subscription.deleted`. It shows `<stripe-webhook-secret>`.
+7. The secret key of the sandbox, `<stripe-secret-key>`. VAL refuses a live
+   key: only test keys belong here.
+
+**[VPS]** Fill in VAL. `BILLING_ENFORCE_LIMITS=true` is what lets the limits be
+tested. The legal and consent variables stay empty: VAL shows placeholders.
+
+```bash
+cd /opt/wishlist-val
+grep -n '^PUBLIC_BASE_URL=' .env                   # its https:// origin
+read -rs STRIPE_KEY                                # paste <stripe-secret-key>, then Enter
+sed -i "s|^STRIPE_SECRET_KEY=.*|STRIPE_SECRET_KEY=$STRIPE_KEY|" .env
+unset STRIPE_KEY
+read -rs STRIPE_WEBHOOK                            # paste <stripe-webhook-secret>, then Enter
+sed -i "s|^STRIPE_WEBHOOK_SECRET=.*|STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK|" .env
+unset STRIPE_WEBHOOK
+sed -i 's|^STRIPE_PRICE_ID=.*|STRIPE_PRICE_ID=<stripe-price-id>|' .env
+sed -i 's|^BILLING_PRICE_AMOUNT=.*|BILLING_PRICE_AMOUNT=<price-amount>|' .env
+sed -i 's|^BILLING_ENFORCE_LIMITS=.*|BILLING_ENFORCE_LIMITS=true|' .env
+grep -c -E '^(STRIPE_SECRET_KEY=(sk|rk)_test_|STRIPE_WEBHOOK_SECRET=whsec_)' .env   # 2
+ls -l .env                                         # -rw-------
+docker compose up -d --wait --wait-timeout 300
+docker compose logs app | grep -E 'STRIPE_|BILLING_|LEGAL_|PUBLIC_BASE_URL'         # nothing
+```
+
+Any line printed names what is still missing. `docker compose restart` would
+not re-read `.env` ([step 5](#5-env-files)).
+
+**[dev]** The purchase, on `https://<val-host>`, signed in with a free account.
+`GET /api/billing` is in the browser's developer tools (Network), since it
+needs the signed-in session:
+
+1. The account screen shows "Your plan". `GET /api/billing`: `plan` is `free`,
+   `offer` has the amount, `enforced` is `true`.
+2. A second list, and a 21st gift on a list, are refused with the limit
+   message, and what was typed stays in the form.
+3. See Premium → Continue to payment. Card `4242 4242 4242 4242`, any future
+   date, any CVC. Tick the terms box.
+4. Back on the plan page, Premium appears once the webhook has landed. The
+   endpoint's event deliveries in Stripe answer 204. `GET /api/billing`: `plan`
+   is `premium`, `status` `active`, `renews_at` a year away. The limits are
+   gone.
+5. Manage subscription → cancel in the portal. `status` is `canceling`,
+   `ends_at` is the end of the year paid: Premium stays until then.
+6. To see it end now, cancel that subscription **immediately** in the Stripe
+   dashboard. `plan` is `free`, nothing was deleted, the lists stay readable,
+   shareable and editable, and the limit message is back.
+
+**[Stripe]** Try one resend ([below](#after-a-webhook-delivery-gap)) on an
+event of that subscription: it is accepted (204) and nothing changes.
+
+### A failed renewal, on VAL
+
+This settles what plan D2 leaves open: how `current_period_end` moves on a
+failed renewal, and that a card that never pays ends Premium. Use an account
+with no subscription in force. Stripe's clock is simulated and the app's is
+real, so Premium cannot end by date during this test: only `status` proves it.
+
+**[VPS]** The account's id on VAL:
+
+```bash
+cd /opt/wishlist-val
+pg <<'SQL'
+select id from users where email = '<account-address>';
+SQL
+```
+
+**[dev]** A customer on a test clock, with the Stripe CLI logged in to the
+sandbox (`stripe login`). Each command prints the id the next one needs. The
+first card must pay: with a failing one the subscription would start
+`incomplete` instead of renewing. Hence the swap before the renewal:
+
+```powershell
+$now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+stripe test_helpers test_clocks create --frozen-time $now --name wishlist-renewal      # <test-clock-id>
+stripe customers create --test-clock <test-clock-id> --name "Renewal test"             # <customer-id>
+stripe payment_methods attach pm_card_visa --customer <customer-id>                    # <good-card-id>
+stripe customers update <customer-id> -d "invoice_settings[default_payment_method]=<good-card-id>"
+stripe subscriptions create --customer <customer-id> -d "items[0][price]=<stripe-price-id>" -d "metadata[user_id]=<user-id>"   # <subscription-id>
+
+stripe payment_methods attach pm_card_chargeCustomerFail --customer <customer-id>      # <failing-card-id>
+stripe customers update <customer-id> -d "invoice_settings[default_payment_method]=<failing-card-id>"
+```
+
+**[VPS]** Record `status` and `period_end` now, and again after the advance
+below:
+
+```bash
+pg <<'SQL'
+select status, period_end from entitlements where external_id = '<subscription-id>';
+SQL
+```
+
+**[dev]** Past the renewal. The two hours cover its invoice, which stays a
+draft for about an hour before it is charged:
+
+```powershell
+$renewal = [DateTimeOffset]::FromUnixTimeSeconds($now).AddYears(1).AddHours(2).ToUnixTimeSeconds()
+stripe test_helpers test_clocks advance <test-clock-id> --frozen-time $renewal
+stripe test_helpers test_clocks retrieve <test-clock-id>                               # repeat until status is "ready"
+```
+
+**[VPS]** The same query again: this is the row during `past_due`.
+
+**[dev]** With that account signed in, `GET /api/billing` during `past_due`:
+`plan` is `premium`, `status` `past_due`. Then past the last retry, whatever
+the retry schedule is:
+
+```powershell
+$end = [DateTimeOffset]::FromUnixTimeSeconds($now).AddYears(1).AddMonths(3).ToUnixTimeSeconds()
+stripe test_helpers test_clocks advance <test-clock-id> --frozen-time $end
+stripe test_helpers test_clocks retrieve <test-clock-id>                               # repeat until status is "ready"
+```
+
+The row is `ended` and `GET /api/billing` says `plan` `free`. Delete the clock
+when done: `stripe test_helpers test_clocks delete <test-clock-id>`.
+
+**Record the result in `docs/reviews/PREMIUM_PLAN.md`:** whether `period_end`
+advanced during `past_due`, and that Premium ended past the last retry. If
+`period_end` does not advance, say so there: the plan relies on the
+failed-payment setting because that is expected, and it needs revisiting.
+
+### After a webhook delivery gap
+
+The endpoint was unreachable for longer than Stripe's retries (up to 3 days in
+live mode, a few hours in test mode), or a line `entitlement past its grace`
+appears in the app's logs. That line is logged where a status or a limit is
+read, and holds a row id and a source, no personal data. Nothing repairs itself
+until the subscription's next event, perhaps a year away.
+
+**[VPS]** The subscription of a logged row (read-only):
+
+```bash
+docker compose logs app | grep 'entitlement past its grace'
+pg <<'SQL'
+select source, external_id, status, period_end from entitlements where id = '<entitlement-id>';
+SQL
+```
+
+**[Stripe]** The failed events: in the webhook endpoint's event deliveries, or
+with `delivery_success=false` (the last 30 days only). Resend **one per
+affected subscription**, a `customer.subscription.*` event, whose
+`data.object.id` is the subscription. The handler only re-reads the
+subscription, so any of its events repairs the row, in any order:
+
+```powershell
+stripe events list --delivery-success=false --limit 100                         # add --live on PROD
+stripe events resend <event-id> --webhook-endpoint <webhook-endpoint-id>        # add --live on PROD
+```
+
+The Dashboard's resend button does the same. The delivery answers 204, and
+the row then shows Stripe's current `status` and `period_end`.
+
+**Older than 30 days**, events cannot be resent. Any change to the
+subscription emits a new one: in the Dashboard, add a metadata key (`resync`,
+with the date) to the subscription. **Never edit `user_id`**, which links it to
+its account. A subscription that has already ended cannot be edited, so its row
+goes on logging the WARNING; the person is rightly not premium (review R2-2,
+deferred).
+
+### Turning enforcement on
+
+`BILLING_ENFORCE_LIMITS=true` applies the limits, while the app is selling.
+Anyone already past a limit cannot grow, and keeps everything. **[VPS]** First,
+on PROD, how many are already past them (read-only, counts only). `1` and `20`
+are `FREE_MAX_LISTS` and `FREE_MAX_GIFTS_PER_LIST`; accounts a premium owner
+covers are counted too, so these are upper bounds:
+
+```bash
+cd /opt/wishlist
+pg <<'SQL'
+select count(*) as accounts_over_the_list_limit from (
+    select user_id from list_owners group by user_id having count(*) > 1
+) as o;
+select count(*) as lists_over_the_gift_limit from (
+    select list_id from gifts
+    where list_id is not null and received_at is null
+    group by list_id having count(*) > 20
+) as g;
+SQL
+```
+
+Then set `BILLING_ENFORCE_LIMITS=true` in `.env` and run
+`docker compose up -d --wait --wait-timeout 300`.
+
+### Withdrawing the offer
+
+Clear `STRIPE_PRICE_ID` or `BILLING_PRICE_AMOUNT` and run
+`docker compose up -d --wait --wait-timeout 300`: sales and limits stop, and
+existing subscribers go on being recorded, managed and cancellable. Never
+clear `PUBLIC_BASE_URL` for that (the portal, share links and emails need it),
+and **never the two secrets while a subscription runs**: its renewals would go
+unrecorded, and its owner could not delete their account
+([below](#account-deletion-refused-with-409)).
+
+### Before live keys, on PROD
+
+No live key goes into PROD before all of this:
+
+- OSS VAT registration, and Stripe Tax set up in live mode.
+- The price, currency and every other row of the plan's Open decisions marked
+  before live keys, in-app withdrawal and refund among them.
+- The owner's texts and URLs. In production the offer stays withdrawn without
+  each of `STRIPE_AUTOMATIC_TAX=true`, `BILLING_TERMS_VERSION`,
+  `BILLING_CONSENT_TEXT_EN`, `BILLING_CONSENT_TEXT_FR`, `LEGAL_TERMS_URL`,
+  `LEGAL_PRIVACY_URL` and `LEGAL_WITHDRAWAL_URL`. A live key is required
+  there too: a test key is refused.
+- The dashboard settings of [Stripe test on VAL](#stripe-test-on-val), steps 1
+  to 6, in live mode, with `https://<prod-host>` in the terms URL and the
+  webhook endpoint. The endpoint has its own secret.
+
+**[VPS]** Set them in `/opt/wishlist/.env` as on VAL, with the texts in an
+editor (`nano .env`): each on one line, not quoted, never with ` #` inside,
+which would cut the value there. Leave `BILLING_ENFORCE_LIMITS=false` until
+[the count](#turning-enforcement-on). Run
+`docker compose up -d --wait --wait-timeout 300`, then check that the same log
+line as on VAL prints nothing.
+
+### Account deletion refused with 409
+
+`DELETE /api/me` answers 409 `billing_unavailable` when an account's purchase
+may still bill and this deployment has no Stripe keys, so it can neither ask
+Stripe nor cancel anything. It happens when the two secrets were cleared after
+the account subscribed. There is deliberately no force-delete.
+
+Put the two secrets back if possible (`.env`, then `docker compose up -d`):
+the deletion then cancels at Stripe by itself. Otherwise, confirm at Stripe
+that nothing bills any more, then record it here:
+
+1. **[VPS]** Find the account's rows (several accounts can have one address:
+   check `user_id`):
+
+   ```bash
+   cd /opt/wishlist
+   pg <<'SQL'
+   select e.user_id, e.external_id, e.status, c.customer_id
+   from users u
+   join entitlements e on e.user_id = u.id
+   left join billing_customers c on c.user_id = u.id and c.source = e.source
+   where u.email = '<account-address>';
+   SQL
+   ```
+
+2. **[Stripe]** In the account this deployment used, open the customer
+   `customer_id` (or search for `external_id`) and make sure **every**
+   subscription is cancelled. Cancel any that is not, immediately, and expire
+   any open Checkout session.
+3. **[VPS]** Only then, after a dump (`docker compose restart backup`, which
+   replaces today's file: see [Backups](#backups)):
+
+   ```bash
+   pg <<'SQL'
+   update entitlements set status = 'ended', updated_at = now()
+   where user_id = '<user-id>' and status <> 'ended';
+   SQL
+   ```
+
+4. **[dev]** Ask the person to delete their account again. With every row
+   ended, deletion no longer needs the gateway.
 
 ## Definition of done
 

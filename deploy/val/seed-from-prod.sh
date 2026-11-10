@@ -61,6 +61,25 @@ prod_dumps cat "/prod-backups/$newest" |
             --no-owner --no-privileges --exit-on-error --single-transaction'
 log "database restored"
 
+# 4b. PROD's purchases stay on PROD (premium plan D16): their ids mean nothing
+# to VAL's Stripe test account. Before anything else can fail or start the app.
+# A dump can predate these tables; the app then creates them empty on start.
+# shellcheck disable=SC2016
+compose exec -T -u postgres db sh -c '
+    psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' <<'SQL'
+DO $$
+BEGIN
+    IF to_regclass('public.entitlements') IS NOT NULL THEN
+        TRUNCATE public.entitlements;
+    END IF;
+    IF to_regclass('public.billing_customers') IS NOT NULL THEN
+        TRUNCATE public.billing_customers;
+    END IF;
+END
+$$;
+SQL
+log "PROD's purchases removed"
+
 # 5. PROD's files, hard-linked into VAL's directory: no extra disk, and safe
 # because a media file is never modified (D18). Files VAL already has are kept.
 # As uid 10001, the files' owner: Debian's fs.protected_hardlinks forbids the
