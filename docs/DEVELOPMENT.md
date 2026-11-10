@@ -124,6 +124,17 @@ in on a device also needs an Android OAuth client registered with the app's
 package name and signing key, and the package name is still a placeholder:
 see [DEPLOYMENT](DEPLOYMENT.md#android-oauth-client).
 
+## Apple and email sign-in in DEV
+
+Apple does not accept `localhost` as a domain or return URL, so DEV leaves
+`APPLE_CLIENT_IDS` empty: `/api/config` returns `"apple_client_id":null`, the
+client offers no Apple button, and the server tests use a fake instead of
+calling Apple. Apple sign-in is tried on VAL
+([DEPLOYMENT](DEPLOYMENT.md#12-apple-sign-in)).
+
+Email sign-in needs the set-up of the next section: the links it mails
+(confirmation, password reset) go through the same mailer.
+
 ## Email notifications in DEV
 
 DEV sends no email unless the variables are set, and `.env.example` leaves
