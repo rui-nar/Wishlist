@@ -42,6 +42,9 @@ below; replace them as you run the commands.
 | `<stripe-webhook-secret>` | the signing secret Stripe shows for a webhook endpoint, `whsec_…`, a different one per endpoint. Secret, handled like the key |
 | `<stripe-price-id>` | the id of Wishlist's yearly price, `price_…`, which belongs to one Stripe account and mode. Never committed |
 | `<price-amount>` | that price's amount in major units, as it is in Stripe: digits, a dot, two decimals. Never committed |
+| `<apple-services-id>` | the identifier of Wishlist's Services ID in Apple Developer, in reverse-domain form ([step 12](#12-apple-sign-in)). Public, not a secret, but never committed |
+| `<ios-bundle-id>` | the bundle ID of the iOS app, registered as an App ID ([step 12](#12-apple-sign-in)). Never committed |
+| `<android-application-id>` | the Android applicationId of the build that signs in with Apple ([step 12](#12-apple-sign-in)). Never committed |
 | `<account-address>` | the email address of an account, when it has to be looked up. Never committed |
 | `<user-id>` | an account's id, printed by the query that looked it up |
 | `<entitlement-id>` | the row id in a log line `entitlement past its grace` |
@@ -57,8 +60,10 @@ Commands are marked **[VPS]** (bash, logged in as `<deploy-user>`),
 **[dev]** (PowerShell in the repository checkout on the Windows dev machine),
 **[GitHub]** (the web UI of `rui-nar/Wishlist`), **[Brevo]** (the console of
 the Brevo account that sends the emails), **[Stripe]** (the dashboard of the
-Stripe account selling Wishlist: a sandbox for VAL, live mode for PROD) or
-**[Google Cloud]** (the Google Cloud console, in Wishlist's project).
+Stripe account selling Wishlist: a sandbox for VAL, live mode for PROD),
+**[Google Cloud]** (the Google Cloud console, in Wishlist's project) or
+**[Apple]** (the Apple Developer account, at
+<https://developer.apple.com/account/resources>).
 
 ## What Wishlist adds to the VPS
 
@@ -843,6 +848,74 @@ release keystore). If Google Play ends up signing the app with a key other
 than the release key (a key Google generated for Play App Signing), register
 that key's SHA-1 too, as Play Console shows it under App integrity.
 
+## 12. Apple sign-in
+
+Apple sign-in is optional: without `APPLE_CLIENT_IDS` the Apple button is
+absent and nothing else changes (Apple and email sign-in plan, D15 to D18).
+VAL comes first. The server keeps only Apple's account id and the address; it
+holds no Apple key.
+
+**[Apple]** At <https://developer.apple.com/account/resources>:
+
+1. **Enrol** in the Apple Developer Program (paid, yearly). Every step below
+   stays in the **same team**: Apple's account id (`sub`) is per team, so
+   another team would make every Apple user a new account.
+2. Certificates, Identifiers & Profiles → Identifiers → **+** → App IDs → App:
+   the app's bundle ID, `<ios-bundle-id>`. Tick **Sign in with Apple**.
+3. Identifiers → **+** → Services IDs: a reverse-domain identifier,
+   `<apple-services-id>`, and a description (people see it at sign-in).
+   Register, then open it and tick **Sign in with Apple** → Configure:
+
+   | Field | Value |
+   |---|---|
+   | Primary App ID | the one from step 2 |
+   | Domains and Subdomains | `<val-host>` and `<prod-host>` (no scheme) |
+   | Return URLs | `https://<val-host>/api/auth/apple/callback` and `https://<prod-host>/api/auth/apple/callback` |
+
+   Save.
+4. People who hide their address get a relay address, and Apple relays email
+   only from registered senders. Certificates, Identifiers & Profiles →
+   Services → **Sign in with Apple for Email Communication** → Configure: add
+   the domain or the address of `EMAIL_SENDER_ADDRESS`, which must pass SPF.
+   Otherwise their notifications bounce silently.
+
+**[VPS]** Set the two values in the environment's `.env` (VAL first, then the
+same in `/opt/wishlist`), then recreate the app. `<android-application-id>`
+is the Android applicationId of the build:
+
+```bash
+cd /opt/wishlist-val                     # then the same in /opt/wishlist
+grep -n '^APPLE_' .env                   # APPLE_CLIENT_IDS= and APPLE_ANDROID_PACKAGE= (empty)
+sed -i 's/^APPLE_CLIENT_IDS=.*/APPLE_CLIENT_IDS=<apple-services-id>/' .env
+sed -i 's/^APPLE_ANDROID_PACKAGE=.*/APPLE_ANDROID_PACKAGE=<android-application-id>/' .env
+grep -n '^APPLE_' .env                   # both set
+docker compose up -d --wait --wait-timeout 300
+```
+
+If `grep` prints nothing, the `.env` predates these settings: add the lines
+from `.env.example` first ([Release-specific steps](#release-specific-steps)).
+`docker compose restart` would not re-read `.env` ([step 5](#5-env-files)).
+
+**[dev]** Check on VAL, then on PROD:
+
+```powershell
+curl.exe -s https://<val-host>/api/config    # "apple_client_id":"<apple-services-id>"
+```
+
+The sign-in page shows the Apple button. A first sign-in creates an account, a
+second one finds it.
+
+A later iOS release adds its bundle ID to the comma-separated
+`APPLE_CLIENT_IDS`. The first entry must stay the Services ID, since
+`/api/config` hands it to the web and Android.
+
+### Email sign-in
+
+Sign-in by email and password follows the email turn-on steps of
+[Release-specific steps](#release-specific-steps) (the release with comments
+and email notifications) and needs nothing more. `NOTIFICATIONS_WORKER` must
+stay on: the links it mails expire in an hour.
+
 ## Daily check
 
 **[VPS]** (or over `ssh <deploy-user>@<vps-host>` from the dev machine):
@@ -1332,6 +1405,31 @@ Run these on the host **before** deploying the release named, once.
   ```
 
   Nothing needs `docker compose up -d` yet: every value is its default.
+
+- **The release with Apple and email sign-in** (the first with
+  `APPLE_CLIENT_IDS` in the `.env.example` files).
+
+  Its migration runs on deploy, by itself, and only adds three tables. The
+  previous release ignores them, so a rollback stays image-only. Apple sign-in
+  stays absent until the owner fills in the variables below
+  ([Apple sign-in](#12-apple-sign-in), VAL first); email sign-in needs the
+  email set-up of the comments release and nothing more.
+
+  **[VPS]** Each `.env` gets the new lines, from the examples at the release
+  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  adding them twice.
+
+  ```bash
+  cd /opt/wishlist-val
+  grep -q '^APPLE_CLIENT_IDS=' .env || \
+      grep -E '^APPLE_' "$SRC/deploy/val/.env.example" >> .env
+  cd /opt/wishlist
+  grep -q '^APPLE_CLIENT_IDS=' .env || \
+      grep -E '^APPLE_' "$SRC/deploy/prod/.env.example" >> .env
+  grep -c -E '^APPLE_' /opt/wishlist-val/.env /opt/wishlist/.env   # :2 for both
+  ```
+
+  Nothing needs `docker compose up -d` yet: both are empty.
 
 ### Updating the files on the host
 
