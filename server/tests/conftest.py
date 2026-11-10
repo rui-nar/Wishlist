@@ -69,6 +69,20 @@ def make_client(database_url: str, tmp_path) -> Iterator[Callable[..., TestClien
         client.__exit__(None, None, None)
 
 
+@pytest.fixture
+def billing_on() -> dict[str, Any]:
+    """Settings values making `limits_enforced` true, for `make_client` or a
+    `model_copy`. Placeholders only: no test reaches Stripe."""
+    return {
+        "billing_enforce_limits": True,
+        "stripe_secret_key": "sk_test_placeholder",
+        "stripe_webhook_secret": "whsec_placeholder",
+        "stripe_price_id": "price_placeholder",
+        "billing_price_amount": "10.00",
+        "public_base_url": "https://wishlist.example.test",
+    }
+
+
 class FakeMailer:
     """Stands in for `app.state.mailer`, a BrevoMailer: records every send and
     answers `outcome`, or raises it when it is an exception."""
