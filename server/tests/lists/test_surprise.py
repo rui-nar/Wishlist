@@ -799,6 +799,12 @@ def reads(
         "/api/auth/email/sign-in",
         json={"email": address, "password": "a long enough password"},
     )
+    rec.call(
+        "POST",
+        "/api/auth/apple",
+        json={"id_token": "not a token", "nonce": "not a nonce"},
+    )
+    rec.call("POST", "/api/auth/apple/callback", content=b"code=not-a-code")
 
 
 def activity(rec: Recorder) -> None:
