@@ -77,3 +77,12 @@ R1-1 remains a defect only for the wait it passes on to `add_gift`.
 - Guard: `warn_if_lapsed` logs a separate fixed WARNING for a granting row with no period end, with a test; who gets premium is unchanged
 - Override: —
 - Outcome: guard added (b7d10ea)
+
+## Round 4 — 2026-11-10, unit review of U4, reviewed at 326ce30
+
+No findings. Envelope question, answered by the orchestrator: a giver-held lock
+whose duration is bounded by the server's own rollback of an immediately
+rejected request is not a wait the surprise forbids. This is the one case
+known: keep's insert checks the image foreign key while a giver's refused
+re-attach of the same image holds it `FOR UPDATE`. No actor can prolong it,
+and no owner could observe it.
