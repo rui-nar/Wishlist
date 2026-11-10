@@ -104,3 +104,13 @@ and refund by hand.
 - Revisit when: the log line `stripe: customer: IdempotencyError` appears, a user report traces to a changed name or email, or another value that can differ is added under this key
 - Override: —
 - Outcome: open
+
+## Round 6 — 2026-11-10, unit review of U7, reviewed at 7e39a94
+
+### R6-1 — A subscription recorded during an account's deletion is cascaded away and never cancelled
+- Trigger: a free user deletes their account while paying a Checkout page opened after the deletion expired open sessions → the payment lands after the subscriptions listing, and every delivered event commits before `FOR UPDATE` → the cascade drops the row and the subscription runs on with no account until its next event
+- Scores: trigger=theoretical, impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Guard (D4)
+- Guard: after `lock_for_deletion`, `delete_me` compares the billable rows with what `stop_billing` cancelled or saw, and logs an ERROR naming any subscription recorded meanwhile; the deletion proceeds
+- Override: —
+- Outcome: open
