@@ -104,15 +104,19 @@ def _housekeeping_lock(db: Session) -> bool:
 
 def sweep(session_factory: sessionmaker[Session]) -> int:
     """Deletes the activity of every gift gone and read by no pending event,
-    and unbought claims with no occasion (D13). One statement per table, each
-    a single snapshot: an event committed with its gift's deletion is seen by
-    the statement that sees the deletion."""
+    and unbought claims with no occasion (D13). Each table's choice is one
+    statement, a single snapshot: an event committed with its gift's deletion
+    is seen by the statement that sees the deletion.
+
+    Claims are locked in `gift_id` order, skipping any held: a giver's release
+    locks them in that order too, and the sweep never waits on it, so the two
+    cannot deadlock (review R6-1). A claim skipped goes at a later run."""
     with session_factory() as db, db.begin():
         if not _housekeeping_lock(db):
             return 0
-        swept = 0
-        for statement in (
-            delete(GiftClaim).where(
+        claims = db.scalars(
+            select(GiftClaim.gift_id)
+            .where(
                 or_(
                     _gift_gone(GiftClaim.gift_id),
                     and_(
@@ -120,7 +124,13 @@ def sweep(session_factory: sessionmaker[Session]) -> int:
                         GiftClaim.bought_at.is_(None),
                     ),
                 )
-            ),
+            )
+            .order_by(GiftClaim.gift_id)
+            .with_for_update(skip_locked=True)
+        ).all()
+        swept = 0
+        for statement in (
+            delete(GiftClaim).where(GiftClaim.gift_id.in_(claims)),
             delete(Comment).where(_gift_gone(Comment.gift_id)),
             delete(GiftFollow).where(_gift_gone(GiftFollow.gift_id)),
         ):

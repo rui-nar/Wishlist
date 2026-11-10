@@ -5,6 +5,7 @@ thread lives and dies with the app.
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
@@ -20,7 +21,7 @@ from app.main import create_app
 from app.notifications.digests import EmailConfig
 from app.notifications.mailer import BrevoMailer
 from app.notifications.models import NotificationEvent
-from app.notifications.worker import NotificationWorker, run_once
+from app.notifications.worker import NotificationWorker, run_once, sweep
 from app.reserving.models import ClaimParticipant, GiftClaim
 from app.settings import Settings
 
@@ -192,6 +193,37 @@ def test_the_sweep_removes_an_unbought_claim_with_no_occasion(world, mailer, giv
 
     assert activity(world, gift) == (0, 0, 0, 0)
     assert activity(world, bought) == (1, 1, 0, 0)
+
+
+def test_r6_1_the_sweep_skips_a_locked_claim_and_does_not_wait(world, giving):
+    # A giver's release holds a claim of a deleted gift (`release_activity`,
+    # D7): the sweep leaves it, takes the other, and comes back for it later.
+    _owner, ana, list_id, occasion = giving
+    held = world.gift(list_id, "Scarf")
+    free = world.gift(list_id, "Hat")
+    world.claim(held, occasion, ana)
+    world.claim(free, occasion, ana)
+    world.delete_gift(held)
+    world.delete_gift(free)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with Session(world.engine) as holder, holder.begin():
+            holder.execute(
+                select(GiftClaim.gift_id)
+                .where(GiftClaim.gift_id == held)
+                .with_for_update()
+            ).all()
+
+            # Inside the lock: a sweep that waited would time out here.
+            swept = pool.submit(sweep, world.sessions).result(timeout=10)
+
+            assert swept == 1
+
+    assert activity(world, held) == (1, 1, 0, 0)
+    assert activity(world, free) == (0, 0, 0, 0)
+
+    assert sweep(world.sessions) == 1
+    assert activity(world, held) == (0, 0, 0, 0)
 
 
 # Retention (D16).
