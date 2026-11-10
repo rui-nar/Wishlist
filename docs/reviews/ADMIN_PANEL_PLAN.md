@@ -66,3 +66,32 @@ can see, with no instance-wide total.
 - Guard: —
 - Override: —
 - Outcome: fixed (plan D8, U1 Scope)
+
+## Round 2 — 2026-11-11, unit review of U1, reviewed at 95f30e6
+
+### R2-1 — The schema is hidden in production only, and VAL is public
+- Trigger: anyone fetches `/openapi.json` or `/docs` on VAL once the routes exist → they learn the panel exists. New evidence for R1-2.
+- Scores: trigger=concrete, impact=security, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D3)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R2-2 — The backfill's lock comment claims attaches never wait
+- Trigger: a maintainer relies on the comment; in fact an attach's `FOR UPDATE` waits for one batch.
+- Scores: trigger=concrete (corrected from plausible: the false comment needs no race), impact=maintainability, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R2-3 — A malformed `ADMIN_USER_IDS` entry is dropped with no log
+- Trigger: the owner mistypes the id, restarts, and sees no admin and no reason.
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open

@@ -44,7 +44,7 @@ The request is silent: choices are recorded in `docs/NEEDS.md`.
   and when no admin is configured. Nothing tells a visitor that an admin panel
   exists. `GET /api/me` gains `is_admin`, which is true only for the admin,
   so the client shows the entry. Two other ways would give it away (review
-  R1-2). In production, FastAPI's `/openapi.json` and `/docs` are not served;
+  R1-2). Outside DEV (VAL is public too, review R2-1), FastAPI's `/openapi.json` and `/docs` are not served;
   tests keep reading `app.openapi()` in-process. A catch-all
   `/api/admin/{path:path}` on every method, behind `AdminUser`, answers 404
   where Starlette would otherwise answer 405 for a known path.
@@ -133,8 +133,8 @@ REVIEW.md defaults apply, with these additions:
   deletes `manual` rows first.
 - **API (F4):** new routes under `/api/admin`. `GET /api/me` gains `is_admin`,
   which old clients ignore (E5). `GET /api/billing` may say `manual`, and old
-  clients show it as Premium. `/openapi.json` and `/docs` stop being served in
-  production, and nothing uses them.
+  clients show it as Premium. `/openapi.json` and `/docs` stop being served
+  outside DEV, and nothing uses them.
 - **Stored data:** the audit rows, and photo sizes.
 - **Environment:** `ADMIN_USER_IDS`, empty by default.
 
