@@ -67,3 +67,13 @@ R1-1 remains a defect only for the wait it passes on to `add_gift`.
 - Revisit when: the WARNING is traced to such a subscription, or the repeated line hides other lapses
 - Override: —
 - Outcome: open
+
+## Round 3 — 2026-11-10, unit review of U1, reviewed at 34e809b
+
+### R3-1 — A granting row with a null `period_end` gives nothing and is never logged
+- Trigger: Stripe answers with an active subscription and no `current_period_end` on the subscription or its items, or a future translator bug stores none → the row grants nothing, and the lapse warning never reports it
+- Scores: trigger=theoretical (triager: was plausible), impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Guard (D4)
+- Guard: `warn_if_lapsed` logs a separate fixed WARNING for a granting row with no period end, with a test; who gets premium is unchanged
+- Override: —
+- Outcome: open
