@@ -1,6 +1,7 @@
 """Sign-in, sign-out and the signed-in user's account (accounts plan D7)."""
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import Select, delete, exists, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
@@ -15,7 +16,7 @@ from app.accounts.deps import (
 from app.accounts.google import GoogleIdentity, InvalidGoogleToken
 from app.accounts.models import User, UserIdentity
 from app.accounts.schemas import GoogleSignIn, SignedIn, UserOut
-from app.billing.closing import stop_billing
+from app.billing.closing import report_late_purchases, stop_billing
 from app.billing.schemas import BillingRefusal
 from app.db import DbSession
 from app.hidden_gifts.lifecycle import lock_authored
@@ -72,9 +73,9 @@ def delete_me(request: Request, session: UnlockedSession, db: DbSession) -> Resp
     # Before any lock, so that none of their requests waits on Stripe (premium
     # plan D15). A refusal has changed nothing.
     state = request.app.state
-    refusal = stop_billing(db, state.stripe_gateway, session.user_id, state.clock())
-    if refusal is not None:
-        return refusal
+    stopped = stop_billing(db, state.stripe_gateway, session.user_id, state.clock())
+    if isinstance(stopped, JSONResponse):
+        return stopped
     # The account locked first (`FOR UPDATE`, by `lock_for_deletion`), then every
     # occasion they give in or own, in the order every request takes them
     # (reserving plan D7): each request holds its user `FOR KEY SHARE` from
@@ -83,6 +84,7 @@ def delete_me(request: Request, session: UnlockedSession, db: DbSession) -> Resp
     # no user and answers 401: never a claim, a membership or a session left
     # by no one. An owner removing them locks them before the occasion too.
     user = lock_for_deletion(db, session)
+    report_late_purchases(db, user.id, stopped)
     lock_occasions(
         db,
         or_(

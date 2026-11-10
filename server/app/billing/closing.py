@@ -20,9 +20,10 @@ WITHDRAWAL = timedelta(days=14)
 
 def stop_billing(
     db: Session, gateway: StripeGateway | None, user_id: uuid.UUID, now: datetime
-) -> JSONResponse | None:
-    """None once nothing can charge this account any more, else the refusal
-    to answer, with nothing changed: retrying is safe.
+) -> set[str] | JSONResponse:
+    """The subscriptions dealt with, once nothing can charge this account any
+    more, for `report_late_purchases`; else the refusal to answer, with nothing
+    changed: retrying is safe.
 
     The caller holds no lock: this asks Stripe, for up to 45 s a call. Stripe
     is asked rather than our rows, which can be late; with no gateway, only
@@ -30,9 +31,11 @@ def stop_billing(
     failure like any other (review R1-5): a key for another Stripe account
     answers the same.
     """
+    # Before Stripe is called: a row that appears after this was not dealt with.
+    billable = _billable(db, user_id)
     cancelled: list[str] = []
     if gateway is None:
-        if _billable(db, user_id):
+        if billable:
             _log.error(
                 "billing: account %s not deleted: a purchase may still bill and"
                 " the gateway is not configured",
@@ -51,12 +54,29 @@ def stop_billing(
             else:
                 # A purchase recorded with no customer stored: only its own id
                 # can stop it before its next renewal.
-                for external_id in _billable(db, user_id):
+                for external_id in billable:
                     gateway.cancel(external_id)
         except GatewayError:
             return _refusal(status.HTTP_502_BAD_GATEWAY)
     _warn_of_refunds(db, user_id, cancelled, now)
-    return None
+    return set(billable) | set(cancelled)
+
+
+def report_late_purchases(
+    db: Session, user_id: uuid.UUID, dealt_with: set[str]
+) -> None:
+    """Names each subscription recorded between `stop_billing` and the user's
+    lock (review R6-1), which no Stripe call covered. Run under that lock, so
+    every webhook that found the user has committed. The deletion goes on: the
+    owner cancels by hand."""
+    for external_id in _billable(db, user_id):
+        if external_id not in dealt_with:
+            _log.error(
+                "billing: subscription %s of account %s was recorded during its"
+                " deletion and not cancelled: cancel it at Stripe",
+                external_id,
+                user_id,
+            )
 
 
 def _billable(db: Session, user_id: uuid.UUID) -> list[str]:

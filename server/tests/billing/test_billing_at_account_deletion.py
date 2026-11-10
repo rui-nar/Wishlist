@@ -131,6 +131,49 @@ def test_a_row_covered_by_cancel_all_gets_no_second_call(client, fake, account, 
     assert fake.calls == [("cancel_all", ("cus_1",))]
 
 
+def late_purchase_errors(caplog):
+    return [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR
+        and "recorded during its deletion" in record.getMessage()
+    ]
+
+
+@pytest.mark.parametrize(
+    ("answer", "errors"),
+    [([], 1), (["sub_1"], 0)],
+    ids=["not cancelled", "cancelled"],
+)
+def test_a_row_recorded_during_the_stripe_call_is_reported(
+    client, fake, account, engine, caplog, answer, errors
+):
+    # Review R6-1: a webhook recorded it after `stop_billing` read the rows.
+    add_customer(engine, account.id)
+
+    def cancel_all(customer_id):
+        add_purchase(engine, account.id)
+        return answer
+
+    fake.cancel_all = cancel_all
+
+    with caplog.at_level(logging.ERROR, logger=LOGGER):
+        assert delete_account(client, account).status_code == 204
+
+    assert len(late_purchase_errors(caplog)) == errors
+    assert all_gone(engine, account.id)
+
+
+def test_a_row_covered_by_cancel_all_is_not_reported(client, account, engine, caplog):
+    add_customer(engine, account.id)
+    add_purchase(engine, account.id)
+
+    with caplog.at_level(logging.ERROR, logger=LOGGER):
+        assert delete_account(client, account).status_code == 204
+
+    assert late_purchase_errors(caplog) == []
+
+
 def test_a_customer_has_their_billing_stopped_before_the_rows_go(
     client, fake, account, engine
 ):
