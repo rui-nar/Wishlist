@@ -6,6 +6,7 @@ import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
 import '../api/api_image.dart';
 import '../api/config.dart';
+import '../billing/plan_limit_dialog.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import '../design/widgets/gift_card.dart';
@@ -351,6 +352,8 @@ class _ListDetailScreenState extends State<ListDetailScreen>
       messenger.showSnackBar(
         SnackBar(content: Text(l10n.putBackNotRevealed)),
       );
+    } on PlanLimitReached catch (refused) {
+      if (mounted) await showPlanLimitDialog(context, refused);
     } catch (error) {
       if (!(deleting && isNotFound(error))) {
         messenger.showSnackBar(SnackBar(

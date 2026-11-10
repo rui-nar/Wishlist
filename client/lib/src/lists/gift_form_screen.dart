@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
+import '../billing/plan_limit_dialog.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import '../shared/gift_sheet.dart';
@@ -206,6 +207,10 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
       if (mounted) context.pop();
     } on HiddenGiftRefused catch (refused) {
       _sayRefusedAndLeave(messenger, l10n, refused);
+    } on PlanLimitReached catch (refused) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      await showPlanLimitDialog(context, refused);
     } catch (error) {
       messenger.showSnackBar(SnackBar(
         content: Text(

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../billing/plan_limit_dialog.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import 'common.dart';
@@ -88,6 +89,10 @@ class _ListFormScreenState extends State<ListFormScreen> {
         );
         if (mounted) context.pop();
       }
+    } on PlanLimitReached catch (refused) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      await showPlanLimitDialog(context, refused);
     } catch (error) {
       messenger.showSnackBar(SnackBar(
         content: Text(
