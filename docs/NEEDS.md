@@ -304,6 +304,16 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
 - **Platforms:** web, Android and iOS.
 - **Sign-in:** Google, Apple (required on iOS alongside Google), email and
   password.
+  Decided 2026-11-10 (owner's instruction to proceed silently):
+  - **One account per way of signing in.** Accounts with the same address
+    are never joined automatically.
+  - **The address is proven before the password exists:** the person types an
+    address, gets a link, and chooses the password on the page it opens. The
+    same flow resets a forgotten password, and ends every other session.
+  - **Passwords:** 10 to 128 characters, no composition rules. Sign-in attempts
+    and emails are rate limited.
+  - **Apple:** on the web and Android now, on iOS with the iOS release. The
+    email link opens on the web, for now.
 - **Languages:** English and French from the first release.
 - **Offline (mobile):** owners can add and edit gifts offline, synced later;
   invitees can read what they already viewed, and every invitee action needs a

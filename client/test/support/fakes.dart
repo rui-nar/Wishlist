@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in_platform_interface/google_sign_in_platform_interface.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:sign_in_with_apple_platform_interface/sign_in_with_apple_platform_interface.dart';
 import 'package:wishlist/l10n/app_localizations.dart';
 import 'package:wishlist/main.dart';
 import 'package:wishlist/src/api/api_client.dart';
@@ -21,6 +22,13 @@ const kApiBase = 'http://api.test';
 /// The ID token [FakeServer] accepts.
 const kValidIdToken = 'valid-google-id-token';
 
+/// The Apple ID token [FakeServer] accepts.
+const kValidAppleIdToken = 'valid-apple-id-token';
+
+/// What a server with Apple configured gives in `/api/config`.
+const kAppleClientId = 'test.apple.service';
+const kAppleRedirectUri = 'https://app.test/api/auth/apple/callback';
+
 const kAlice = {
   'id': '7b0c2f1e-0000-4000-8000-000000000001',
   'email': 'alice@example.com',
@@ -29,6 +37,11 @@ const kAlice = {
 
 /// The unsubscribe token [FakeServer] accepts.
 const kUnsubscribeToken = 'v1.dXNlcg.c2lnbmF0dXJl';
+
+/// The password [FakeServer] accepts at email sign-in, and the link token it
+/// accepts at `POST /api/auth/email/complete`.
+const kEmailPassword = 'correct horse';
+const kEmailLinkToken = 'bGluaw.c2lnbmF0dXJl';
 
 /// `GET /api/billing` (PREMIUM_PLAN D11); by default the unset state: free,
 /// nothing on sale and no limit applied.
@@ -71,9 +84,29 @@ const kBillingOffer = {'amount': '49.00', 'currency': 'EUR', 'interval': 'year'}
 /// D11) and `/api/version`, in memory. [status] forces an answer for
 /// `'<METHOD> <path>'`.
 class FakeServer {
-  FakeServer({this.googleClientId = 'test-client-id', this.publicBaseUrl});
+  FakeServer({
+    this.googleClientId = 'test-client-id',
+    this.publicBaseUrl,
+    this.emailSignIn = false,
+    this.appleClientId,
+    this.appleRedirectUri,
+  });
 
   String? googleClientId;
+
+  /// `apple_client_id` and `apple_redirect_uri` in `/api/config` (sign-in
+  /// plan D18); not configured by default.
+  String? appleClientId;
+  String? appleRedirectUri;
+
+  /// The body of every `POST /api/auth/apple`, oldest first.
+  final appleBodies = <Map<String, dynamic>>[];
+
+  /// `email_sign_in` in `/api/config` (sign-in plan D18); off by default.
+  bool emailSignIn;
+
+  /// The body of the last `POST /api/auth/email/*`, by its full call.
+  final emailBodies = <String, Map<String, dynamic>>{};
 
   /// Where share links start; none by default, as in DEV.
   String? publicBaseUrl;
@@ -138,7 +171,32 @@ class FakeServer {
         return json({
           'google_client_id': googleClientId,
           'public_base_url': publicBaseUrl,
+          'email_sign_in': emailSignIn,
+          'apple_client_id': appleClientId,
+          'apple_redirect_uri': appleRedirectUri,
         });
+      case 'POST /api/auth/apple':
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        appleBodies.add(body);
+        if (body['id_token'] != kValidAppleIdToken) return unauthorized;
+        return json({'token': addSession(), 'user': kAlice});
+      case 'POST /api/auth/email/start':
+        emailBodies[call] = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response('', 202);
+      case 'POST /api/auth/email/sign-in':
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        emailBodies[call] = body;
+        if (body['password'] != kEmailPassword) {
+          return http.Response('{"detail":"Wrong email or password"}', 401);
+        }
+        return json({'token': addSession(), 'user': kAlice});
+      case 'POST /api/auth/email/complete':
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        emailBodies[call] = body;
+        if (body['token'] != kEmailLinkToken) {
+          return http.Response('{"detail":"This link is no longer valid"}', 410);
+        }
+        return json({'token': addSession(), 'user': kAlice});
       case 'GET /api/version':
         return json({'version': 'v1.2.0', 'env': 'validation'});
       case 'POST /api/auth/google':
@@ -262,6 +320,56 @@ FakeGoogleSignIn installFakeGoogleSignIn() {
   resetGoogleSignInInitialized();
   final fake = FakeGoogleSignIn();
   GoogleSignInPlatform.instance = fake;
+  return fake;
+}
+
+/// Apple's platform implementation: records each request. Answers with
+/// [credential], or throws [error], or stays pending while [pending] is set,
+/// as Android does when the custom tab is closed.
+class FakeAppleSignIn extends SignInWithApplePlatform {
+  final nonces = <String?>[];
+  final options = <WebAuthenticationOptions?>[];
+  final scopes = <List<AppleIDAuthorizationScopes>>[];
+
+  AuthorizationCredentialAppleID credential = appleCredential();
+  Object? error;
+  Completer<AuthorizationCredentialAppleID>? pending;
+
+  @override
+  Future<AuthorizationCredentialAppleID> getAppleIDCredential({
+    required List<AppleIDAuthorizationScopes> scopes,
+    WebAuthenticationOptions? webAuthenticationOptions,
+    String? nonce,
+    String? state,
+  }) async {
+    this.scopes.add(scopes);
+    options.add(webAuthenticationOptions);
+    nonces.add(nonce);
+    if (pending case final completer?) return completer.future;
+    if (error case final thrown?) throw thrown;
+    return credential;
+  }
+
+  static AuthorizationCredentialAppleID appleCredential({
+    String? identityToken = kValidAppleIdToken,
+    String? givenName,
+    String? familyName,
+  }) =>
+      AuthorizationCredentialAppleID(
+        userIdentifier: null,
+        givenName: givenName,
+        familyName: familyName,
+        authorizationCode: 'code',
+        email: null,
+        identityToken: identityToken,
+        state: null,
+      );
+}
+
+/// Installs a fresh [FakeAppleSignIn].
+FakeAppleSignIn installFakeAppleSignIn() {
+  final fake = FakeAppleSignIn();
+  SignInWithApplePlatform.instance = fake;
   return fake;
 }
 

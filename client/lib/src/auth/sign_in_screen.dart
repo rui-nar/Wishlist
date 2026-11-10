@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
@@ -14,35 +15,47 @@ import '../design/widgets/backdrop.dart';
 import '../design/widgets/page_frame.dart';
 import '../error_line.dart';
 import '../app_router.dart';
+// Web: adds Apple's script to the page. Android and iOS: nothing to load.
+import 'apple_script_stub.dart'
+    if (dart.library.js_interop) 'apple_script_web.dart';
+import 'apple_sign_in.dart';
 import 'auth_controller.dart';
+import 'email_link.dart';
+import 'email_sign_in_form.dart';
 // Web: Google's own button. Android and iOS: a stub, since they show a
 // themed button calling authenticate().
 import 'google_button_stub.dart'
     if (dart.library.js_interop) 'google_button_web.dart';
 import 'google_sign_in_init.dart';
 
-/// The app's name and the Google button, in a card (ACCOUNTS_PLAN D10), on
-/// the bold backdrop (WEB_LAYOUT_PLAN D9).
+/// The app's name and each way of signing in that the server offers, in a
+/// card (ACCOUNTS_PLAN D10), on the bold backdrop (WEB_LAYOUT_PLAN D9).
 ///
 /// [register] is the welcome page's Register (WEB_LAYOUT_PLAN D7): the first
 /// Google sign-in creates the account, so it changes only the heading and
-/// the prompt. [offerWelcome] adds a link to the welcome page, for a visitor
-/// who is not in the middle of following a link.
+/// the prompt, which depends on what the server offers. [offerWelcome] adds a
+/// link to the welcome page, for a visitor who is not in the middle of
+/// following a link.
 ///
 /// Reads the Google client ID from `/api/config` (D6) and initialises Google
 /// sign-in with it: the only place that does, so Google's script loads only
-/// here on the web (D11). Without a client ID it says sign-in is not
-/// available instead of showing a button that cannot work. Once signed in,
-/// the router's guard takes the user where they were going.
+/// here on the web (D11). When the server offers no way of signing in it says
+/// sign-in is not available instead of showing a button that cannot work.
+/// Once signed in, the router's guard takes the user where they were going.
 class SignInScreen extends StatefulWidget {
   const SignInScreen({
     super.key,
     this.register = false,
     this.offerWelcome = false,
+    this.from,
   });
 
   final bool register;
   final bool offerWelcome;
+
+  /// Where the user is going after signing in, to carry through the page that
+  /// asks for an email link and back.
+  final String? from;
 
   @override
   State<SignInScreen> createState() => _SignInScreenState();
@@ -57,6 +70,14 @@ class _SignInScreenState extends State<SignInScreen> {
 
   /// Whether Google's side failed: initialising, or its sign-in flow.
   bool _googleFailed = false;
+
+  /// Whether initialising failed, so no Google button can work.
+  bool _googleInitFailed = false;
+
+  /// The latest tap on Apple's button. Apple's answer to an earlier one is
+  /// dropped: on Android, closing the tab can leave it pending for ever, so
+  /// the button stays usable and a new tap replaces the attempt.
+  int _appleAttempt = 0;
 
   @override
   void initState() {
@@ -77,12 +98,17 @@ class _SignInScreenState extends State<SignInScreen> {
   void _loadConfig() {
     _config = fetchClientConfig(context.read<ApiClient>());
     _config.then((config) {
+      if (_offersApple(config)) loadAppleScript();
       final clientId = config.googleClientId;
       if (clientId == null) return;
       ensureGoogleSignInInitialized(clientId).then((_) {
         if (mounted) setState(() => _googleReady = true);
       }, onError: (Object _) {
-        if (mounted) setState(() => _googleFailed = true);
+        if (!mounted) return;
+        setState(() {
+          _googleFailed = true;
+          _googleInitFailed = true;
+        });
       });
     }, onError: (Object _) {
       // Shown by the FutureBuilder.
@@ -124,6 +150,44 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
+  /// Apple needs both: the Services ID, and where it sends its answer.
+  bool _offersApple(ClientConfig config) =>
+      config.appleClientId != null && config.appleRedirectUri != null;
+
+  /// Must reach [authoriseWithApple] within the tap: see there.
+  Future<void> _signInWithApple(ClientConfig config) async {
+    final attempt = ++_appleAttempt;
+    final auth = context.read<AuthController>();
+    setState(() => _googleFailed = false);
+    final AppleAuthorisation? authorisation;
+    try {
+      authorisation = await authoriseWithApple(
+        clientId: config.appleClientId!,
+        redirectUri: config.appleRedirectUri!,
+      );
+    } catch (_) {
+      if (mounted && attempt == _appleAttempt) auth.appleFlowFailed();
+      return;
+    }
+    if (!mounted || attempt != _appleAttempt || authorisation == null) return;
+    auth.signInWithApple(
+      idToken: authorisation.idToken,
+      nonce: authorisation.nonce,
+      name: authorisation.name,
+    );
+  }
+
+  /// [config] is null until the server has answered: only then is it known
+  /// that a Google account really is all one needs.
+  String _prompt(AppLocalizations l10n, ClientConfig? config) {
+    if (!widget.register) return l10n.signInPrompt;
+    final onlyGoogle = config != null &&
+        config.googleClientId != null &&
+        !config.emailSignIn &&
+        !_offersApple(config);
+    return onlyGoogle ? l10n.registerPrompt : l10n.registerPromptChoose;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -147,11 +211,12 @@ class _SignInScreenState extends State<SignInScreen> {
                         style: textTheme.headlineMedium,
                       ),
                       const SizedBox(height: Spacing.s8),
-                      Text(
-                        widget.register
-                            ? l10n.registerPrompt
-                            : l10n.signInPrompt,
-                        style: textTheme.bodyLarge,
+                      FutureBuilder<ClientConfig>(
+                        future: _config,
+                        builder: (context, snapshot) => Text(
+                          _prompt(l10n, snapshot.data),
+                          style: textTheme.bodyLarge,
+                        ),
                       ),
                       const SizedBox(height: Spacing.s24),
                       FutureBuilder<ClientConfig>(
@@ -167,13 +232,15 @@ class _SignInScreenState extends State<SignInScreen> {
                           }
                           final config = snapshot.data;
                           if (config == null) return const _Progress();
-                          if (config.googleClientId == null) {
+                          if (config.googleClientId == null &&
+                              !config.emailSignIn &&
+                              !_offersApple(config)) {
                             return Text(
                               l10n.signInNotConfigured,
                               style: textTheme.bodyLarge,
                             );
                           }
-                          return _signIn(context, l10n);
+                          return _signIn(context, l10n, config);
                         },
                       ),
                       if (widget.offerWelcome) ...[
@@ -197,40 +264,101 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
-  /// The Google button, or progress while Google initialises or the server
-  /// checks the sign-in, and why the last attempt failed.
-  Widget _signIn(BuildContext context, AppLocalizations l10n) {
+  /// What the server offers, progress while Google initialises or the server
+  /// checks a sign-in, and why the last attempt failed.
+  Widget _signIn(
+    BuildContext context,
+    AppLocalizations l10n,
+    ClientConfig config,
+  ) {
     final auth = context.watch<AuthController>();
     final failure = _googleFailed
         ? l10n.signInGoogleFailed
         : switch (auth.failure) {
             null => null,
             SignInFailure.rejected => l10n.signInRejected,
+            SignInFailure.appleRejected => l10n.signInAppleRejected,
+            SignInFailure.appleFailed => l10n.signInAppleFailed,
+            SignInFailure.wrongCredentials => l10n.signInWrongCredentials,
+            SignInFailure.tooManyAttempts => l10n.signInTooManyAttempts,
             SignInFailure.notConfigured => l10n.signInNotConfigured,
             SignInFailure.unreachable => l10n.serverUnreachable,
             SignInFailure.serverError => l10n.serverError,
           };
     final busy = auth.status == AuthStatus.signingIn;
+    final hasGoogle = config.googleClientId != null;
+    final hasApple = _offersApple(config);
+    final toSignUp = Uri(
+      path: kEmailSignUpPath,
+      queryParameters: widget.from == null ? null : {'from': widget.from},
+    ).toString();
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (busy || (!_googleReady && !_googleFailed))
+        if (busy || (hasGoogle && !_googleReady && !_googleInitFailed))
           const _Progress()
-        else if (!_googleReady)
+        else if (hasGoogle && !_googleReady)
           // Initialising failed: no button can work; the failure says so.
           const SizedBox.shrink()
-        else if (kIsWeb)
+        else if (hasGoogle && kIsWeb)
           Center(child: buildGoogleSignInButton(context))
-        else
+        else if (hasGoogle)
           OutlinedButton.icon(
             onPressed: _authenticate,
             icon: const Icon(Icons.login),
             label: Text(l10n.signInWithGoogle),
           ),
+        if (hasApple && !busy) ...[
+          if (hasGoogle && !_googleInitFailed)
+            const SizedBox(height: Spacing.s16),
+          SignInWithAppleButton(
+            text: l10n.signInWithApple,
+            style: Theme.of(context).brightness == Brightness.dark
+                ? SignInWithAppleButtonStyle.white
+                : SignInWithAppleButtonStyle.black,
+            onPressed: () => _signInWithApple(config),
+          ),
+        ],
+        if (config.emailSignIn) ...[
+          if (hasGoogle || hasApple) ...[
+            const SizedBox(height: Spacing.s16),
+            Row(
+              children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Spacing.s8),
+                  child: Text(l10n.signInOr),
+                ),
+                const Expanded(child: Divider()),
+              ],
+            ),
+            const SizedBox(height: Spacing.s8),
+            Text(
+              l10n.signInOtherProviderHint,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: Spacing.s16),
+          ] else if (busy)
+            const SizedBox(height: Spacing.s16),
+          // Keyed: the widgets above come and go, and the typed address and
+          // password must not.
+          EmailSignInForm(key: const ValueKey('email-sign-in'), busy: busy),
+        ],
         if (failure != null) ...[
           const SizedBox(height: Spacing.s16),
           ErrorLine(failure),
+        ],
+        if (config.emailSignIn) ...[
+          const SizedBox(height: Spacing.s8),
+          TextButton(
+            onPressed: () => context.go(toSignUp),
+            child: Text(l10n.signInForgotPassword),
+          ),
+          TextButton(
+            onPressed: () => context.go(toSignUp),
+            child: Text(l10n.signInCreateWithEmail),
+          ),
         ],
       ],
     );

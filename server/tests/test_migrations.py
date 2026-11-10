@@ -138,6 +138,96 @@ def test_deleting_an_account_deletes_its_purchases_and_no_others(empty_database_
         engine.dispose()
 
 
+SIGN_IN_TABLES = ("password_credentials", "email_links", "auth_throttle")
+
+
+def _insert_sign_in_rows(connection, user: uuid.UUID) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO password_credentials (user_id, password_hash, updated_at)"
+            " VALUES (:user, 'hash', now())"
+        ),
+        {"user": user},
+    )
+    connection.execute(
+        text(
+            "INSERT INTO email_links (id, address, purpose, language, created_at,"
+            " expires_at) VALUES (:id, :address, 'create', 'en', now(), now())"
+        ),
+        {"id": uuid.uuid4(), "address": f"{user}@example.com"},
+    )
+    connection.execute(
+        text(
+            "INSERT INTO auth_throttle (key_hash, window_started_at, count)"
+            " VALUES (:key, now(), 1)"
+        ),
+        {"key": user.hex},
+    )
+
+
+def test_the_email_sign_in_revision_upgrades_and_downgrades_with_rows_present(
+    empty_database_url,
+):
+    """Sign-in plan, Boundaries crossed: new tables only, so an account made
+    before the revision stays through it, and a downgrade loses only them."""
+    before = alembic(empty_database_url, "upgrade", "d8a3f6b2c914")
+    assert before.returncode == 0, before.stderr
+    user = uuid.uuid4()
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        _insert_user(connection, user)
+    engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        _insert_sign_in_rows(connection, user)
+    engine.dispose()
+
+    downgrade = alembic(empty_database_url, "downgrade", "d8a3f6b2c914")
+    assert downgrade.returncode == 0, downgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM users")) == 1
+            for table in SIGN_IN_TABLES:
+                assert connection.scalar(text(f"SELECT to_regclass('{table}')")) is None
+    finally:
+        engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+    check = alembic(empty_database_url, "check")
+    assert check.returncode == 0, check.stderr
+
+
+def test_deleting_an_account_deletes_its_password_and_no_others(empty_database_url):
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+    deleted, kept = uuid.uuid4(), uuid.uuid4()
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.begin() as connection:
+            for user in (deleted, kept):
+                _insert_user(connection, user)
+                _insert_sign_in_rows(connection, user)
+
+            connection.execute(
+                text("DELETE FROM users WHERE id = :id"), {"id": deleted}
+            )
+
+        with engine.connect() as connection:
+            owners = connection.scalars(
+                text("SELECT user_id FROM password_credentials")
+            )
+            assert list(owners) == [kept]
+    finally:
+        engine.dispose()
+
+
 def test_the_comments_revision_makes_claim_holders_follow_their_gifts(
     empty_database_url,
 ):

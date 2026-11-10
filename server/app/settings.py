@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     # uses and Android passes as its server client ID; /api/config hands it to
     # the clients (D6). Empty: Google sign-in is not configured.
     google_client_ids: str = ""
+    # Comma-separated Apple client IDs whose identity tokens sign-in accepts
+    # (sign-in plan D14). The first is the Services ID, which /api/config hands
+    # to the clients (D18). Empty: Apple sign-in is not configured.
+    apple_client_ids: str = ""
+    # The Android package Apple's callback hands the sign-in to (D16).
+    apple_android_package: str = ""
     # The origin share links are built on, `<PUBLIC_BASE_URL>/join#<token>`
     # (lists plan D5); /api/config hands it to the mobile apps. Empty in DEV:
     # the web client builds the link on its own origin.
@@ -165,6 +171,14 @@ class Settings(BaseSettings):
         return [
             client_id.strip()
             for client_id in self.google_client_ids.split(",")
+            if client_id.strip()
+        ]
+
+    @property
+    def apple_audiences(self) -> list[str]:
+        return [
+            client_id.strip()
+            for client_id in self.apple_client_ids.split(",")
             if client_id.strip()
         ]
 

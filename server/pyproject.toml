@@ -6,6 +6,8 @@ description = "Wishlist server (FastAPI)"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.1",
+    # Hashes passwords (sign-in plan D11); imported only in app/accounts/passwords.py.
+    "argon2-cffi>=25.1.0",
     "fastapi>=0.162.2",
     # Verifies Google ID tokens; requests is its HTTP transport, which fetches
     # Google's signing certificates.
@@ -19,6 +21,9 @@ dependencies = [
     # major is a decision, not a Dependabot bump.
     "psycopg[binary]>=3.3.8,<4",
     "pydantic-settings>=2.16.2",
+    # Verifies Apple's identity tokens (sign-in plan D14); imported only in
+    # app/accounts/apple.py.
+    "pyjwt[crypto]>=2.15.1",
     "requests>=2.34.2",
     "sqlalchemy>=2.1.8,<3",
     # Checkout, the Customer Portal and the webhook (premium plan D10); imported

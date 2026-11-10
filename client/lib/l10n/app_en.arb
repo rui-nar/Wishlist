@@ -960,7 +960,23 @@
   },
   "registerPrompt": "Your Google account is all you need.",
   "@registerPrompt": {
-    "description": "The sign-in screen opened with Register: the line under the heading."
+    "description": "The sign-in screen opened with Register: the line under the heading, when Google is the only way offered."
+  },
+  "registerPromptChoose": "Choose how you want to sign up.",
+  "@registerPromptChoose": {
+    "description": "The sign-in screen opened with Register: the line under the heading, when other ways than Google are offered."
+  },
+  "signInWithApple": "Continue with Apple",
+  "@signInWithApple": {
+    "description": "The sign-in screen: the Sign in with Apple button."
+  },
+  "signInAppleRejected": "Apple sign-in could not be verified. Try again.",
+  "@signInAppleRejected": {
+    "description": "The sign-in screen: the server refused the Apple sign-in."
+  },
+  "signInAppleFailed": "Apple sign-in did not complete. Try again.",
+  "@signInAppleFailed": {
+    "description": "The sign-in screen: Apple's own sign-in flow failed before reaching the server."
   },
   "whatIsWishlist": "What is Wishlist?",
   "@whatIsWishlist": {
@@ -1409,5 +1425,135 @@
   "legalPlaceholderBody": "This page is a placeholder. Its text has not been supplied yet, and nothing here is binding.",
   "@legalPlaceholderBody": {
     "description": "The legal pages: the text is provisional and binds no one."
+  },
+  "signInOr": "or",
+  "@signInOr": {
+    "description": "The sign-in screen: between the provider buttons and the email form."
+  },
+  "signInOtherProviderHint": "If you usually sign in with Google or Apple, use that button.",
+  "@signInOtherProviderHint": {
+    "description": "The sign-in screen: an email sign-in creates a separate account from Google's or Apple's."
+  },
+  "signInEmailLabel": "Email address",
+  "@signInEmailLabel": {
+    "description": "The label of the email address field."
+  },
+  "signInPasswordLabel": "Password",
+  "@signInPasswordLabel": {
+    "description": "The label of the password field when signing in."
+  },
+  "signInEmailAction": "Sign in",
+  "@signInEmailAction": {
+    "description": "The sign-in screen: the button that signs in with an email and password."
+  },
+  "signInEmailInvalid": "Enter a valid email address.",
+  "@signInEmailInvalid": {
+    "description": "Under the email field when it cannot be an address."
+  },
+  "signInPasswordRequired": "Enter your password.",
+  "@signInPasswordRequired": {
+    "description": "Under the password field when it is empty."
+  },
+  "signInForgotPassword": "Forgot your password?",
+  "@signInForgotPassword": {
+    "description": "The sign-in screen: the link to get a reset link by email."
+  },
+  "signInCreateWithEmail": "Create an account with your email",
+  "@signInCreateWithEmail": {
+    "description": "The sign-in screen: the link to create an account from an email address."
+  },
+  "signInWrongCredentials": "Wrong email or password.",
+  "@signInWrongCredentials": {
+    "description": "An email sign-in was refused; the same for every cause."
+  },
+  "signInTooManyAttempts": "Too many attempts. Try again in a few minutes.",
+  "@signInTooManyAttempts": {
+    "description": "The server limited the attempts for now."
+  },
+  "emailSignUpTitle": "Get a link by email",
+  "@emailSignUpTitle": {
+    "description": "The page asking for an address: its title."
+  },
+  "emailSignUpBody": "Enter your email address and we will send you a link to choose a password. It works whether you are creating an account or have forgotten your password.",
+  "@emailSignUpBody": {
+    "description": "The page asking for an address: what happens next. It must not suggest whether the address has an account."
+  },
+  "emailSignUpSend": "Send the link",
+  "@emailSignUpSend": {
+    "description": "The page asking for an address: the button."
+  },
+  "emailSignUpBack": "Back to sign-in",
+  "@emailSignUpBack": {
+    "description": "The page asking for an address: the way back to the sign-in screen."
+  },
+  "checkInboxTitle": "Check your inbox",
+  "@checkInboxTitle": {
+    "description": "After asking for a link: the heading."
+  },
+  "checkInboxBody": "A link is on its way to {email}. It should arrive within about a minute and works for one hour. If you cannot find it, look in your spam folder.",
+  "@checkInboxBody": {
+    "description": "After asking for a link: when it arrives, how long it works, and the spam folder.",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "alice@example.com"
+      }
+    }
+  },
+  "checkInboxDifferentAddress": "Use a different address",
+  "@checkInboxDifferentAddress": {
+    "description": "After asking for a link: back to the address field."
+  },
+  "emailLinkNameLabel": "Your name",
+  "@emailLinkNameLabel": {
+    "description": "The create-account page: the name field."
+  },
+  "emailLinkNameRequired": "Enter your name.",
+  "@emailLinkNameRequired": {
+    "description": "The create-account page: the name field is empty."
+  },
+  "emailLinkNameTooLong": "Use at most 100 characters.",
+  "@emailLinkNameTooLong": {
+    "description": "The create-account page: the name is too long."
+  },
+  "emailLinkPasswordLabel": "Choose a password",
+  "@emailLinkPasswordLabel": {
+    "description": "The create-account page: the password field."
+  },
+  "emailLinkNewPasswordLabel": "New password",
+  "@emailLinkNewPasswordLabel": {
+    "description": "The reset-password page: the password field."
+  },
+  "emailLinkPasswordHelp": "10 to 128 characters",
+  "@emailLinkPasswordHelp": {
+    "description": "Under the password field when choosing one."
+  },
+  "emailLinkPasswordLength": "Use 10 to 128 characters.",
+  "@emailLinkPasswordLength": {
+    "description": "The chosen password is too short or too long."
+  },
+  "resetPasswordTitle": "Choose a new password",
+  "@resetPasswordTitle": {
+    "description": "The reset-password page: its title."
+  },
+  "createAccountAction": "Create my account",
+  "@createAccountAction": {
+    "description": "The create-account page: the button."
+  },
+  "resetPasswordAction": "Save my password",
+  "@resetPasswordAction": {
+    "description": "The reset-password page: the button."
+  },
+  "emailLinkExpired": "This link has expired or has already been used. You can ask for a new one.",
+  "@emailLinkExpired": {
+    "description": "An email link the server no longer accepts, or a page opened without one."
+  },
+  "emailLinkNewLink": "Get a new link",
+  "@emailLinkNewLink": {
+    "description": "After an expired link: the button asking for another."
+  },
+  "emailLinkNotAccepted": "Check your name and password, then try again.",
+  "@emailLinkNotAccepted": {
+    "description": "The server refused what was typed on the create-account or reset-password page."
   }
 }
