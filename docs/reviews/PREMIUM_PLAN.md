@@ -127,4 +127,26 @@ on the server, and the limit keeps a public route from flooding the log.
 - Scores: trigger=theoretical (triager: was plausible), impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=verified
 - Decision: Guard (D4)
 - Override: orchestrator, under the standing instruction: Fix now — the fix is one loop over a cancel call that already exists, and a log line would still leave someone charged after deleting their account
-- Outcome: open
+- Outcome: fixed (f9e65cc)
+
+## Delivery
+
+Orchestrated under the owner's standing instruction of 2026-11-10, on
+`feat/paywall`. Units of a multi-unit wave ran in worktrees (W2). Server checks
+ran in a detached Linux container on the dev Docker network, because Windows
+Application Control blocks the host venv's compiled modules.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | The entitlement model, settings and reading premium | Opus | S4 | 1 | — | yes | R1-2, R1-3, R3-1 |
+| U2 | Copy and the legal placeholder pages | Sonnet | — | 1 | — | yes | — |
+| U3 | Environment and the owner's steps | Opus | S5 | 1 | — | yes | R1-3, R1-4, R2-1 |
+| U4 | The limits on the four growing paths | Opus | S5 | 1 | — | yes | R1-1 |
+| U5 | Stripe, the billing routes and the webhook | Opus | S5 | 1 | — | yes | R1-2 |
+| U6 | The plan on the account screen and the upgrade flow | Opus | S5 | 1 | — | yes | — |
+| U7 | Deleting an account stops its billing first | Opus | S5 | 1 | X3 (test file name) | yes | R6-1, R7-1 |
+| U8 | The limit message | Opus | S5 | 1 | — | yes | — |
+| U9 | The surprise at the limit, end to end | Opus | S5 | 1 | — | yes | — |
+| F1 | Deletion cancels every recorded subscription; bad signatures logged | Opus | S5 | 1 | — | yes | R7-1 |
+
+Deferred: R1-5, R2-2, R5-1, with their revisit conditions above.
