@@ -22,6 +22,7 @@ below; replace them as you run the commands.
 | Placeholder | What to put there |
 |---|---|
 | `<prod-host>` | PROD's public hostname (for now a subdomain of TraxJourney's domain, until Wishlist has its own) |
+| `<top-private-domain>` | The registered domain that `<val-host>` and `<prod-host>` are subdomains of |
 | `<val-host>` | VAL's public hostname |
 | `<vps-host>` | the VPS's SSH address (`DEPLOY_HOST` in `deploy.env`) |
 | `<deploy-user>` | the VPS account `deploy.ps1` connects as, in the `docker` group (TraxJourney's runbook §1) |
@@ -745,6 +746,41 @@ Cloud project. VAL and PROD add their origins to it and put its ID in their
 `.env`. This step needs the hostnames ([step 6](#6-caddy)): Google accepts
 only `https` origins, apart from `localhost`.
 
+### Everything to do in the Google Cloud console
+
+All of it is in one project, at <https://console.cloud.google.com>. Google
+sign-in is the only thing Wishlist uses there. Everything is free, and no API
+has to be enabled. Details of rows 6 and 7 follow below.
+
+| # | Where | What | When |
+|---|---|---|---|
+| 1 | Project selector → New project | One project for Wishlist. Its id can never change, so choose it as if it were public | Once |
+| 2 | Google Auth Platform → Branding | App name `Wishlist`, a user support email, a developer contact email. **No logo**: a logo makes Google review the branding first | Once |
+| 3 | Branding → Authorised domains | `<top-private-domain>`. Google requires it before accepting the origins of row 6 or the links of row 8 | Once, and again when Wishlist gets its own domain |
+| 4 | Google Auth Platform → Audience | User type **External**. Add your own account under Test users | Once |
+| 5 | Google Auth Platform → Data Access | Add nothing. Sign-in asks only for `openid`, `email` and `profile`, and any other scope changes what Google demands | Never |
+| 6 | Google Auth Platform → Clients | The web client `Wishlist web`, with the origin of each environment ([below](#web-oauth-client)) | Once, then a line per environment |
+| 7 | Google Auth Platform → Clients | One Android client per signing key ([below](#android-oauth-client)) | Once the real application id and release key exist; a debug client for a dev machine |
+| 8 | Branding → App domain | Home page `https://<prod-host>/welcome`, privacy policy the address of `LEGAL_PRIVACY_URL`, terms of service the address of `LEGAL_TERMS_URL` | Before row 9 |
+| 9 | Audience → **Publish app** | Status **In production**: open to any Google account | Before PROD serves the public |
+| 10 | Verification Centre | Only for showing the name `Wishlist` or a logo on Google's screen. It needs the ownership of `<top-private-domain>` proven in Google Search Console | Optional |
+
+- **Row 8:** Google requires the home page to be public, to describe the app
+  and to link the same privacy policy. The welcome page does not link a privacy
+  policy yet, and needs one before you publish.
+- **Row 9:** while the app is unverified, Google's screen shows the domain
+  only, so people see `<top-private-domain>`, not `Wishlist`.
+- **Testing status:** Google's documentation says an app asking only for
+  `openid`, `email` and `profile` is not limited to its test users and its
+  sign-ins do not expire, even in Testing. Keep your own account listed anyway.
+- **A change to rows 2, 3 or 8 of a verified app** creates a draft that Google
+  must verify again before it applies.
+
+### Web OAuth client
+
+If it does not exist yet, create it as in
+[DEVELOPMENT](DEVELOPMENT.md#google-sign-in-in-dev), step 3.
+
 **[Google Cloud]** Google Auth Platform → Clients → `Wishlist web` →
 Authorised JavaScript origins. Add, next to `http://localhost:5500`:
 
@@ -757,12 +793,6 @@ An origin is the scheme and host only: no path, no trailing slash. Redirect
 URIs stay empty (accounts plan D2: the client sends Google's ID token to the
 server, nothing redirects). The client secret is not used anywhere: it goes
 into no `.env` and no GitHub secret.
-
-**[Google Cloud]** Google Auth Platform → Audience. While the publishing
-status is **Testing**, only the listed test users can sign in, which is
-enough for VAL. Before PROD serves anyone else, **Publish app**. Sign-in asks
-only for `openid`, `email` and `profile`, which need no Google review; adding
-a logo to the branding does.
 
 **[VPS]** Set the ID in each `.env` (it is the same in both), then recreate
 the app:
