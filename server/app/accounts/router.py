@@ -1,15 +1,23 @@
 """Sign-in, sign-out and the signed-in user's account (accounts plan D7)."""
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import Select, delete, exists, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
 from app.accounts import sessions
-from app.accounts.deps import CurrentSession, CurrentUser, UserToDelete
+from app.accounts.deps import (
+    CurrentSession,
+    CurrentUser,
+    UnlockedSession,
+    lock_for_deletion,
+)
 from app.accounts.google import GoogleIdentity, InvalidGoogleToken
 from app.accounts.models import User, UserIdentity
 from app.accounts.schemas import GoogleSignIn, SignedIn, UserOut
+from app.billing.closing import report_late_purchases, stop_billing
+from app.billing.schemas import BillingRefusal
 from app.db import DbSession
 from app.hidden_gifts.lifecycle import lock_authored
 from app.lists.deletion import delete_lists_owned_only_by
@@ -56,15 +64,27 @@ def me(user: CurrentUser) -> UserOut:
     return _user_out(user)
 
 
-@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-def delete_me(user: UserToDelete, db: DbSession) -> Response:
-    # The account locked first (`FOR UPDATE`, by its dependency), then every
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={409: {"model": BillingRefusal}, 502: {"model": BillingRefusal}},
+)
+def delete_me(request: Request, session: UnlockedSession, db: DbSession) -> Response:
+    # Before any lock, so that none of their requests waits on Stripe (premium
+    # plan D15). A refusal has changed nothing.
+    state = request.app.state
+    stopped = stop_billing(db, state.stripe_gateway, session.user_id, state.clock())
+    if isinstance(stopped, JSONResponse):
+        return stopped
+    # The account locked first (`FOR UPDATE`, by `lock_for_deletion`), then every
     # occasion they give in or own, in the order every request takes them
     # (reserving plan D7): each request holds its user `FOR KEY SHARE` from
     # `current_session` on, so their requests in flight finished before this
     # one went on and are released below, and a later one waits, then finds
     # no user and answers 401: never a claim, a membership or a session left
     # by no one. An owner removing them locks them before the occasion too.
+    user = lock_for_deletion(db, session)
+    report_late_purchases(db, user.id, stopped)
     lock_occasions(
         db,
         or_(
