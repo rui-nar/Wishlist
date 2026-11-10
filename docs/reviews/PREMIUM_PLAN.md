@@ -114,3 +114,17 @@ and refund by hand.
 - Guard: after `lock_for_deletion`, `delete_me` compares the billable rows with what `stop_billing` cancelled or saw, and logs an ERROR naming any subscription recorded meanwhile; the deletion proceeds
 - Override: —
 - Outcome: guard added (8de535e)
+
+## Round 7 — 2026-11-10, integrated review (and U9's unit review), reviewed at 3fc140a
+
+Envelope question, answered by the orchestrator: a failed webhook signature logs
+one fixed-word WARNING at most once a minute, with no body or header. A wrong
+`STRIPE_WEBHOOK_SECRET` otherwise leaves every buyer unrecorded with no signal
+on the server, and the limit keeps a public route from flooding the log.
+
+### R7-1 — A recorded subscription on another customer is not cancelled at account deletion
+- Trigger: a subscription is created by hand on another customer with the user's id, for a user who already has a stored customer → the user deletes their account → only the stored customer is cancelled → the subscription keeps charging a deleted account, and the R6-1 guard counts it as dealt with
+- Scores: trigger=theoretical (triager: was plausible), impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Guard (D4)
+- Override: orchestrator, under the standing instruction: Fix now — the fix is one loop over a cancel call that already exists, and a log line would still leave someone charged after deleting their account
+- Outcome: open
