@@ -113,4 +113,4 @@ and refund by hand.
 - Decision: Guard (D4)
 - Guard: after `lock_for_deletion`, `delete_me` compares the billable rows with what `stop_billing` cancelled or saw, and logs an ERROR naming any subscription recorded meanwhile; the deletion proceeds
 - Override: —
-- Outcome: open
+- Outcome: guard added (8de535e)
