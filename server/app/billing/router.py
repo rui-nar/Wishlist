@@ -9,7 +9,7 @@ write. A refusal is returned, not raised, so it keeps its `code`.
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -59,6 +59,9 @@ router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 # Stripe's events are a few kilobytes.
 MAX_WEBHOOK_BYTES = 1024 * 1024
+
+# Often enough to be seen, rarely enough that a public route cannot flood the log.
+BAD_SIGNATURE_WARNING_INTERVAL = timedelta(minutes=1)
 
 # Outside production, what checkout shows when the owner has set no text
 # (D17). In production nothing is sold without the owner's own (D16), so these
@@ -225,6 +228,7 @@ async def webhook(request: Request, db: DbSession) -> Response:
     try:
         event = gateway.verify(body, request.headers.get("stripe-signature"))
     except InvalidWebhook:
+        _warn_of_bad_signature(request)
         raise _invalid_webhook() from None
     return await run_in_threadpool(_handle_event, request, db, event)
 
@@ -388,6 +392,22 @@ async def _capped_body(request: Request) -> bytes | None:
         if len(body) > MAX_WEBHOOK_BYTES:
             return None
     return bytes(body)
+
+
+def _warn_of_bad_signature(request: Request) -> None:
+    """A wrong STRIPE_WEBHOOK_SECRET leaves every buyer unrecorded, and this is
+    its only trace on the server. Fixed words, nothing from the request. Runs
+    on the event loop with no await, so two requests cannot both pass."""
+    state = request.app.state
+    now = state.clock()
+    last = getattr(state, "bad_signature_warned_at", None)
+    if last is not None and now - last < BAD_SIGNATURE_WARNING_INTERVAL:
+        return
+    state.bad_signature_warned_at = now
+    _log.warning(
+        "stripe: a webhook failed its signature check: if every event does,"
+        " check STRIPE_WEBHOOK_SECRET"
+    )
 
 
 def _invalid_webhook() -> HTTPException:
