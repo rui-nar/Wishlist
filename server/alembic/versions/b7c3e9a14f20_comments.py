@@ -4,6 +4,10 @@ Comment threads and following under a gift of an occasion (comments plan D1,
 D4). New tables only, so the previous release keeps working against it
 (DevOps plan D15).
 
+Whoever already holds a claim follows its gift from here on, as if they had
+claimed it after this revision (review R7-1). A bought claim whose occasion
+was deleted has no occasion to follow it in, so it is left out.
+
 Revision ID: b7c3e9a14f20
 Revises: e5d38ed51007
 Create Date: 2026-11-09 09:00:00.000000
@@ -90,6 +94,15 @@ def upgrade() -> None:
     )
     op.create_index(
         op.f("ix_gift_follows_user_id"), "gift_follows", ["user_id"], unique=False
+    )
+    # What `auto_follow` would have written for each claim already held.
+    op.execute(
+        "INSERT INTO gift_follows (occasion_id, gift_id, user_id, following)"
+        " SELECT c.occasion_id, p.gift_id, p.user_id, true"
+        " FROM claim_participants p"
+        " JOIN gift_claims c ON c.gift_id = p.gift_id"
+        " WHERE c.occasion_id IS NOT NULL"
+        " ON CONFLICT DO NOTHING"
     )
 
 
