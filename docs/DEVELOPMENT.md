@@ -165,7 +165,7 @@ them out: every account is unlimited, no purchase or plan section shows, and
 `/api/billing/checkout`, `/portal` and `/webhook` answer 404. The server tests
 never reach Stripe.
 
-To try a purchase, in a Stripe sandbox set up as for VAL
+To try a purchase, in a Stripe sandbox of its own, never VAL's, set up as for VAL
 ([DEPLOYMENT](DEPLOYMENT.md#stripe-test-on-val), steps 1 to 4 and 7):
 
 1. **Webhooks**: the Stripe CLI forwards them to the API. Leave it running. It

@@ -86,3 +86,21 @@ rejected request is not a wait the surprise forbids. This is the one case
 known: keep's insert checks the image foreign key while a giver's refused
 re-attach of the same image holds it `FOR UPDATE`. No actor can prolong it,
 and no owner could observe it.
+
+## Round 5 — 2026-11-10, unit review of U5, reviewed at 664d693
+
+Envelope questions, answered by the orchestrator: (1) the automatic cancel of a
+subscription with no account also requires `metadata.app = "wishlist"`, written
+at checkout, decided while no subscription is sold, so an account shared with
+another product can never lose a customer; (2) one Stripe sandbox per
+environment, stated in the runbooks; (3) a restore keeps cancelling a
+subscription with no account, and the restore procedure gets a step to compare
+and refund by hand.
+
+### R5-1 — A customer created but not stored, then a changed name or email, makes checkout answer 502 for up to 24 hours
+- Trigger: a later checkout step fails after the customer is created at Stripe, the user's Google name or address changes at the next sign-in, and they retry → Stripe refuses the reused idempotency key → "Billing is unavailable" until the key expires
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: the log line `stripe: customer: IdempotencyError` appears, a user report traces to a changed name or email, or another value that can differ is added under this key
+- Override: —
+- Outcome: open

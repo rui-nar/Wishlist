@@ -1076,6 +1076,16 @@ without migrating and logs the `app.migrate` warning (see
 `app.migrate`). Restoring an older dump with the current image is fine: the
 migrations bring it forward.
 
+**Subscriptions of accounts the dump does not have.** A restore loses the
+accounts created since the dump. If billing is live, a subscription of such an
+account is cancelled at its next Stripe event, which for a renewal comes after
+the charge: a subscription with no account must not keep billing, so this stays
+as it is. Right after a restore, compare the subscriptions active in the Stripe
+dashboard with the `entitlements` rows and refund by hand the ones with no
+account. The WARNING `stripe: cancelling subscription … of a gone account` names
+each one
+the app cancels.
+
 ## Seeding VAL from PROD
 
 `/opt/wishlist-val/seed-from-prod.sh` replaces VAL's database with PROD's
@@ -1458,6 +1468,14 @@ because `/hidden-gifts` answers 404. The web client is served by the server and
 rolls back with it; the mobile release must revisit this before builds are
 installed.
 
+**Rolling back across the premium release.** The rollback is image-only. The
+previous release has no webhook and no billing routes, so while it runs Stripe
+events fail and are retried for up to three days, and **deleting an account
+does not cancel its subscription**: it keeps charging. If billing is live, keep
+the rollback within Stripe's retries, and cancel by hand in the Stripe
+dashboard the subscription of any account deleted meanwhile. Limits are not
+applied.
+
 ## Postgres major upgrade
 
 The Postgres image is pinned to one exact version everywhere (D2), and a
@@ -1602,7 +1620,9 @@ Customer Portal (premium plan, `plans/PREMIUM_PLAN.md`). The app has two
 states: the **gateway**, the two secrets, receives webhooks, opens the portal
 and cancels at account deletion; **selling**, the gateway plus the rest,
 offers the purchase and lets limits apply. Every variable is described in the
-`.env.example` files. VAL always comes first, in a Stripe sandbox, with test
+`.env.example` files. VAL always comes first, in a Stripe sandbox of its own (one
+sandbox per environment: a webhook cancels subscriptions it finds no account
+for, so DEV and VAL sharing one would cancel each other's tests), with test
 keys.
 
 **[VPS]** The queries below use this function, in the directory of the
