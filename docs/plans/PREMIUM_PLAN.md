@@ -219,8 +219,8 @@ exist: the seam is designed (D3), no validator is built.
   (`billing_gateway_configured`): the app can talk to Stripe, so it receives
   webhooks, serves the portal and cancels at account deletion. **Selling**
   (`billing_selling`, which needs the gateway too): the app offers a purchase
-  and limits can apply. Withdrawing the offer, by clearing any selling
-  variable, stops new sales and nothing else: existing subscribers keep being
+  and limits can apply. Withdrawing the offer, by clearing `STRIPE_PRICE_ID` or
+  `BILLING_PRICE_AMOUNT`, stops new sales and nothing else: existing subscribers keep being
   recorded, managed and cancellable (review R1-2).
   `BILLING_ENFORCE_LIMITS` (default false) asks for limits, and they apply
   only when it is on **and** the app is selling:
@@ -684,7 +684,9 @@ None of these blocks delivery: each has a placeholder or a safe default.
      | `LEGAL_TERMS_URL`, `LEGAL_PRIVACY_URL`, `LEGAL_WITHDRAWAL_URL` | empty | the app's placeholder pages; required in production |
 
      VAL's says a live key is refused there. Both say: to withdraw the offer,
-     clear a selling variable, never the two secrets while a subscription runs.
+     clear `STRIPE_PRICE_ID` or `BILLING_PRICE_AMOUNT` (never `PUBLIC_BASE_URL`,
+     which the portal, share links and emails also need), and never the two
+     secrets while a subscription runs.
   2. `seed-from-prod.sh`: after the restore, a `DO` block empties
      `entitlements` and `billing_customers` when they exist (D16), through the
      db container's `psql -v ON_ERROR_STOP=1`.
