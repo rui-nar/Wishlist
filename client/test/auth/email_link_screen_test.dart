@@ -9,6 +9,7 @@ import 'package:wishlist/src/auth/email_link_screen.dart';
 import 'package:wishlist/src/auth/email_sign_up_screen.dart';
 import 'package:wishlist/src/auth/sign_in_screen.dart';
 import 'package:wishlist/src/home/home_screen.dart';
+import 'package:wishlist/src/intro/intro_seen.dart';
 import 'package:wishlist/src/shared/join_screen.dart';
 import 'package:wishlist/src/shared/pending_join.dart';
 
@@ -29,7 +30,9 @@ void main() {
   setUp(() {
     server = FakeServer(emailSignIn: true);
     installFakeGoogleSignIn();
-    SharedPreferences.setMockInitialValues({});
+    // This device has seen the introduction: these tests are about the
+    // pages before home.
+    SharedPreferences.setMockInitialValues({kIntroSeenKey: true});
   });
 
   Uri location(WidgetTester tester) => GoRouter.of(

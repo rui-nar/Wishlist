@@ -314,6 +314,10 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
     and emails are rate limited.
   - **Apple:** on the web and Android now, on iOS with the iOS release. The
     email link opens on the web, for now.
+- **Introduction:** three screens explain how the app works, namely the hidden
+  actions and the hidden gifts (owner, 2026-11-10). Shown once, after the first
+  sign-in on a device, and available again from the account screen. They are
+  general: they never say anything about the person's own lists or gifts.
 - **Languages:** English and French from the first release.
 - **Offline (mobile):** owners can add and edit gifts offline, synced later;
   invitees can read what they already viewed, and every invitee action needs a

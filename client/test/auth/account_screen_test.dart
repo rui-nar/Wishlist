@@ -5,6 +5,7 @@ import 'package:wishlist/src/auth/auth_controller.dart';
 import 'package:wishlist/src/auth/sign_in_screen.dart';
 import 'package:wishlist/src/billing/billing_repository.dart';
 import 'package:wishlist/src/billing/plan_screen.dart';
+import 'package:wishlist/src/intro/intro_screen.dart';
 
 import '../billing/support.dart';
 import '../support/fakes.dart';
@@ -34,6 +35,39 @@ void main() {
 
     expect(find.text('Alice Martin'), findsOneWidget);
     expect(find.text('alice@example.com'), findsOneWidget);
+  });
+
+  testWidgets('How Wishlist works opens the introduction and comes back',
+      (tester) async {
+    await pumpAccount(tester);
+
+    Future<void> openIntro() async {
+      await tester.ensureVisible(find.text('How Wishlist works'));
+      await tester.tap(find.text('How Wishlist works'));
+      await tester.pumpAndSettle();
+      expect(find.byType(IntroScreen), findsOneWidget);
+      expect(find.text('Your wishes, their surprise'), findsOneWidget);
+    }
+
+    // Close, from the first page.
+    await openIntro();
+    expect(find.text('Skip'), findsNothing);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byType(IntroScreen), findsNothing);
+    expect(find.byType(AccountScreen), findsOneWidget);
+
+    // Done, from the last.
+    await openIntro();
+    for (var i = 0; i < 2; i++) {
+      await tester.tap(find.text('Next'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('Get started'), findsNothing);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.byType(IntroScreen), findsNothing);
+    expect(find.byType(AccountScreen), findsOneWidget);
   });
 
   testWidgets('delete asks for confirmation; cancel deletes nothing',

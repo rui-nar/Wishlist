@@ -16,8 +16,13 @@ void main() {
       AuthStatus status,
       String location, {
       bool joinPending = false,
+      bool? introSeen,
     }) =>
-        authRedirect(status, Uri.parse(location), joinPending: joinPending);
+        introSeen == null
+            ? authRedirect(status, Uri.parse(location),
+                joinPending: joinPending)
+            : authRedirect(status, Uri.parse(location),
+                joinPending: joinPending, introSeen: introSeen);
 
     test('signed out: to sign-in, with where the user was going', () {
       final target = redirect(AuthStatus.signedOut, '/account');
@@ -211,6 +216,84 @@ void main() {
     test('a from inside the app is kept, query included', () {
       expect(safeFrom('/join'), '/join');
       expect(safeFrom('/account?tab=1'), '/account?tab=1');
+    });
+
+    test('signed in: a first landing on home opens the introduction', () {
+      expect(redirect(AuthStatus.signedIn, '/', introSeen: false), '/intro');
+      // Home with a query is still home (review R2-2).
+      expect(redirect(AuthStatus.signedIn, '/?x=1', introSeen: false),
+          '/intro');
+      // The sign-in screen goes home first; home then goes on to it.
+      expect(redirect(AuthStatus.signedIn, '/sign-in', introSeen: false), '/');
+      expect(redirect(AuthStatus.signedIn, '/welcome', introSeen: false), '/');
+      // Seen: home is home.
+      expect(redirect(AuthStatus.signedIn, '/'), isNull);
+      expect(redirect(AuthStatus.signedIn, '/', introSeen: true), isNull);
+      // Only home leads to it, and it is open signed in, seen or not.
+      for (final seen in [false, true]) {
+        for (final path in ['/account', '/shared', '/lists/1', '/intro']) {
+          expect(redirect(AuthStatus.signedIn, path, introSeen: seen), isNull,
+              reason: '$path seen: $seen');
+        }
+      }
+    });
+
+    test('signed in: a pending share link goes before the introduction', () {
+      expect(
+        redirect(AuthStatus.signedIn, '/sign-in?from=%2Fjoin',
+            joinPending: true, introSeen: false),
+        '/join',
+      );
+      expect(
+        redirect(AuthStatus.signedIn, '/',
+            joinPending: true, introSeen: false),
+        isNull,
+      );
+      expect(
+        redirect(AuthStatus.signedIn, '/join',
+            joinPending: true, introSeen: false),
+        isNull,
+      );
+    });
+
+    test('signed in: a from goes before the introduction', () {
+      expect(
+        redirect(AuthStatus.signedIn, '/sign-in?from=%2Faccount',
+            introSeen: false),
+        '/account',
+      );
+      expect(
+        redirect(
+          AuthStatus.signedIn,
+          '/sign-in?from=${Uri.encodeComponent('/shared/o1?gift=g1')}',
+          introSeen: false,
+        ),
+        '/shared/o1?gift=g1',
+      );
+    });
+
+    test('never the introduction without a session', () {
+      for (final status in [
+        AuthStatus.restoring,
+        AuthStatus.unavailable,
+        AuthStatus.signedOut,
+        AuthStatus.failed,
+        AuthStatus.signingIn,
+      ]) {
+        for (final path in ['/', '/?x=1', '/sign-in', '/welcome', '/account']) {
+          expect(
+            redirect(status, path, introSeen: false),
+            isNot('/intro'),
+            reason: '$status $path',
+          );
+        }
+      }
+      expect(redirect(AuthStatus.signedOut, '/', introSeen: false), '/welcome');
+      // The introduction itself needs a session.
+      expect(
+        redirect(AuthStatus.signedOut, '/intro', introSeen: false),
+        '/sign-in?from=%2Fintro',
+      );
     });
   });
 

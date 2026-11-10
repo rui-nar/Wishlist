@@ -1,6 +1,8 @@
 /// The app's routes and the sign-in guard (ACCOUNTS_PLAN D10).
 library;
 
+import 'dart:async';
+
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -14,6 +16,8 @@ import 'auth/sign_in_screen.dart';
 import 'billing/billing_repository.dart';
 import 'billing/plan_screen.dart';
 import 'home/home_screen.dart';
+import 'intro/intro_screen.dart';
+import 'intro/intro_seen.dart';
 import 'lists/common.dart';
 import 'lists/gift_form_screen.dart';
 import 'lists/list_detail_screen.dart';
@@ -65,7 +69,16 @@ const _publicPaths = {
 /// `/` too. That is the browser going back to the sign-in entry after the
 /// join used the token, which would otherwise say the link is no longer
 /// valid (review R6-1).
-String? authRedirect(AuthStatus status, Uri uri, {required bool joinPending}) {
+///
+/// Signed in, `/` goes to the introduction while this device has not seen it
+/// ([introSeen] false) and no share link is pending: a link, like any `from`,
+/// goes first, and the introduction waits for a later landing on `/`.
+String? authRedirect(
+  AuthStatus status,
+  Uri uri, {
+  required bool joinPending,
+  bool introSeen = true,
+}) {
   // The start gate shows no route until the stored session is known.
   if (status == AuthStatus.restoring || status == AuthStatus.unavailable) {
     return null;
@@ -73,6 +86,7 @@ String? authRedirect(AuthStatus status, Uri uri, {required bool joinPending}) {
   final onSignIn = uri.path == kSignInPath;
   if (status == AuthStatus.signedIn) {
     if (uri.path == kWelcomePath || uri.path == kEmailSignUpPath) return '/';
+    if (uri.path == '/' && !introSeen && !joinPending) return kIntroPath;
     if (!onSignIn) return null;
     final from = safeFrom(uri.queryParameters['from']);
     if (from == null) return '/';
@@ -129,7 +143,7 @@ List<RouteBase> _hiddenGiftRoutes(String Function(GoRouterState) location) => [
 
 /// The routes: the welcome page, sign-in, home with the lists, gifts and occasions under it,
 /// Shared with me with the shared occasions under it, joining by link,
-/// account, the version screen (`/about`) and the unsubscribe page. The guard
+/// account, the introduction, the version screen (`/about`) and the unsubscribe page. The guard
 /// runs again whenever [auth] changes, and covers every route but the public
 /// ones: sign-in, the welcome page, the version screen and the unsubscribe
 /// page.
@@ -147,6 +161,11 @@ GoRouter buildRouter({
   // never hands the link's fragment to the router, and the router's first
   // report rewrites the address without it (COMMENTS_NOTIFICATIONS_PLAN D18).
   final unsubscribeToken = unsubscribeTokenFrom(Uri.base);
+  // Read now, while the session is restored: known long before anyone is
+  // signed in. Until then it counts as seen, and the introduction waits for
+  // a later landing on `/` rather than replacing a page already shown.
+  final intro = IntroSeen();
+  unawaited(intro.load());
   return GoRouter(
     refreshListenable: auth,
     observers: [listsRouteObserver],
@@ -154,11 +173,16 @@ GoRouter buildRouter({
       auth.status,
       state.uri,
       joinPending: context.read<PendingJoin>().token != null,
+      introSeen: intro.value ?? true,
     ),
     routes: [
       GoRoute(
         path: kWelcomePath,
         builder: (context, state) => const WelcomeScreen(),
+      ),
+      GoRoute(
+        path: kIntroPath,
+        builder: (context, state) => IntroScreen(seen: intro),
       ),
       GoRoute(
         path: kSignInPath,

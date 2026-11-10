@@ -325,5 +325,19 @@
   "resetPasswordAction": "Enregistrer mon mot de passe",
   "emailLinkExpired": "Ce lien a expiré ou a déjà été utilisé. Vous pouvez en demander un nouveau.",
   "emailLinkNewLink": "Recevoir un nouveau lien",
-  "emailLinkNotAccepted": "Vérifiez votre nom et votre mot de passe, puis réessayez."
+  "emailLinkNotAccepted": "Vérifiez votre nom et votre mot de passe, puis réessayez.",
+  "introYourWishesTitle": "Vos envies, leur surprise",
+  "introYourWishesBody": "Faites la liste des choses qui vous feraient plaisir et partagez-la pour une occasion, avec un lien. La famille et les amis que vous invitez la voient et choisissent quoi offrir.",
+  "introHiddenActionsTitle": "Des actions cachées",
+  "introHiddenActionsBody": "Les réservations, les achats, les cadeaux communs et les commentaires restent cachés à la personne à qui la liste est destinée. Les personnes qui offrent voient ceux des autres, pour que personne n'achète deux fois le même cadeau. Rien ne les laisse deviner, même après l'occasion.",
+  "introHiddenGiftsTitle": "Des cadeaux cachés",
+  "introHiddenGiftsBody": "Les personnes qui offrent peuvent aussi ajouter des cadeaux qui ne sont pas sur la liste, comme une idée à elles. Ils restent cachés à la personne à qui la liste est destinée jusqu'à ce que l'occasion soit passée. Seuls ceux qui ont été achetés sont alors dévoilés, sans dire qui les a offerts.",
+  "introPageOf": "Page {page} sur {count}",
+  "introNext": "Suivant",
+  "introBack": "Précédent",
+  "introSkip": "Passer",
+  "introGetStarted": "Commencer",
+  "introClose": "Fermer",
+  "introDone": "Terminé",
+  "howItWorks": "Comment fonctionne Wishlist"
 }
