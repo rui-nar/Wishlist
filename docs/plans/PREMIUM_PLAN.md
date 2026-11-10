@@ -110,6 +110,24 @@ exist: the seam is designed (D3), no validator is built.
   it is a tolerance, not a commercial term. Rules out a daily job flipping a
   flag (a missed run gives away or takes away premium) and trusting `status`
   alone (a lost `deleted` event would grant premium forever).
+  - **Nothing runs when premium ends, so a lapse is logged where it is read.**
+    A read that finds an `active` or `past_due` row past `period_end + 3 days`
+    logs a WARNING, `entitlement past its grace`, with the row's id and source
+    and no personal data: Stripe's events for it were probably lost. The
+    status route and a refusal at the limit both make that read
+    (`warn_if_lapsed`); the runbook says how to recover (U3).
+  - **Failed renewals must end the subscription at Stripe.** `past_due` grants
+    premium, so the owner must set Stripe's failed-payment setting ("if all
+    retries fail") to cancel the subscription or mark it unpaid, both of which
+    D13 maps to `ended`. Stripe also offers leaving it `past_due`, where it
+    goes on generating invoices (Stripe docs, revenue recovery): with that
+    setting, a card that never pays could keep premium for as long as
+    `period_end` keeps moving. Listed with the dashboard settings in U3.
+    **Not confirmed:** the Stripe pages read for this plan do not say how
+    `current_period_end` moves on a failed renewal. It is expected to advance
+    when the renewal invoice is created, which is why this setting is
+    required rather than relying on the 3 days; the VAL test must confirm it
+    (U3).
 - **D3 — The seam for the stores.** `app/billing/entitlements.py` knows no
   provider: `apply(db, facts, read_at)` takes an `EntitlementFacts` dataclass
   (`source`, `external_id`, `user_id`, `status`, `period_end`,
@@ -178,24 +196,39 @@ exist: the seam is designed (D3), no validator is built.
   `pg_advisory_xact_lock(hashtextextended(key, 0))` before it counts, with key
   `plan_growth:gifts:<list id>` or `plan_growth:lists:<user id>`
   (`digests.py` `_lock_key`), and holds it to commit. No giver route takes it,
-  so an owner's request can never wait on invitee activity, and locks taken
-  by givers do not change what an owner's request waits for. It is taken
-  right after the user's `FOR KEY SHARE`, before any other row lock
-  (`keep_revealed`, `set_received`: before the occasion's), so it adds no
-  cycle to the lock order of RESERVING D7. Rules out `FOR UPDATE` on the `lists` row (it conflicts with
+  so no giver can hold it. **No holder ever waits on a giver:** that is what
+  keeps an add from waiting behind someone else's request.
+  - `create_list`, `add_gift`, put back take it right after the user's
+    `FOR KEY SHARE`. A put back concerns a gift on the list: no occasion lock,
+    and its non-key update does not wait on a giver's `FOR KEY SHARE`.
+  - `keep_revealed` takes it **last**: after the occasion `FOR SHARE`, the gift
+    `FOR UPDATE` and the reveal check, immediately before counting. The keep's
+    own wait on a giver's `FOR KEY SHARE` of that revealed gift stays accepted
+    (HIDDEN_GIFTS_PLAN D10, Review envelope), and it holds no advisory lock
+    while it waits, so an add on the same list is never held behind it. Its
+    gift is a revealed row no other holder locks, so this order adds no cycle.
+
+  Rules out taking it first in keep (an add would queue behind a keep blocked
+  on a giver: the wait the surprise forbids, review R1-1), `FOR UPDATE` on the `lists` row (it conflicts with
   the `FOR KEY SHARE` a giver's hidden-gift insert takes through its foreign
   key: the very wait the surprise forbids) and on the `users` row (every
   request of that user holds `FOR KEY SHARE`), and a post-commit recount
   (compensating deletes).
 - **D9 — Two switches, and safe defaults.**
-  `Settings.billing_purchasable` is true when `missing_billing_settings` is
-  empty (D16 lists it). `BILLING_ENFORCE_LIMITS` (default false) asks for
-  limits, and they apply only when it is on **and** purchases are possible:
-  `limits_enforced = billing_enforce_limits and billing_purchasable`. Nobody
+  Two states, by D16's lists. **Gateway configured**
+  (`billing_gateway_configured`): the app can talk to Stripe, so it receives
+  webhooks, serves the portal and cancels at account deletion. **Selling**
+  (`billing_selling`, which needs the gateway too): the app offers a purchase
+  and limits can apply. Withdrawing the offer, by clearing any selling
+  variable, stops new sales and nothing else: existing subscribers keep being
+  recorded, managed and cancellable (review R1-2).
+  `BILLING_ENFORCE_LIMITS` (default false) asks for limits, and they apply
+  only when it is on **and** the app is selling:
+  `limits_enforced = billing_enforce_limits and billing_selling`. Nobody
   can ever be blocked from growing a list while there is no way to pay. With
   enforcement off, the growing paths take no lock and count nothing, exactly
-  today's behaviour. Unset, `POST /api/billing/*` answer 404 and
-  `GET /api/billing` says no offer. The owner turns enforcement on after
+  today's behaviour. With no gateway, `POST /api/billing/*` answer 404; not
+  selling, checkout answers 404 and `GET /api/billing` says no offer. The owner turns enforcement on after
   looking at what existing accounts hold (the runbook gives the query):
   anyone already past the limit simply cannot grow. Rules out one switch
   (TraxJourney's two-step rollout, "enable the first one alone at first",
@@ -207,7 +240,7 @@ exist: the seam is designed (D3), no validator is built.
   capped, as `psycopg` and SQLAlchemy are), imported lazily and only in
   `billing/stripe_gateway.py`, so an environment without keys never loads it
   (the app's memory limits are tight, DEPLOYMENT.md). `app.state.stripe_gateway`
-  is a `StripeGateway`, or None when not purchasable; tests replace it with a
+  is a `StripeGateway`, or None when the gateway is not configured; tests replace it with a
   fake in `make_client`, so no test reaches Stripe. One HTTP timeout of 15 s
   and 2 network retries (BILLING.md). Its methods return small dataclasses and
   raise `GatewayUnavailable` (retryable) or `MissingAtStripe`; no secret, email
@@ -219,16 +252,17 @@ exist: the seam is designed (D3), no validator is built.
   | Method and path | Auth | What | Answers |
   |---|---|---|---|
   | `GET /api/billing` | user | plan, limits, offer, legal links | 200 `BillingStatus` |
-  | `POST /api/billing/checkout` | user, unlocked | a Checkout URL | 200 `{"url": …}`; 404 not purchasable; 409 `already_premium`; 502 `billing_unavailable`; 503 `billing_misconfigured` |
-  | `POST /api/billing/portal` | user, unlocked | a Customer Portal URL | 200 `{"url": …}`; 404 not purchasable; 409 `no_subscription`; 502 `billing_unavailable` |
-  | `POST /api/billing/webhook` | signature | Stripe's events | 204; 404 not purchasable; 400 invalid; 502 retry |
+  | `POST /api/billing/checkout` | user, unlocked | a Checkout URL | 200 `{"url": …}`; 404 not selling; 409 `already_premium`; 502 `billing_unavailable`; 503 `billing_misconfigured` |
+  | `POST /api/billing/portal` | user, unlocked | a Customer Portal URL | 200 `{"url": …}`; 404 no gateway, or no `PUBLIC_BASE_URL` for its return URL; 409 `no_subscription`; 502 `billing_unavailable` |
+  | `POST /api/billing/webhook` | signature | Stripe's events | 204; 404 no gateway; 400 invalid; 502 retry |
 
   `BillingStatus`: `plan` (`free` | `premium`), `source` (null or the row's),
   `status` (null | `active` | `past_due` | `canceling`), `renews_at`,
   `ends_at` (null or datetime), `limits` (`max_lists`, `max_gifts_per_list`:
-  numbers, or null for premium), `enforced` (bool), `offer` (null, or
-  `{"amount": "…", "currency": "EUR", "interval": "year"}`), `can_manage`
-  (bool: a Stripe customer exists and purchases are possible), `legal`
+  numbers, or null for premium), `enforced` (bool), `offer` (null unless
+  selling, else `{"amount": "…", "currency": "EUR", "interval": "year"}`),
+  `can_manage` (bool: a Stripe customer exists and the portal route would
+  serve), `legal`
   (`terms_url`, `privacy_url`, `withdrawal_url`, each null). With several rows
   in force, the latest `period_end` is shown. Every value is owner data (D7).
   Checkout and portal use `UnlockedSession` and `lock_signed_in`: no row lock
@@ -271,7 +305,8 @@ exist: the seam is designed (D3), no validator is built.
   has one-second granularity, so a `created` (incomplete) and an `updated`
   (active) of the same second cannot be ordered: a timestamp guard would leave
   a paying customer free. So the event only says which subscription to look at:
-  1. Purchasable, else 404. The body is read up to 1 MiB (over: 400), and
+  1. Gateway configured, else 404; it does not depend on selling, so renewals
+     are recorded with the offer withdrawn. The body is read up to 1 MiB (over: 400), and
      `gateway.verify` checks the signature (`Webhook.construct_event`, 5
      minutes tolerance; a fixed 400 otherwise).
   2. Types handled: `checkout.session.completed`,
@@ -287,8 +322,8 @@ exist: the seam is designed (D3), no validator is built.
      `cancel_at_period_end` (BILLING.md: the payload generations). The user:
      `metadata.user_id` as a UUID, else `billing_customers`, else logged and
      ignored with 204 (a subscription that is not ours). A price other than
-     `STRIPE_PRICE_ID` still grants premium, with a WARNING: the customer is
-     paying.
+     `STRIPE_PRICE_ID`, when that is set, still grants premium, with a
+     WARNING: the customer is paying.
   5. In one transaction: the user `FOR KEY SHARE`; the upsert `ON CONFLICT
      (source, external_id) DO UPDATE … WHERE entitlements.read_at <=
      EXCLUDED.read_at`.
@@ -300,6 +335,10 @@ exist: the seam is designed (D3), no validator is built.
     latest `read_at` has seen every change before its start, and any later
     change has its own later handler. A slow handler that read earlier can only
     lose to it.
+  - **After a delivery gap** longer than Stripe's retries (up to 3 days in
+    live mode), nothing converges by itself until the next event. The owner
+    resends one event per affected subscription (U3's runbook): since the
+    handler only re-reads, any event of that subscription repairs its row.
   - **Idempotent by construction:** a repeated event reads the same state and
     writes the same row. There is no event ledger: it would save one API call
     per duplicate and need its own retention. A replayed signed body is
@@ -318,9 +357,10 @@ exist: the seam is designed (D3), no validator is built.
   `billing_customers` row: `gateway.cancel_all(customer)` expires open
   sessions and cancels every subscription not ended, at once, asking Stripe
   rather than our rows (BILLING.md). Stripe is unreachable: 502
-  `billing_unavailable`, nothing deleted, retrying is safe. Not purchasable
-  while a row can still bill: 409 `billing_unavailable`, logged, with the
-  runbook's procedure (BILLING.md's "no force-delete"). Then
+  `billing_unavailable`, nothing deleted, retrying is safe. This needs the
+  gateway only: with the offer withdrawn, a subscriber can still delete their
+  account. No gateway while a row can still bill: 409 `billing_unavailable`,
+  logged, with the runbook's procedure (BILLING.md's "no force-delete"). Then
   `lock_for_deletion`, new in `accounts/deps.py` (the user `FOR UPDATE`, as
   `user_to_delete` did, which goes), and the existing deletion, which removes
   both tables' rows by cascade. The Stripe customer stays: its invoices are
@@ -328,18 +368,20 @@ exist: the seam is designed (D3), no validator is built.
   arrival (D13 step 6); user ids are random and never reused. Inside 14 days of
   `started_at`, a WARNING names the subscription, for the owner to refund by
   hand (D19).
-- **D16 — What "purchasable" needs, and VAL.** `Settings.missing_billing_settings`,
-  by variable name, like `missing_email_settings`:
-  - always: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID`,
-    `BILLING_PRICE_AMOUNT` (a valid decimal), `PUBLIC_BASE_URL`;
-  - outside production, `STRIPE_SECRET_KEY` counts as missing if it is a live
-    key (`sk_live_`, `rk_live_`): VAL is seeded from PROD and must never be
-    able to charge anyone. Rules out trusting VAL to have the right key
-    (comments plan D19's reasoning);
-  - in production only, also a live key, `STRIPE_AUTOMATIC_TAX=true`,
-    `BILLING_TERMS_VERSION`, `BILLING_CONSENT_TEXT_EN`, `_FR`,
-    `LEGAL_TERMS_URL`, `LEGAL_PRIVACY_URL`, `LEGAL_WITHDRAWAL_URL`: a first
-    real sale needs the EU obligations in place (NEEDS).
+- **D16 — What the two states need, and VAL.** By variable name, like
+  `missing_email_settings`:
+  - `Settings.missing_gateway_settings`, the gateway: `STRIPE_SECRET_KEY`,
+    `STRIPE_WEBHOOK_SECRET`. `STRIPE_SECRET_KEY` counts as missing if it is a
+    live key (`sk_live_`, `rk_live_`) outside production: VAL is seeded from
+    PROD and must never be able to charge anyone (rules out trusting VAL to
+    have the right key, comments plan D19's reasoning); and if it is not a
+    live key in production;
+  - `Settings.missing_selling_settings`, the gateway's plus: `STRIPE_PRICE_ID`,
+    `BILLING_PRICE_AMOUNT` (a valid decimal), `PUBLIC_BASE_URL`; and in
+    production only, `STRIPE_AUTOMATIC_TAX=true`, `BILLING_TERMS_VERSION`,
+    `BILLING_CONSENT_TEXT_EN`, `_FR`, `LEGAL_TERMS_URL`, `LEGAL_PRIVACY_URL`,
+    `LEGAL_WITHDRAWAL_URL`: a first real sale needs the EU obligations in
+    place (NEEDS).
   The app logs the missing names once at start. `seed-from-prod.sh` empties
   `entitlements` and `billing_customers` after the restore: PROD's ids mean
   nothing to VAL's Stripe test account. Guarded with `to_regclass`, since a
@@ -357,6 +399,8 @@ exist: the seam is designed (D3), no validator is built.
   `BILLING_CONSENT_TEXT_EN`, `_FR`, `BILLING_TERMS_VERSION`. Outside production
   an unset text falls back to a constant starting `[TEST ONLY - placeholder,
   not legal text]`; production will not sell without the owner's texts (D16).
+  All of these are selling settings: clearing one withdraws the offer and
+  leaves the gateway working (D9).
   No wording in the code or the repository is presented as final legal text.
   No publishable key: Checkout is a server-created redirect, so Stripe.js is
   not on any page and no `STRIPE_PUBLISHABLE_KEY` exists.
@@ -398,7 +442,10 @@ COMMENTS_NOTIFICATIONS_PLAN's envelopes, and these additions:
   statement sequence or wait of an owner's request that differs with invitee
   activity is F1. That includes the order of answers on keep (D6) and any
   lock a giver's write could hold against an owner's growing path (D8). Lock
-  waits between two owners of one list are out.
+  waits between two owners of one list are out. **Activity on an already
+  revealed gift is outside the surprise for waits:** `keep`'s own wait on a
+  giver's `FOR KEY SHARE` of that gift stays accepted (HIDDEN_GIFTS_PLAN D10).
+  A wait it passes on to another request, such as an add, is not.
 - **A new external service: Stripe.** Outbound HTTPS with a secret key; its
   answers can be late, wrong, missing or hostile (E2). Stripe receives the
   buyer's email, name, user id and language; it collects the card and address
@@ -492,30 +539,7 @@ None of these blocks delivery: each has a placeholder or a safe default.
 | Apple and Google purchases | A translator and a route per store (D3) | The mobile release plan |
 | Turning `BILLING_ENFORCE_LIMITS` on in PROD | Existing accounts over the limit | After live keys and the runbook's query |
 | An upgrade prompt before the limit is reached (a counter on the list) | Client | Revisit on user feedback |
-
-## To record in NEEDS
-
-For the orchestrator, under "Free and premium", dated 2026-11-10 (owner's
-instruction to proceed silently):
-
-- **Co-owned lists:** a list has no gift limit when at least one of its owners
-  is premium, and then counts for none of its free co-owners.
-- **Keep and put back are growth:** refused at the limit, like a new gift. The
-  gift stays where it is (revealed or received); the owner can still mark it
-  received, dismiss it, delete it, free a place or go premium. Limits apply
-  only when something would actually grow.
-- **Premium ends** at the end of the paid period, with a 3-day tolerance; a
-  failed renewal keeps premium while Stripe retries the card.
-- **Limits are a switch of their own**, off by default, and never apply while
-  no purchase is possible. All numbers are configurable.
-- **Purchases are on the web only** until the mobile apps have store
-  purchases; the apps show the plan and the limits, and no price or purchase.
-- **Deleting an account** cancels its subscription at once; Stripe keeps the
-  customer and invoices for accounting.
-- **Withdrawal:** acknowledged at checkout; for now a refund is made by hand
-  in Stripe. An in-app withdrawal is decided before the first real sale.
-- **Placeholders the owner supplies:** price, Stripe account and keys, legal
-  texts and consent wording. Add these to "Open questions".
+| Account deletion when the customer was deleted by hand at Stripe (review R1-5, deferred: proceeding on `resource_missing` is unsafe, since a key for another Stripe account answers the same) | D15 | Revisit when a `DELETE /api/me` fails on `MissingAtStripe`, or a procedure starts deleting Stripe customers |
 
 ## Execution units
 
@@ -540,12 +564,14 @@ instruction to proceed silently):
   1. `models.py`: `Entitlement`, `BillingCustomer` per D1; registered in
      `alembic/env.py`; one revision after `c4f7d2a81e65`.
   2. `settings.py`: the fields of U3's table; integer fields `ge=0`; properties
-     `missing_billing_settings` (D16), `billing_purchasable`,
+     `missing_gateway_settings`, `missing_selling_settings` (D16),
+     `billing_gateway_configured`, `billing_selling`,
      `limits_enforced` (D9), `billing_price` (a `Decimal` or None).
   3. `entitlements.py`: `EntitlementFacts`; `apply` (D13's upsert and guard;
      the user `FOR KEY SHARE` first, returning "user gone"); `is_premium`,
      `premium_condition(user_id, now)` (a SQL expression, D2), `summary`,
-     `record_consent`.
+     `record_consent`, `warn_if_lapsed(db, user_id, now)` (D2; `summary`
+     calls it).
   4. `billing_on` fixture: a dict of test values making
      `limits_enforced` true (`sk_test_`-shaped placeholder strings).
   5. Tests: `apply` inserts, updates, is idempotent; a stale `read_at` changes
@@ -553,10 +579,15 @@ instruction to proceed silently):
      `past_due` in period and through the 3 days, false after, for `incomplete`
      and `ended` and for a null `period_end`; premium from a row of each
      source, `apple` and `google` included;
+     `warn_if_lapsed`: one WARNING with the row's id and source for an
+     `active` or `past_due` row past its grace, none in grace or for `ended`,
+     no email or Stripe id in it (`caplog`);
      consent recorded whatever the guard; settings: everything unset →
-     not purchasable, not enforced; enforcement without Stripe → not enforced;
-     a live key outside production → reported missing; a test key in production
-     → missing; each production-only variable reported; invalid amount →
+     no gateway, not selling, not enforced; enforcement without selling → not
+     enforced; the two secrets alone → gateway, not selling; a selling
+     variable cleared → still gateway, not selling, not enforced;
+     a live key outside production → reported missing and no gateway; a test key in production
+     → missing; each production-only variable reported as selling only; invalid amount →
      missing; defaults 1 and 20. `test_migrations.py`: upgrade and downgrade
      with rows present; account deletion cascades.
 - **Acceptance:** `uv run --directory server ruff check`;
@@ -642,9 +673,9 @@ instruction to proceed silently):
      | `BILLING_ENFORCE_LIMITS` | `false` | no limit applies |
      | `FREE_MAX_LISTS` | `1` | |
      | `FREE_MAX_GIFTS_PER_LIST` | `20` | |
-     | `STRIPE_SECRET_KEY` | empty | no purchase. Secret |
-     | `STRIPE_WEBHOOK_SECRET` | empty | no purchase. Secret |
-     | `STRIPE_PRICE_ID` | empty | no purchase |
+     | `STRIPE_SECRET_KEY` | empty | no gateway: no purchase, webhook or portal. Secret |
+     | `STRIPE_WEBHOOK_SECRET` | empty | no gateway: no purchase, webhook or portal. Secret |
+     | `STRIPE_PRICE_ID` | empty | no offer |
      | `STRIPE_AUTOMATIC_TAX` | `false` | no Stripe Tax; required in production |
      | `BILLING_PRICE_AMOUNT` | empty | no offer |
      | `BILLING_PRICE_CURRENCY` | `EUR` | |
@@ -652,7 +683,8 @@ instruction to proceed silently):
      | `BILLING_CONSENT_TEXT_EN`, `BILLING_CONSENT_TEXT_FR` | empty | test placeholder outside production; required in production |
      | `LEGAL_TERMS_URL`, `LEGAL_PRIVACY_URL`, `LEGAL_WITHDRAWAL_URL` | empty | the app's placeholder pages; required in production |
 
-     VAL's says a live key is refused there.
+     VAL's says a live key is refused there. Both say: to withdraw the offer,
+     clear a selling variable, never the two secrets while a subscription runs.
   2. `seed-from-prod.sh`: after the restore, a `DO` block empties
      `entitlements` and `billing_customers` when they exist (D16), through the
      db container's `psql -v ON_ERROR_STOP=1`.
@@ -664,11 +696,31 @@ instruction to proceed silently):
      public details' terms URL (`https://<val-host>/legal/terms`), without
      which Checkout fails; the portal configuration (cancel at period end, no
      plan change); the "limit customers to one subscription" setting; the
+     failed-payment setting ("if all retries fail": **cancel the subscription
+     or mark it unpaid, never leave it past due**, D2; subscription settings,
+     revenue recovery); the
      webhook endpoint with the four events of D13; the variables; `docker
      compose up -d`; the start log no longer naming them; test card; check
-     `GET /api/billing`; cancel in the portal. **Enforcement:** the count query
+     `GET /api/billing`; cancel in the portal. **A failed renewal, on VAL:**
+     with a Stripe test clock, a customer on that clock with a card that fails
+     on renewal and a subscription whose `metadata.user_id` is a VAL account;
+     advance past the renewal; record what `GET /api/billing` and the row's
+     `period_end` show during `past_due` (**this is how D2's unconfirmed
+     `current_period_end` behaviour is settled**; if it does not advance, say
+     so in the review ledger), then past the last retry: premium ended.
+     **After a webhook delivery gap**
+     (the endpoint was down longer than Stripe's retries, up to 3 days in live
+     mode and a few hours in test mode; or a log line `entitlement past its
+     grace`, whose row id gives `external_id` by a read-only query): in the
+     webhook endpoint's event deliveries, or the List Events API with
+     `delivery_success=false` (the last 30 days only), find the failed events
+     and resend one per affected subscription from the Dashboard or with
+     `stripe events resend`; older than 30 days, any change to the
+     subscription, such as a metadata edit, emits an event. Try one resend on
+     VAL: nothing changes, and it is accepted. **Enforcement:** the count query
      to run first (read-only, counts only). **Before live keys, on PROD:** OSS
-     registration, Stripe Tax, the texts and URLs, and the Open decisions.
+     registration, Stripe Tax, the texts and URLs, the same dashboard settings
+     in live mode, and the Open decisions.
      **Account deletion refused with 409:** the procedure, adapted from
      BILLING.md.
   4. DEVELOPMENT.md: DEV has no billing unless the variables are set; `stripe
@@ -690,7 +742,8 @@ instruction to proceed silently):
 
 - **Goal:** With limits enforced, a free owner cannot grow past the limit by
   any path, one concurrent request takes the last place, nothing is deleted,
-  and no invitee activity affects the answer or makes an owner wait.
+  and no invitee activity affects the answer or makes an owner wait, but for
+  keep's own accepted wait on the revealed gift (Review envelope).
 - **Scope:** `server/app/billing/limits.py` (new),
   `server/app/lists/router.py` (`create_list`, `add_gift`, `put_back`,
   `keep_gift` and a refusal helper only),
@@ -707,13 +760,15 @@ instruction to proceed silently):
      `ensure_room_for_list(db, settings, user_id, now)` and
      `lock_gift_growth(db, settings, list_id)`,
      `ensure_room_for_gift(db, settings, list_id, now)`, each doing nothing
-     unless `settings.limits_enforced`.
+     unless `settings.limits_enforced`; a refusal calls
+     `entitlements.warn_if_lapsed` for the acting user first (D2).
   2. `create_list`, `add_gift`: check after the ownership resolves, before
      anything is written; catch and return 402.
   3. `keep_revealed` and `set_received` take `settings`. Keep: on a gift of the
-     list, `NotRevealed` first, as today; lock; then, after the reveal is
-     confirmed, `ensure_room_for_gift`. Put back: the gift on the list locked
-     as growth, read again, and refused only if still received (D6).
+     list, `NotRevealed` first, as today; the occasion, the gift `FOR UPDATE`
+     and the reveal check as today; only then `lock_gift_growth` and
+     `ensure_room_for_gift` (D8). Put back: the gift on the list locked
+     as growth first, read again, and refused only if still received (D6).
   4. `test_plan_limits.py`: the limit and the next request (lists, gifts);
      402's exact body; received, hidden and revealed gifts do not count;
      marking received frees a place; put back at the limit 402 (it stays
@@ -732,9 +787,13 @@ instruction to proceed silently):
      hidden-gift module (D7, read from its source).
   5. `test_concurrent_plan_limits.py`, 20 rounds each (`together`): adds at
      one place left → one 201; create list; keep racing add; put back racing
-     add; and a giver's open transaction (a hidden gift inserted and a claim
-     held, not committed) does not delay the owner's add, create, keep or put
-     back (each finishes while it is open).
+     add; a giver's open transaction (a hidden gift inserted and a claim
+     held, not committed) does not delay the owner's add, create or put
+     back (each finishes while it is open; keep is exempt, its wait on a
+     giver's `FOR KEY SHARE` of its own revealed gift being accepted); and
+     with a keep blocked on a giver's `FOR KEY SHARE` of its gift
+     (`wait_until_blocked_on_a_lock`), an add to the same list finishes, then
+     the keep does once the giver commits, and the limit holds.
   6. `test_owner_work.py`: with enforcement on, `POST /api/lists/{id}/gifts`,
      `POST /api/lists` and put back on twins with each activity and without:
      identical statements.
@@ -745,7 +804,8 @@ instruction to proceed silently):
 - **Latitude:** local design.
 - **Escalate if:** a file outside Scope is needed (X3); a growing path exists
   beyond D4's four; a limit cannot be decided without reading activity; an
-  owner's request is found waiting on a giver's transaction.
+  owner's request other than keep is found waiting on a giver's transaction,
+  or any request on an advisory lock whose holder waits on one.
 - **Depends on:** U1.
 
 #### U5 — Server: Stripe, the billing routes and the webhook
@@ -776,21 +836,26 @@ instruction to proceed silently):
      `expire_open_sessions`, `checkout`, `portal`, `subscription`, `cancel`.
   3. `stripe_events.py`: pure, per D13 step 4.
   4. `schemas.py`, `router.py`: D11, D12, D13, D14.
-  5. `main.py`: `app.state.stripe_gateway` built only when purchasable; the
-     router; one start-up log naming `missing_billing_settings` when some of
-     Stripe's are set or enforcement is asked for.
+  5. `main.py`: `app.state.stripe_gateway` built only when the gateway is
+     configured; the router; one start-up log naming
+     `missing_selling_settings` when some of Stripe's are set or enforcement
+     is asked for.
   6. Tests, with `FakeStripe` recording calls, and an explicit clock:
      - status: free, premium, past due, canceling; limits null for premium;
-       offer null unset; `enforced` true only with Stripe; the legal URLs;
-     - checkout: 404 unset; parameters exactly D12's, consent and locale by
+       offer null unset and with the offer withdrawn; `enforced` true only
+       when selling; `can_manage` with the offer withdrawn; the legal URLs; a
+       lapsed row logs D2's WARNING;
+     - checkout: 404 unset and with the offer withdrawn; parameters exactly D12's, consent and locale by
        language; tax on and off; success and cancel URLs from
        `PUBLIC_BASE_URL`; 409 if premium; 503 for a monthly, exclusive, wrong
        amount or wrong currency price; customer reused, created once under
        two concurrent checkouts; open sessions expired; 502 when Stripe
        fails; no lock held during a Stripe call (a concurrent account
        deletion does not wait);
-     - portal: 404 unset; 409 without a customer; the return URL;
-     - webhook: 404 unset; 400 on bad signature, no signature, a body over
+     - portal: 404 unset; served with the offer withdrawn; 409 without a
+       customer; the return URL;
+     - webhook: 404 with no gateway; with the offer withdrawn, an event is
+       still recorded and a renewal keeps premium; 400 on bad signature, no signature, a body over
        1 MiB; an unhandled type 204; out of order: a `deleted` before an
        `updated`, a `created` read as active; a duplicate leaves one row;
        Stripe failing: 502, then a redelivery applies; consent recorded once
@@ -887,8 +952,9 @@ instruction to proceed silently):
   2. `delete_me` per D15; the lock order and every comment on it stay true.
   3. Tests: no customer: no Stripe call; a customer: open sessions expired,
      subscriptions cancelled, before the rows go; Stripe failing: 502, nothing
-     deleted, retrying works; not purchasable with a row that can bill: 409,
-     and with an ended row: deleted; a repeated call: 401, as today; a WARNING
+     deleted, retrying works; with the offer withdrawn, a subscriber's
+     deletion cancels at Stripe and succeeds; no gateway with a row that can
+     bill: 409, and with an ended row: deleted; a repeated call: 401, as today; a WARNING
      inside 14 days, none after; a concurrent request of that user does not
      wait during the Stripe call (held by the fake); the Stripe customer is
      never deleted.
@@ -998,9 +1064,15 @@ instruction to proceed silently):
 - Stripe's events delivered late, twice or out of order leave the correct
   status (`test_webhook.py`, `test_concurrent_webhook.py`); an invalid
   signature changes nothing.
+- With the offer withdrawn, webhooks are still recorded, the portal still
+  opens, a subscriber can still delete their account, and no limit applies.
+- A row past its grace logs a WARNING without personal data, and the runbook
+  recovers it by resending an event; Stripe's failed-payment setting ends the
+  subscription, and the VAL test has recorded how `period_end` behaves.
 - Concurrent requests at the last place: exactly one succeeds
-  (`test_concurrent_plan_limits.py`), and an owner's request never waits on a
-  giver's transaction.
+  (`test_concurrent_plan_limits.py`); no owner's request waits on a giver's
+  transaction, keep's accepted wait on its own revealed gift aside, and no add
+  waits behind that keep.
 - Keep and put back are refused at the limit after the reveal check; an
   unrevealed hidden gift's id answers 404 at the limit.
 - A premium co-owner covers a shared list; invitees are never limited,
