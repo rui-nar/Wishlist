@@ -22,3 +22,4 @@ the plan.
 | [HIDDEN_GIFTS_PLAN](HIDDEN_GIFTS_PLAN.md) | — | feat/hidden-gifts-comments (#11) |
 | [COMMENTS_NOTIFICATIONS_PLAN](COMMENTS_NOTIFICATIONS_PLAN.md) | — | feat/hidden-gifts-comments (#11) |
 | [PREMIUM_PLAN](PREMIUM_PLAN.md) | — | feat/paywall |
+| [APPLE_EMAIL_SIGNIN_PLAN](APPLE_EMAIL_SIGNIN_PLAN.md) | — | feat/apple-email-signin |
