@@ -42,14 +42,16 @@ def add_customer(engine, user_id):
         db.add(BillingCustomer(user_id=user_id, source="stripe", customer_id="cus_1"))
 
 
-def add_purchase(engine, user_id, status="active", started_days_ago=100):
+def add_purchase(
+    engine, user_id, status="active", started_days_ago=100, external_id="sub_1"
+):
     now = sessions.utc_now()
     with Session(engine) as db, db.begin():
         db.add(
             Entitlement(
                 user_id=user_id,
                 source="stripe",
-                external_id="sub_1",
+                external_id=external_id,
                 status=status,
                 period_end=now + timedelta(days=30),
                 cancel_at_period_end=False,
@@ -57,6 +59,17 @@ def add_purchase(engine, user_id, status="active", started_days_ago=100):
                 read_at=now,
             )
         )
+
+
+def cancel_all_answers(fake, *ids):
+    """Stripe finds these on the stored customer: the fake alone finds none."""
+    record_call = fake.cancel_all
+
+    def cancel_all(customer_id):
+        record_call(customer_id)
+        return list(ids)
+
+    fake.cancel_all = cancel_all
 
 
 def count(engine, model, user_id):
@@ -125,6 +138,56 @@ def test_a_failed_cancel_by_id_deletes_nothing_and_retrying_works(
 def test_a_row_covered_by_cancel_all_gets_no_second_call(client, fake, account, engine):
     add_customer(engine, account.id)
     add_purchase(engine, account.id)
+    cancel_all_answers(fake, "sub_1")
+
+    assert delete_account(client, account).status_code == 204
+
+    assert fake.calls == [("cancel_all", ("cus_1",))]
+
+
+def test_a_billable_row_on_another_customer_is_cancelled_by_its_own_id(
+    client, fake, account, engine
+):
+    # Review R7-1: `cancel_all` only sees the stored customer.
+    add_customer(engine, account.id)
+    add_purchase(engine, account.id, external_id="sub_1")
+    add_purchase(engine, account.id, external_id="sub_2")
+    cancel_all_answers(fake, "sub_1")
+    seen = []
+    fake.on_call = lambda name: seen.append(count(engine, User, account.id))
+
+    assert delete_account(client, account).status_code == 204
+
+    assert fake.calls == [("cancel_all", ("cus_1",)), ("cancel", ("sub_2",))]
+    assert seen == [1, 1]
+    assert all_gone(engine, account.id)
+
+
+def test_a_failed_cancel_on_another_customer_deletes_nothing_and_retrying_works(
+    client, fake, account, engine
+):
+    add_customer(engine, account.id)
+    add_purchase(engine, account.id)
+    fake.failures["cancel"] = GatewayUnavailable()
+
+    response = delete_account(client, account)
+
+    assert (response.status_code, response.json()["code"]) == (
+        502,
+        "billing_unavailable",
+    )
+    assert count(engine, User, account.id) == 1
+    assert count(engine, BillingCustomer, account.id) == 1
+    assert count(engine, Entitlement, account.id) == 1
+
+    del fake.failures["cancel"]
+    assert delete_account(client, account).status_code == 204
+    assert all_gone(engine, account.id)
+
+
+def test_an_ended_row_on_another_customer_gets_no_call(client, fake, account, engine):
+    add_customer(engine, account.id)
+    add_purchase(engine, account.id, status="ended")
 
     assert delete_account(client, account).status_code == 204
 
@@ -164,9 +227,12 @@ def test_a_row_recorded_during_the_stripe_call_is_reported(
     assert all_gone(engine, account.id)
 
 
-def test_a_row_covered_by_cancel_all_is_not_reported(client, account, engine, caplog):
+def test_a_row_covered_by_cancel_all_is_not_reported(
+    client, fake, account, engine, caplog
+):
     add_customer(engine, account.id)
     add_purchase(engine, account.id)
+    cancel_all_answers(fake, "sub_1")
 
     with caplog.at_level(logging.ERROR, logger=LOGGER):
         assert delete_account(client, account).status_code == 204
@@ -174,11 +240,32 @@ def test_a_row_covered_by_cancel_all_is_not_reported(client, account, engine, ca
     assert late_purchase_errors(caplog) == []
 
 
+def test_a_row_cancelled_by_its_own_id_is_not_reported_but_a_later_one_is(
+    client, fake, account, engine, caplog
+):
+    add_customer(engine, account.id)
+    add_purchase(engine, account.id, external_id="sub_1")
+
+    def cancel(external_id):
+        add_purchase(engine, account.id, external_id="sub_late")
+
+    fake.cancel = cancel
+
+    with caplog.at_level(logging.ERROR, logger=LOGGER):
+        assert delete_account(client, account).status_code == 204
+
+    errors = late_purchase_errors(caplog)
+    assert len(errors) == 1
+    assert "sub_late" in errors[0].getMessage()
+    assert "sub_1" not in errors[0].getMessage()
+
+
 def test_a_customer_has_their_billing_stopped_before_the_rows_go(
     client, fake, account, engine
 ):
     add_customer(engine, account.id)
     add_purchase(engine, account.id)
+    cancel_all_answers(fake, "sub_1")
     seen = []
     fake.on_call = lambda name: seen.append(count(engine, User, account.id))
 
@@ -330,18 +417,28 @@ def test_the_warning_survives_a_failed_first_attempt(
     assert "sub_1" in caplog.text
 
 
-@pytest.mark.parametrize("stored", [True, False], ids=["cancel_all", "cancel by id"])
+@pytest.mark.parametrize(
+    ("stored", "purchased", "held"),
+    [
+        (True, False, "cancel_all"),
+        (False, True, "cancel"),
+        (True, True, "cancel"),
+    ],
+    ids=["cancel_all", "cancel by id", "cancel by id after cancel_all"],
+)
 def test_a_concurrent_request_does_not_wait_during_the_stripe_call(
-    client, fake, account, engine, stored
+    client, fake, account, engine, stored, purchased, held
 ):
     if stored:
         add_customer(engine, account.id)
-    else:
+    if purchased:
         add_purchase(engine, account.id)
     reached = threading.Event()
     proceed = threading.Event()
 
     def hold(name):
+        if name != held:
+            return
         reached.set()
         assert proceed.wait(TIMEOUT)
 

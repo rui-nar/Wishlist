@@ -19,6 +19,8 @@ UPDATED = "customer.subscription.updated"
 CREATED = "customer.subscription.created"
 DELETED = "customer.subscription.deleted"
 COMPLETED = "checkout.session.completed"
+NOW = datetime(2026, 11, 10, 12, tzinfo=UTC)
+INVALID = (400, {"detail": "Invalid webhook"})
 
 
 @pytest.fixture
@@ -115,6 +117,78 @@ def test_400_for_a_body_over_one_mebibyte(client, fake, engine):
     body = b"x" * (1024 * 1024 + 1)
     assert post_raw(client, body, fake.sign(body.decode())).status_code == 400
     assert rows(engine) == []
+
+
+def signature_warnings(caplog):
+    return [
+        record
+        for record in caplog.records
+        if record.name == LOGGER and "signature" in record.getMessage()
+    ]
+
+
+def failed_post(client, seconds_later=0, signature="t=1,v1=sig-value"):
+    client.app.state.clock = lambda: NOW + timedelta(seconds=seconds_later)
+    response = post_raw(client, b"a-body-word", signature)
+    return response.status_code, response.json()
+
+
+@pytest.mark.parametrize(
+    "signature", ["t=1,v1=sig-value", None], ids=["bad", "missing"]
+)
+def test_two_signature_failures_log_once(client, caplog, signature):
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert failed_post(client, 0, signature) == INVALID
+        assert failed_post(client, 59, signature) == INVALID
+
+    warnings = signature_warnings(caplog)
+    assert len(warnings) == 1
+    assert warnings[0].levelno == logging.WARNING
+
+
+def test_a_signature_failure_after_a_minute_logs_again(client, caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert failed_post(client, 0) == INVALID
+        assert failed_post(client, 60) == INVALID
+
+    assert len(signature_warnings(caplog)) == 2
+
+
+def test_the_signature_warning_holds_nothing_from_the_request(
+    client, caplog, billing_on
+):
+    with caplog.at_level(logging.DEBUG, logger=LOGGER):
+        failed_post(client)
+
+    warning = signature_warnings(caplog)[0]
+    assert warning.args == ()
+    line = warning.getMessage()
+    for forbidden in (
+        "a-body-word",
+        "sig-value",
+        "t=1",
+        billing_on["stripe_webhook_secret"],
+    ):
+        assert forbidden not in line
+
+
+def test_an_oversized_body_logs_nothing_and_leaves_the_limit_alone(client, caplog):
+    client.app.state.clock = lambda: NOW
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        response = post_raw(client, b"x" * (1024 * 1024 + 1), "t=1,v1=sig-value")
+
+        assert (response.status_code, response.json()) == INVALID
+        assert signature_warnings(caplog) == []
+
+        # The minute did not start: the next real failure is still logged.
+        assert failed_post(client) == INVALID
+    assert len(signature_warnings(caplog)) == 1
+
+
+def test_a_good_signature_logs_no_signature_warning(client, fake, caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert fake.deliver(client, "invoice.paid", {"id": "in_1"}).status_code == 204
+    assert signature_warnings(caplog) == []
 
 
 def test_an_unhandled_type_answers_204_and_does_nothing(client, fake, engine):

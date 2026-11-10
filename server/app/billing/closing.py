@@ -26,10 +26,11 @@ def stop_billing(
     changed: retrying is safe.
 
     The caller holds no lock: this asks Stripe, for up to 45 s a call. Stripe
-    is asked rather than our rows, which can be late; with no gateway, only
-    our rows can say that nothing bills. A failure to find the customer is a
-    failure like any other (review R1-5): a key for another Stripe account
-    answers the same.
+    is asked rather than our rows, which can be late, and every row it did not
+    answer for is then cancelled by its own id; with no gateway, only our rows
+    can say that nothing bills. A failure to find the customer is a failure
+    like any other (review R1-5): a key for another Stripe account answers the
+    same.
     """
     # Before Stripe is called: a row that appears after this was not dealt with.
     billable = _billable(db, user_id)
@@ -51,15 +52,17 @@ def stop_billing(
         try:
             if customer_id is not None:
                 cancelled = gateway.cancel_all(customer_id)
-            else:
-                # A purchase recorded with no customer stored: only its own id
-                # can stop it before its next renewal.
-                for external_id in billable:
+            # A purchase recorded with no customer stored, or on another
+            # customer (review R7-1): only its own id can stop it before its
+            # next renewal.
+            for external_id in billable:
+                if external_id not in cancelled:
                     gateway.cancel(external_id)
+                    cancelled.append(external_id)
         except GatewayError:
             return _refusal(status.HTTP_502_BAD_GATEWAY)
     _warn_of_refunds(db, user_id, cancelled, now)
-    return set(billable) | set(cancelled)
+    return set(cancelled)
 
 
 def report_late_purchases(
