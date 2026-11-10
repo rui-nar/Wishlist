@@ -3,7 +3,9 @@ activity (comments plan D12).
 
 The statements and row counts of a `PATCH` and `DELETE /api/gifts/{id}` on a
 gift with activity and on its twin with none are recorded and compared, every
-id numbered by its first appearance. The world of `test_reservations.py`.
+id numbered by its first appearance. The world of `test_reservations.py`, and
+for every state of `test_surprise.py` its world, whose G1 holds the state and
+whose G2 is its twin.
 """
 
 import re
@@ -20,6 +22,7 @@ from test_group_gifts import pledge
 from test_hidden_gifts import added
 from test_hidden_model import add_hidden, first_on, give, noon_after
 from test_reservations import mark_bought, reserve
+from test_surprise import OWNER, STATES, build
 
 # Its fixtures, registered here by name.
 make_world = test_reservations.make_world
@@ -55,11 +58,11 @@ def normalised(calls):
     return [(statement, _IDS.sub(name, params), n) for statement, params, n in calls]
 
 
-def owner_request(client, world, method, gift, body):
+def owner_request(client, owner, method, gift, body):
     """The statements of the owner's request on the gift."""
     with recording(client) as calls:
         response = client.request(
-            method, f"/api/gifts/{gift}", json=body, headers=world.owner.headers
+            method, f"/api/gifts/{gift}", json=body, headers=owner.headers
         )
     assert response.status_code in (200, 204), response.text
     return normalised(calls)
@@ -115,8 +118,21 @@ def test_the_owners_request_does_the_same_work_whatever_the_activity(
     first, second = twins(client, world)
     ACTIVITIES[activity](client, world, first)
 
-    assert owner_request(client, world, method, first, body) == owner_request(
-        client, world, method, second, body
+    assert owner_request(client, world.owner, method, first, body) == owner_request(
+        client, world.owner, method, second, body
+    )
+
+
+@pytest.mark.parametrize("state", STATES)
+@pytest.mark.parametrize(("method", "body"), REQUESTS)
+def test_the_owners_request_does_the_same_work_in_every_state(
+    client, make_account, engine, state, method, body
+):
+    built = build(client, make_account, engine, state)
+    owner = built.accounts[OWNER]
+
+    assert owner_request(client, owner, method, built.ids["G1"], body) == owner_request(
+        client, owner, method, built.ids["G2"], body
     )
 
 
@@ -136,8 +152,8 @@ def test_a_revealed_gifts_request_does_the_same_work_with_or_without_a_thread(
     # The clock's jump records the session's use once, before the comparison.
     client.get("/api/lists", headers=world.owner.headers)
 
-    assert owner_request(client, world, method, first, body) == owner_request(
-        client, world, method, second, body
+    assert owner_request(client, world.owner, method, first, body) == owner_request(
+        client, world.owner, method, second, body
     )
 
 

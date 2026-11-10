@@ -37,6 +37,14 @@ in both. `test_a_revealed_gift_shows_as_the_gift_alone` is the decided
 exception, once the occasion has passed. Comments and following are activity
 too (comments plan D5): the "commented" state on G1, whose comment's id is
 random in the control, and the recipient's calls name it in both.
+
+So is what the notification worker does with it (comments plan D11, D12). The
+recipient's calls stop three times for the worker to run, its clock past the
+grouping window: no notification, digest or email names the owner or Cora,
+and the answers that follow are still the control's. Cora's follow and
+reservation from when she was an invitee, and a follow the owner cannot have
+but through a list handed over, are what it could wrongly tell them about.
+`test_a_giving_owner_is_told` is the contrast.
 """
 
 import io
@@ -45,18 +53,21 @@ import re
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pytest
 from claims_invariants import assert_claims_consistent
 from PIL import Image
 from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from test_hidden_model import noon_after
 
 from app.accounts import sessions
 from app.media.images import VARIANTS
+from app.notifications.digests import SETTLE, WINDOW, EmailConfig
+from app.notifications.models import COMMENT_ADDED, GIFT_CHANGED
+from app.notifications.worker import run_once
 
 # Relative to today: a fixed date would turn into a passed occasion (D8).
 FUTURE = (date.today() + timedelta(days=60)).isoformat()
@@ -450,6 +461,27 @@ def add_hidden(
     ids[f"{name} image"] = image.json()["id"]
 
 
+def hold_as_recipients(client, engine, accounts, ids) -> None:
+    """What a recipient can still hold from when they were a giver (comments
+    plan D11), which only the worker's giver check keeps from reaching them.
+    Cora follows G1 and reserves G2, as an invitee of A. No route lets an owner
+    of a "for me" list follow: their row stands for a list handed over."""
+    gifts = f"/api/occasions/{ids['A']}/gifts"
+    headers = accounts[CO_OWNER].headers
+    followed = client.put(f"{gifts}/{ids['G1']}/follow", headers=headers)
+    assert followed.status_code == 204, followed.text
+    reserved = client.post(f"{gifts}/{ids['G2']}/reservation", headers=headers)
+    assert reserved.status_code == 200, reserved.text
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO gift_follows (occasion_id, gift_id, user_id, following)"
+                " VALUES (:occasion, :gift, :user, true)"
+            ),
+            {"occasion": ids["A"], "gift": ids["G1"], "user": ids[OWNER]},
+        )
+
+
 def not_added(ids: dict[str, str], name: str) -> None:
     """The control has no hidden gift: `name` and its image are random ids."""
     ids[name] = str(uuid.uuid4())
@@ -464,9 +496,11 @@ def build(
     kind: str = "self",
     control: bool = False,
     when: str = FUTURE,
+    recipients_hold: bool = False,
 ) -> World:
     """A world, with the state's activity unless `control`: the control keeps
-    only the steps both worlds see, an invitee removed or leaving."""
+    only the steps both worlds see, an invitee removed or leaving. With
+    `recipients_hold`, the world has `hold_as_recipients` too."""
     owner = make_account(NAMES[OWNER])
     accounts = {OWNER: owner}
     ids = {
@@ -555,6 +589,9 @@ def build(
                 else client.post(path, headers=headers)
             )
             assert done.status_code == 200, done.text
+
+    if recipients_hold and not control:
+        hold_as_recipients(client, engine, accounts, ids)
 
     # Cora saw the activity as an invitee; from now on she owns the list. No
     # endpoint adds a co-owner yet: the row is added directly.
@@ -777,10 +814,13 @@ def hidden_routes(rec: Recorder, gift: str, image: str) -> None:
         rec.call("GET", IMAGE, image_id=image, variant=variant)
 
 
-def edits(rec: Recorder, state: str, keep_holders: bool) -> None:
+def edits(
+    rec: Recorder, state: str, keep_holders: bool, worker_ran: Callable[[], None]
+) -> None:
     """Every change the recipient can make short of deleting their gifts,
     occasions and list; the holders of the state's activity stay invitees
-    when `keep_holders`."""
+    when `keep_holders`. The worker runs before the removals, while Cora is
+    still a member of A."""
     rec.call("PATCH", "/api/lists/{list_id}", json={"title": "Big day"}, list_id="list")
     rec.register(
         "new list",
@@ -857,6 +897,7 @@ def edits(rec: Recorder, state: str, keep_holders: bool) -> None:
         key="join_token",
     )
     rec.call("DELETE", "/api/occasions/{occasion_id}/link", occasion_id="B")
+    worker_ran()
     who, where = holder(state)
     member = "/api/occasions/{occasion_id}/members/{user_id}"
     if keep_holders:
@@ -882,7 +923,12 @@ def edits(rec: Recorder, state: str, keep_holders: bool) -> None:
     rec.call("DELETE", "/api/occasions/{occasion_id}/membership", occasion_id="A")
 
 
-def deletions(rec: Recorder, ending: str, second_token: str) -> None:
+def deletions(
+    rec: Recorder, ending: str, second_token: str, worker_ran: Callable[[], None]
+) -> None:
+    """The recipient's deletions, the worker running before the last of their
+    calls: deleting their account would delete what it wrote about them."""
+
     def gifts() -> None:
         rec.twin("DELETE", "/api/gifts/{gift_id}", {"gift_id": ("G1", "G2")})
 
@@ -901,6 +947,7 @@ def deletions(rec: Recorder, ending: str, second_token: str) -> None:
     for step in steps[ending]:
         step()
     rec.call("DELETE", "/api/lists/{list_id}", list_id="new list")
+    worker_ran()
     rec.call("GET", "/api/lists")
     rec.call(
         "POST",
@@ -948,6 +995,48 @@ def assert_shows_no_activity(answers: Iterable[Answer]) -> None:
             assert not [n for n in INVITEE_NAMES if n in answer.body], answer.call
 
 
+EMAIL = EmailConfig(
+    public_base_url="https://wishlist.example.test",
+    notification_secret="a-test-notification-secret",
+    allowed_addresses=None,
+    missing=(),
+)
+
+
+@dataclass
+class Worker:
+    """The notification worker as the app runs it, on a clock of its own."""
+
+    client: Any
+    engine: Any
+    now: datetime
+
+    def run(self) -> None:
+        """A run to fan out, and one to send what that grouped: each past the
+        settle minute and the grouping window (comments plan D15)."""
+        for _ in range(2):
+            self.now += WINDOW + SETTLE
+            run_once(
+                sessionmaker(bind=self.engine),
+                self.client.app.state.mailer,
+                EMAIL,
+                self.now,
+            )
+
+
+def assert_recipients_told_nothing(client, engine, built: World) -> None:
+    """No notification, digest or email names the owner or Cora (D11)."""
+    with engine.connect() as connection:
+        for who in (OWNER, CO_OWNER):
+            for table in ("notifications", "email_digests"):
+                assert 0 == connection.scalar(
+                    text(f"SELECT count(*) FROM {table} WHERE user_id = :user"),
+                    {"user": built.ids[who]},
+                ), (table, who)
+    addresses = {built.ids[f"email of {who}"] for who in (OWNER, CO_OWNER)}
+    assert not addresses & {sent[0] for sent in client.app.state.mailer.sent}
+
+
 def run(
     client,
     engine,
@@ -960,13 +1049,21 @@ def run(
     """The recipient's calls, in order. The co-owner keeps the holders of the
     state's activity in place (review R7-1); `unbought`, when given, is how
     many unbought claims G1, or the hidden gift, must still have when the
-    deletions start."""
+    deletions start. The worker runs at three points of them, and the answers
+    that follow it are compared with the others."""
+    worker = Worker(client, engine, client.app.state.clock())
+
+    def worker_ran() -> None:
+        worker.run()
+        assert_recipients_told_nothing(client, engine, built)
+
     rec = Recorder(client, built.accounts[actor].headers, built.ids)
     reads(rec, ("G1", "G2"), ("img1", "img2"))
     activity(rec)
     if state in HIDDEN_STATES:
         hidden_routes(rec, "H", "H image")
-    edits(rec, state, keep_holders=actor == CO_OWNER)
+    edits(rec, state, actor == CO_OWNER, worker_ran)
+    worker_ran()
     reads(rec, ("G1", "G2", "G3"), ("up1", "up2"))
     if unbought is not None:
         with engine.connect() as connection:
@@ -977,7 +1074,7 @@ def run(
                 ),
                 {"gift": built.ids["H" if state in HIDDEN_STATES else "G1"]},
             )
-    deletions(rec, ending, second_session(engine, built.ids[actor]))
+    deletions(rec, ending, second_session(engine, built.ids[actor]), worker_ran)
     return rec
 
 
@@ -991,7 +1088,7 @@ def test_the_recipient_sees_nothing(
 ):
     url_fetcher.result = (png(), "image/png")
     control = build(client, make_account, engine, state, control=True)
-    world = build(client, make_account, engine, state)
+    world = build(client, make_account, engine, state, recipients_hold=True)
     meets_unbought = actor == CO_OWNER and state in UNBOUGHT
     theirs = run(client, engine, control, actor, state, ending)
     ours = run(
@@ -1104,6 +1201,53 @@ def test_a_giving_owner_sees_the_activity(client, make_account, engine, state):
         200,
         404,
     ]
+
+
+@pytest.mark.parametrize("state", [*STATES, *HIDDEN_STATES])
+def test_a_giving_owner_is_told(client, make_account, engine, state):
+    """The contrast to the recipient's checks: the owner of a list for someone
+    else is a giver (comments plan D11). They follow G1 and reserve G2, Cora
+    renames G2: the same worker tells them of the change, and of the comments
+    of the state that has some, in one email per gift."""
+    built = build(client, make_account, engine, state, kind="other")
+    ids = built.ids
+    owner = built.accounts[OWNER].headers
+    gifts = f"/api/occasions/{ids['A']}/gifts"
+    followed = client.put(f"{gifts}/{ids['G1']}/follow", headers=owner)
+    assert followed.status_code == 204, followed.text
+    reserved = client.post(f"{gifts}/{ids['G2']}/reservation", headers=owner)
+    assert reserved.status_code == 200, reserved.text
+    renamed = client.patch(
+        f"/api/gifts/{ids['G2']}",
+        json={"title": "Renamed"},
+        headers=built.accounts[CO_OWNER].headers,
+    )
+    assert renamed.status_code == 200, renamed.text
+
+    Worker(client, engine, client.app.state.clock()).run()
+
+    expected = [(GIFT_CHANGED, ids["G2"])]
+    if state == "commented":
+        # Ana's and the since-removed Ben's.
+        expected += [(COMMENT_ADDED, ids["G1"])] * 2
+    with engine.connect() as connection:
+        told = connection.execute(
+            text(
+                "SELECT e.kind, n.gift_id FROM notifications n"
+                " JOIN notification_events e ON e.id = n.event_id"
+                " WHERE n.user_id = :user"
+            ),
+            {"user": ids[OWNER]},
+        ).all()
+        digests = connection.scalars(
+            text("SELECT status FROM email_digests WHERE user_id = :user"),
+            {"user": ids[OWNER]},
+        ).all()
+    assert sorted((kind, str(gift)) for kind, gift in told) == sorted(expected)
+    emails = {gift for _, gift in expected}
+    assert digests == ["sent"] * len(emails)
+    sent = [m for m in client.app.state.mailer.sent if m[0] == ids[f"email of {OWNER}"]]
+    assert len(sent) == len(emails)
 
 
 # The hidden gifts of the reveal test, by the name of their ids: their author,
