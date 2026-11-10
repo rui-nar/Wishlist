@@ -79,6 +79,58 @@ def test_no_customer_no_call_to_stripe(client, fake, account, engine):
     assert all_gone(engine, account.id)
 
 
+def test_a_billable_row_with_no_customer_is_cancelled_by_its_own_id_first(
+    client, fake, account, engine
+):
+    add_purchase(engine, account.id)
+    seen = []
+    fake.on_call = lambda name: seen.append(count(engine, User, account.id))
+
+    assert delete_account(client, account).status_code == 204
+
+    assert fake.calls == [("cancel", ("sub_1",))]
+    assert seen == [1]
+    assert all_gone(engine, account.id)
+
+
+def test_an_ended_row_with_no_customer_calls_no_one(client, fake, account, engine):
+    add_purchase(engine, account.id, status="ended")
+
+    assert delete_account(client, account).status_code == 204
+
+    assert fake.calls == []
+    assert all_gone(engine, account.id)
+
+
+def test_a_failed_cancel_by_id_deletes_nothing_and_retrying_works(
+    client, fake, account, engine
+):
+    add_purchase(engine, account.id)
+    fake.failures["cancel"] = GatewayUnavailable()
+
+    response = delete_account(client, account)
+
+    assert (response.status_code, response.json()["code"]) == (
+        502,
+        "billing_unavailable",
+    )
+    assert count(engine, User, account.id) == 1
+    assert count(engine, Entitlement, account.id) == 1
+
+    del fake.failures["cancel"]
+    assert delete_account(client, account).status_code == 204
+    assert all_gone(engine, account.id)
+
+
+def test_a_row_covered_by_cancel_all_gets_no_second_call(client, fake, account, engine):
+    add_customer(engine, account.id)
+    add_purchase(engine, account.id)
+
+    assert delete_account(client, account).status_code == 204
+
+    assert fake.calls == [("cancel_all", ("cus_1",))]
+
+
 def test_a_customer_has_their_billing_stopped_before_the_rows_go(
     client, fake, account, engine
 ):
@@ -235,10 +287,14 @@ def test_the_warning_survives_a_failed_first_attempt(
     assert "sub_1" in caplog.text
 
 
+@pytest.mark.parametrize("stored", [True, False], ids=["cancel_all", "cancel by id"])
 def test_a_concurrent_request_does_not_wait_during_the_stripe_call(
-    client, fake, account, engine
+    client, fake, account, engine, stored
 ):
-    add_customer(engine, account.id)
+    if stored:
+        add_customer(engine, account.id)
+    else:
+        add_purchase(engine, account.id)
     reached = threading.Event()
     proceed = threading.Event()
 

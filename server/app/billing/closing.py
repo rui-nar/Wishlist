@@ -32,7 +32,7 @@ def stop_billing(
     """
     cancelled: list[str] = []
     if gateway is None:
-        if _may_still_bill(db, user_id):
+        if _billable(db, user_id):
             _log.error(
                 "billing: account %s not deleted: a purchase may still bill and"
                 " the gateway is not configured",
@@ -45,27 +45,32 @@ def stop_billing(
                 BillingCustomer.user_id == user_id, BillingCustomer.source == STRIPE
             )
         )
-        if customer_id is not None:
-            try:
+        try:
+            if customer_id is not None:
                 cancelled = gateway.cancel_all(customer_id)
-            except GatewayError:
-                return _refusal(status.HTTP_502_BAD_GATEWAY)
+            else:
+                # A purchase recorded with no customer stored: only its own id
+                # can stop it before its next renewal.
+                for external_id in _billable(db, user_id):
+                    gateway.cancel(external_id)
+        except GatewayError:
+            return _refusal(status.HTTP_502_BAD_GATEWAY)
     _warn_of_refunds(db, user_id, cancelled, now)
     return None
 
 
-def _may_still_bill(db: Session, user_id: uuid.UUID) -> bool:
-    return (
-        db.scalar(
-            select(Entitlement.id)
+def _billable(db: Session, user_id: uuid.UUID) -> list[str]:
+    """The Stripe subscriptions our rows say can still charge this account."""
+    return list(
+        db.scalars(
+            select(Entitlement.external_id)
             .where(
                 Entitlement.user_id == user_id,
                 Entitlement.source == STRIPE,
                 Entitlement.status != ENDED,
             )
-            .limit(1)
+            .order_by(Entitlement.external_id)
         )
-        is not None
     )
 
 
