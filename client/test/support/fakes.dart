@@ -30,6 +30,11 @@ const kAlice = {
 /// The unsubscribe token [FakeServer] accepts.
 const kUnsubscribeToken = 'v1.dXNlcg.c2lnbmF0dXJl';
 
+/// The password [FakeServer] accepts at email sign-in, and the link token it
+/// accepts at `POST /api/auth/email/complete`.
+const kEmailPassword = 'correct horse';
+const kEmailLinkToken = 'bGluaw.c2lnbmF0dXJl';
+
 /// `GET /api/billing` (PREMIUM_PLAN D11); by default the unset state: free,
 /// nothing on sale and no limit applied.
 Map<String, Object?> billingStatus({
@@ -71,9 +76,19 @@ const kBillingOffer = {'amount': '49.00', 'currency': 'EUR', 'interval': 'year'}
 /// D11) and `/api/version`, in memory. [status] forces an answer for
 /// `'<METHOD> <path>'`.
 class FakeServer {
-  FakeServer({this.googleClientId = 'test-client-id', this.publicBaseUrl});
+  FakeServer({
+    this.googleClientId = 'test-client-id',
+    this.publicBaseUrl,
+    this.emailSignIn = false,
+  });
 
   String? googleClientId;
+
+  /// `email_sign_in` in `/api/config` (sign-in plan D18); off by default.
+  bool emailSignIn;
+
+  /// The body of the last `POST /api/auth/email/*`, by its full call.
+  final emailBodies = <String, Map<String, dynamic>>{};
 
   /// Where share links start; none by default, as in DEV.
   String? publicBaseUrl;
@@ -138,7 +153,25 @@ class FakeServer {
         return json({
           'google_client_id': googleClientId,
           'public_base_url': publicBaseUrl,
+          'email_sign_in': emailSignIn,
         });
+      case 'POST /api/auth/email/start':
+        emailBodies[call] = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response('', 202);
+      case 'POST /api/auth/email/sign-in':
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        emailBodies[call] = body;
+        if (body['password'] != kEmailPassword) {
+          return http.Response('{"detail":"Wrong email or password"}', 401);
+        }
+        return json({'token': addSession(), 'user': kAlice});
+      case 'POST /api/auth/email/complete':
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        emailBodies[call] = body;
+        if (body['token'] != kEmailLinkToken) {
+          return http.Response('{"detail":"This link is no longer valid"}', 410);
+        }
+        return json({'token': addSession(), 'user': kAlice});
       case 'GET /api/version':
         return json({'version': 'v1.2.0', 'env': 'validation'});
       case 'POST /api/auth/google':

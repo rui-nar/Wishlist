@@ -7,6 +7,9 @@ import 'package:provider/provider.dart';
 import 'api/api_client.dart';
 import 'auth/account_screen.dart';
 import 'auth/auth_controller.dart';
+import 'auth/email_link.dart';
+import 'auth/email_link_screen.dart';
+import 'auth/email_sign_up_screen.dart';
 import 'auth/sign_in_screen.dart';
 import 'billing/billing_repository.dart';
 import 'billing/plan_screen.dart';
@@ -35,11 +38,15 @@ const kRegisterMode = 'register';
 
 /// Locations shown signed out as well as signed in: they show no user data
 /// (WEB_LAYOUT_PLAN D6, review R1-1). The unsubscribe link has to work without
-/// a session (COMMENTS_NOTIFICATIONS_PLAN D18).
+/// a session (COMMENTS_NOTIFICATIONS_PLAN D18), and so do the three steps of
+/// email sign-in (sign-in plan D2, D8).
 const _publicPaths = {
   kWelcomePath,
   kAboutPath,
   kUnsubscribePath,
+  kEmailSignUpPath,
+  kCreateAccountPath,
+  kResetPasswordPath,
   kLegalTermsPath,
   kLegalPrivacyPath,
   kLegalWithdrawalPath,
@@ -51,7 +58,7 @@ const _publicPaths = {
 /// page, the sign-in screen, the version screen and the unsubscribe page
 /// pass, and every other
 /// location goes to `/sign-in?from=<location>` (WEB_LAYOUT_PLAN D6). Signed in, the welcome
-/// page goes to `/`, and the sign-in screen goes to `from`
+/// page and the page asking for an email link go to `/`, and the sign-in screen goes to `from`
 /// when [safeFrom] accepts it, `/` otherwise. Share links (`/join`) rely on
 /// this return; their token waits in [PendingJoin], not in the location, so
 /// a `from` of `/join` with no token pending ([joinPending] false) goes to
@@ -65,7 +72,7 @@ String? authRedirect(AuthStatus status, Uri uri, {required bool joinPending}) {
   }
   final onSignIn = uri.path == kSignInPath;
   if (status == AuthStatus.signedIn) {
-    if (uri.path == kWelcomePath) return '/';
+    if (uri.path == kWelcomePath || uri.path == kEmailSignUpPath) return '/';
     if (!onSignIn) return null;
     final from = safeFrom(uri.queryParameters['from']);
     if (from == null) return '/';
@@ -134,6 +141,7 @@ GoRouter buildRouter({
   required AuthController auth,
   required ApiClient api,
   required String appVersion,
+  String? emailLinkToken,
 }) {
   // From the live address, before the router exists: the path URL strategy
   // never hands the link's fragment to the router, and the router's first
@@ -158,6 +166,26 @@ GoRouter buildRouter({
           register: state.uri.queryParameters['mode'] == kRegisterMode,
           // Someone arriving from a share link or a deep link is mid-flow.
           offerWelcome: !state.uri.queryParameters.containsKey('from'),
+          from: state.uri.queryParameters['from'],
+        ),
+      ),
+      GoRoute(
+        path: kEmailSignUpPath,
+        builder: (context, state) =>
+            EmailSignUpScreen(from: state.uri.queryParameters['from']),
+      ),
+      GoRoute(
+        path: kCreateAccountPath,
+        builder: (context, state) => EmailLinkScreen(
+          kind: EmailLinkKind.create,
+          token: emailLinkTokenFrom(state.uri) ?? emailLinkToken,
+        ),
+      ),
+      GoRoute(
+        path: kResetPasswordPath,
+        builder: (context, state) => EmailLinkScreen(
+          kind: EmailLinkKind.reset,
+          token: emailLinkTokenFrom(state.uri) ?? emailLinkToken,
         ),
       ),
       GoRoute(

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:wishlist/src/api/api_client.dart';
 import 'package:wishlist/src/auth/auth_controller.dart';
+import 'package:wishlist/src/auth/email_sign_up_screen.dart';
 import 'package:wishlist/src/auth/sign_in_screen.dart';
 
 import '../support/fakes.dart';
@@ -46,6 +47,161 @@ void main() {
     expect(find.text('Continue with Google'), findsNothing);
     // Nothing is sent to Google without a client ID.
     expect(google.initCalls, isEmpty);
+  });
+
+  group('email sign-in (sign-in plan D18, D21)', () {
+    const email = 'Email address';
+    const usual = 'If you usually sign in with Google or Apple, use that button.';
+
+    Finder field(String label) => find.widgetWithText(TextFormField, label);
+
+    Future<void> signIn(
+      WidgetTester tester,
+      String address,
+      String password,
+    ) async {
+      await tester.enterText(field(email), address);
+      await tester.enterText(field('Password'), password);
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('only Google: no form, as before', (tester) async {
+      await pumpSignIn(tester);
+
+      expect(find.text('Continue with Google'), findsOneWidget);
+      expect(field(email), findsNothing);
+      expect(find.text('Forgot your password?'), findsNothing);
+      expect(find.text(usual), findsNothing);
+    });
+
+    testWidgets('Google and email: both, and D21 says which to use',
+        (tester) async {
+      server.emailSignIn = true;
+
+      await pumpSignIn(tester);
+
+      expect(find.text('Continue with Google'), findsOneWidget);
+      expect(field(email), findsOneWidget);
+      expect(field('Password'), findsOneWidget);
+      expect(find.text(usual), findsOneWidget);
+      expect(find.text('Forgot your password?'), findsOneWidget);
+      expect(find.text('Create an account with your email'), findsOneWidget);
+      expect(find.text('Sign-in is not available on this server yet.'),
+          findsNothing);
+    });
+
+    testWidgets('email alone: the form, no Google, no "not available"',
+        (tester) async {
+      server.googleClientId = null;
+      server.emailSignIn = true;
+
+      await pumpSignIn(tester);
+
+      expect(field(email), findsOneWidget);
+      expect(find.text('Continue with Google'), findsNothing);
+      expect(find.text('Sign-in is not available on this server yet.'),
+          findsNothing);
+      // D21's line has no button to point at.
+      expect(find.text(usual), findsNothing);
+      expect(google.initCalls, isEmpty);
+    });
+
+    testWidgets('the fields carry the autofill hints', (tester) async {
+      server.emailSignIn = true;
+      await pumpSignIn(tester);
+
+      List<String>? hints(String label) => tester
+          .widget<TextField>(find.descendant(
+            of: field(label),
+            matching: find.byType(TextField),
+          ))
+          .autofillHints
+          ?.toList();
+
+      expect(hints(email), [AutofillHints.email]);
+      expect(hints('Password'), [AutofillHints.password]);
+      expect(
+        tester
+            .widget<TextField>(find.descendant(
+              of: field('Password'),
+              matching: find.byType(TextField),
+            ))
+            .obscureText,
+        isTrue,
+      );
+    });
+
+    testWidgets('the right password signs in', (tester) async {
+      server.emailSignIn = true;
+      await pumpSignIn(tester);
+
+      await signIn(tester, '  alice@example.com ', kEmailPassword);
+
+      expect(auth.status, AuthStatus.signedIn);
+      expect(server.emailBodies['POST /api/auth/email/sign-in'], {
+        'email': 'alice@example.com',
+        'password': kEmailPassword,
+      });
+    });
+
+    testWidgets('a wrong password says so, keeping what was typed',
+        (tester) async {
+      server.emailSignIn = true;
+      await pumpSignIn(tester);
+
+      await signIn(tester, 'alice@example.com', 'wrong password');
+
+      expect(find.text('Wrong email or password.'), findsOneWidget);
+      expect(find.text('alice@example.com'), findsOneWidget);
+      expect(auth.status, AuthStatus.failed);
+    });
+
+    testWidgets('too many attempts says so', (tester) async {
+      server.emailSignIn = true;
+      server.status['POST /api/auth/email/sign-in'] = 429;
+      await pumpSignIn(tester);
+
+      await signIn(tester, 'alice@example.com', kEmailPassword);
+
+      expect(find.text('Too many attempts. Try again in a few minutes.'),
+          findsOneWidget);
+    });
+
+    testWidgets('a malformed address is not sent', (tester) async {
+      server.emailSignIn = true;
+      await pumpSignIn(tester);
+
+      await signIn(tester, 'not an address', kEmailPassword);
+
+      expect(find.text('Enter a valid email address.'), findsOneWidget);
+      expect(server.calls, isNot(contains('POST /api/auth/email/sign-in')));
+    });
+
+    testWidgets('an empty password is not sent', (tester) async {
+      server.emailSignIn = true;
+      await pumpSignIn(tester);
+
+      await signIn(tester, 'alice@example.com', '');
+
+      expect(find.text('Enter your password.'), findsOneWidget);
+      expect(server.calls, isNot(contains('POST /api/auth/email/sign-in')));
+    });
+
+    testWidgets('in French', (tester) async {
+      tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+      addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+      server.emailSignIn = true;
+
+      await pumpSignIn(tester);
+
+      expect(find.text('Mot de passe oublié ?'), findsOneWidget);
+      expect(
+        find.text(
+            "Si vous vous connectez d'habitude avec Google ou Apple, utilisez ce bouton."),
+        findsOneWidget,
+      );
+    });
   });
 
   testWidgets('initialises Google with the client ID from /api/config',
@@ -202,6 +358,23 @@ void main() {
 
       expect(find.text('What is Wishlist?'), findsNothing);
     });
+
+    for (final link in [
+      'Forgot your password?',
+      'Create an account with your email',
+    ]) {
+      testWidgets('$link opens the email page, keeping from', (tester) async {
+        server.emailSignIn = true;
+        await open(tester, '/sign-in?from=%2Faccount');
+
+        await tester.tap(find.text(link));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(EmailSignUpScreen), findsOneWidget);
+        expect(location(tester).path, '/email-sign-up');
+        expect(location(tester).queryParameters, {'from': '/account'});
+      });
+    }
 
     testWidgets('a share link goes to sign-in, with no welcome link',
         (tester) async {

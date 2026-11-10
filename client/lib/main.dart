@@ -12,6 +12,7 @@ import 'l10n/app_localizations.dart';
 import 'src/api/api_client.dart';
 import 'src/app_router.dart';
 import 'src/auth/auth_controller.dart';
+import 'src/auth/email_link.dart';
 import 'src/auth/language_report.dart';
 import 'src/auth/start_gate.dart';
 import 'src/auth/token_store.dart';
@@ -30,9 +31,17 @@ void main() {
   // From the live address, before the router exists: the path URL strategy
   // never hands the link's fragment to the router, and the sign-in redirect
   // would drop it (LISTS_GIFTS_SHARING_PLAN D5, review R3-1).
-  final pendingJoin = PendingJoin.capture(Uri.base, JoinBrowser.forPlatform());
+  final joinBrowser = JoinBrowser.forPlatform();
+  final pendingJoin = PendingJoin.capture(Uri.base, joinBrowser);
+  // The same for a mailed link: read here, and off the address bar at once.
+  final emailLinkToken = captureEmailLinkToken(Uri.base, joinBrowser);
   unawaited(auth.restore());
-  runApp(WishlistApp(api: api, auth: auth, pendingJoin: pendingJoin));
+  runApp(WishlistApp(
+    api: api,
+    auth: auth,
+    pendingJoin: pendingJoin,
+    emailLinkToken: emailLinkToken,
+  ));
 }
 
 class WishlistApp extends StatefulWidget {
@@ -42,6 +51,7 @@ class WishlistApp extends StatefulWidget {
     required this.auth,
     this.appVersion = kAppVersion,
     this.pendingJoin,
+    this.emailLinkToken,
   });
 
   // Injectable so tests can give the client a MockClient
@@ -52,6 +62,9 @@ class WishlistApp extends StatefulWidget {
 
   /// The occasion link the app was opened with; none when null.
   final PendingJoin? pendingJoin;
+
+  /// The token of the mailed link the app was opened with; none when null.
+  final String? emailLinkToken;
 
   @override
   State<WishlistApp> createState() => _WishlistAppState();
@@ -64,6 +77,7 @@ class _WishlistAppState extends State<WishlistApp> {
     auth: widget.auth,
     api: widget.api,
     appVersion: widget.appVersion,
+    emailLinkToken: widget.emailLinkToken,
   );
 
   @override

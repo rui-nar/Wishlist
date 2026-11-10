@@ -122,6 +122,137 @@ void main() {
       expect(store.token, isNull);
     });
 
+    test('email sign-in: the session, stored', () async {
+      final store = MemoryTokenStore();
+      final auth = controller(store);
+      await auth.restore();
+
+      await auth.signInWithEmail('alice@example.com', kEmailPassword);
+
+      expect(auth.status, AuthStatus.signedIn);
+      expect(store.token, isNotNull);
+      expect(server.emailBodies['POST /api/auth/email/sign-in'], {
+        'email': 'alice@example.com',
+        'password': kEmailPassword,
+      });
+    });
+
+    test('email sign-in refused (401): wrong credentials, nothing stored',
+        () async {
+      final store = MemoryTokenStore();
+      final auth = controller(store);
+      await auth.restore();
+
+      await auth.signInWithEmail('alice@example.com', 'wrong password');
+
+      expect(auth.status, AuthStatus.failed);
+      expect(auth.failure, SignInFailure.wrongCredentials);
+      expect(store.token, isNull);
+    });
+
+    test('email sign-in: 429 too many attempts, 422 refused like a wrong pair',
+        () async {
+      final auth = controller(MemoryTokenStore());
+      await auth.restore();
+
+      server.status['POST /api/auth/email/sign-in'] = 429;
+      await auth.signInWithEmail('alice@example.com', kEmailPassword);
+      expect(auth.failure, SignInFailure.tooManyAttempts);
+
+      server.status['POST /api/auth/email/sign-in'] = 422;
+      await auth.signInWithEmail('alice@example.com', kEmailPassword);
+      expect(auth.failure, SignInFailure.wrongCredentials);
+
+      server.status['POST /api/auth/email/sign-in'] = 500;
+      await auth.signInWithEmail('alice@example.com', kEmailPassword);
+      expect(auth.failure, SignInFailure.serverError);
+    });
+
+    test('a Google 422 stays a server error', () async {
+      final auth = controller(MemoryTokenStore());
+      await auth.restore();
+
+      server.status['POST /api/auth/google'] = 422;
+      await auth.signInWithGoogle(kValidIdToken);
+
+      expect(auth.failure, SignInFailure.serverError);
+    });
+
+    group('a mailed link', () {
+      Future<EmailLinkFailure?> complete(
+        AuthController auth, {
+        String token = kEmailLinkToken,
+      }) =>
+          auth.completeEmailLink(
+            token: token,
+            password: kEmailPassword,
+            displayName: 'Alice',
+          );
+
+      test('signs in, with the name, and stores the session', () async {
+        final store = MemoryTokenStore();
+        final auth = controller(store);
+        await auth.restore();
+
+        expect(await complete(auth), isNull);
+
+        expect(auth.status, AuthStatus.signedIn);
+        expect(store.token, isNotNull);
+        expect(server.emailBodies['POST /api/auth/email/complete'], {
+          'token': kEmailLinkToken,
+          'password': kEmailPassword,
+          'display_name': 'Alice',
+        });
+      });
+
+      test('a reset sends no name', () async {
+        final auth = controller(MemoryTokenStore());
+        await auth.restore();
+
+        await auth.completeEmailLink(
+          token: kEmailLinkToken,
+          password: kEmailPassword,
+        );
+
+        expect(
+          server.emailBodies['POST /api/auth/email/complete'],
+          isNot(contains('display_name')),
+        );
+      });
+
+      test('says why it failed', () async {
+        final auth = controller(MemoryTokenStore());
+        await auth.restore();
+
+        expect(await complete(auth, token: 'used'), EmailLinkFailure.expired);
+        for (final (code, failure) in [
+          (410, EmailLinkFailure.expired),
+          (429, EmailLinkFailure.tooManyAttempts),
+          (422, EmailLinkFailure.notAccepted),
+          (500, EmailLinkFailure.serverError),
+        ]) {
+          server.status['POST /api/auth/email/complete'] = code;
+          expect(await complete(auth), failure, reason: '$code');
+        }
+      });
+
+      test('a failure leaves the session it found alone', () async {
+        final store = MemoryTokenStore(server.addSession());
+        final auth = controller(store);
+        await auth.restore();
+        final session = store.token;
+        final statuses = <AuthStatus>[];
+        auth.addListener(() => statuses.add(auth.status));
+
+        expect(await complete(auth, token: 'used'), EmailLinkFailure.expired);
+
+        expect(statuses, isEmpty);
+        expect(auth.status, AuthStatus.signedIn);
+        expect(store.token, session);
+        expect(api.token, session);
+      });
+    });
+
     test('503: failed, not configured; 500: failed, server error', () async {
       final auth = controller(MemoryTokenStore());
       await auth.restore();

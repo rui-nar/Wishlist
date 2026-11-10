@@ -25,7 +25,7 @@ class AccountUser {
   final String id;
   final String email;
 
-  /// Google's name for the account; can be empty.
+  /// The account's name, from Google or typed at sign-up; can be empty.
   final String displayName;
 
   /// The display name, or the email when there is none.
@@ -44,7 +44,7 @@ enum AuthStatus {
   /// No session.
   signedOut,
 
-  /// The server is checking a Google ID token.
+  /// The server is checking a Google ID token, or an email and password.
   signingIn,
 
   /// Signed in as [AuthController.user].
@@ -59,6 +59,13 @@ enum SignInFailure {
   /// The server refused the Google ID token (401).
   rejected,
 
+  /// The email address and password do not match an account (401). One
+  /// answer for every cause, so nothing is learnt about the address (D10).
+  wrongCredentials,
+
+  /// Too many attempts for now (429).
+  tooManyAttempts,
+
   /// Google sign-in is not configured on the server (503).
   notConfigured,
 
@@ -69,8 +76,27 @@ enum SignInFailure {
   serverError,
 }
 
-/// The session: restores it at start, signs in with a Google ID token, signs
-/// out and deletes the account. Any 401 on a call made with the session ends
+/// Why a mailed link could not be used to choose a password (D9).
+enum EmailLinkFailure {
+  /// Forged, used or past its hour (410): only a new link helps.
+  expired,
+
+  /// Too many attempts for now (429).
+  tooManyAttempts,
+
+  /// The server refused the name or the password (422).
+  notAccepted,
+
+  /// The server could not be reached.
+  unreachable,
+
+  /// The server answered another error, or something unexpected.
+  serverError,
+}
+
+/// The session: restores it at start, signs in with a Google ID token or an
+/// email and password, completes a mailed link, signs out and deletes the
+/// account. Any 401 on a call made with the session ends
 /// it (D10), whatever screen made the call.
 class AuthController extends ChangeNotifier {
   AuthController({required this._api, required this._store}) {
@@ -122,33 +148,93 @@ class AuthController extends ChangeNotifier {
   }
 
   /// Exchanges a Google ID token for a session (`POST /api/auth/google`).
-  Future<void> signInWithGoogle(String idToken) async {
+  Future<void> signInWithGoogle(String idToken) => _signIn(
+        '/api/auth/google',
+        {'id_token': idToken},
+        refused: SignInFailure.rejected,
+      );
+
+  /// Exchanges an email address and password for a session
+  /// (`POST /api/auth/email/sign-in`). An address or password the server
+  /// cannot even read (422) is refused like any other wrong pair.
+  Future<void> signInWithEmail(String email, String password) => _signIn(
+        '/api/auth/email/sign-in',
+        {'email': email, 'password': password},
+        refused: SignInFailure.wrongCredentials,
+        invalidIsRefused: true,
+      );
+
+  /// Chooses a password with a mailed link (`POST /api/auth/email/complete`),
+  /// creating the account or replacing its password.
+  ///
+  /// Returns why it failed, or null once this account's session is in place.
+  /// A failure changes nothing, unlike a sign-in: the page opens signed in as
+  /// well as signed out, and a used link must not end the session it finds.
+  Future<EmailLinkFailure?> completeEmailLink({
+    required String token,
+    required String password,
+    String? displayName,
+  }) async {
+    try {
+      await _adopt(await _api.postJson('/api/auth/email/complete', {
+        'token': token,
+        'password': password,
+        'display_name': ?displayName,
+      }));
+      return null;
+    } on ApiException catch (e) {
+      return switch (e.statusCode) {
+        410 => EmailLinkFailure.expired,
+        429 => EmailLinkFailure.tooManyAttempts,
+        422 => EmailLinkFailure.notAccepted,
+        _ => EmailLinkFailure.serverError,
+      };
+    } on ApiUnreachableException {
+      return EmailLinkFailure.unreachable;
+    } catch (_) {
+      // An answer without the expected token or user.
+      return EmailLinkFailure.serverError;
+    }
+  }
+
+  Future<void> _signIn(
+    String path,
+    Map<String, dynamic> body, {
+    required SignInFailure refused,
+    bool invalidIsRefused = false,
+  }) async {
     _set(AuthStatus.signingIn);
     try {
-      final body =
-          await _api.postJson('/api/auth/google', {'id_token': idToken});
-      final token = body['token'] as String;
-      final user = AccountUser.fromJson(body['user'] as Map<String, dynamic>);
-      try {
-        await _store.write(token);
-      } catch (_) {
-        // Signed in for this run only: the next start asks again.
-      }
-      _api.token = token;
-      _user = user;
-      _set(AuthStatus.signedIn);
+      await _adopt(await _api.postJson(path, body));
     } on UnauthorizedException {
-      _fail(SignInFailure.rejected);
+      _fail(refused);
     } on ApiException catch (e) {
-      _fail(e.statusCode == 503
-          ? SignInFailure.notConfigured
-          : SignInFailure.serverError);
+      _fail(switch (e.statusCode) {
+        429 => SignInFailure.tooManyAttempts,
+        422 when invalidIsRefused => refused,
+        503 => SignInFailure.notConfigured,
+        _ => SignInFailure.serverError,
+      });
     } on ApiUnreachableException {
       _fail(SignInFailure.unreachable);
     } catch (_) {
       // An answer without the expected token or user.
       _fail(SignInFailure.serverError);
     }
+  }
+
+  /// Makes a sign-in's answer the current session.
+  Future<void> _adopt(Map<String, dynamic> body) async {
+    final token = body['token'] as String;
+    final user = AccountUser.fromJson(body['user'] as Map<String, dynamic>);
+    try {
+      await _store.write(token);
+    } catch (_) {
+      // Signed in for this run only: the next start asks again.
+    }
+    _api.token = token;
+    _user = user;
+    _set(AuthStatus.signedIn);
   }
 
   /// Ends the session on the server (`POST /api/auth/sign-out`) and here.
