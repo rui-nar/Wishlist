@@ -65,3 +65,32 @@ instruction of 2026-11-10.
 ## Round 2 — 2026-11-10, unit review of U1, reviewed at 55c058e
 
 No findings.
+
+## Round 3 — 2026-11-10, unit review of U2, reviewed at 092eb2c
+
+### R3-1 — A correct password refused when two sign-ins race through a rehash
+- Trigger: after a change of Argon2 parameters, two sign-ins with the right password within ~100 ms → the second verified the old hash and answers 401.
+- Scores: trigger=theoretical (corrected from plausible: one parameter set, and a new table), impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Reject (D11)
+- Revisit when: — (a change of the Argon2 parameters would be new evidence)
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R3-2 — Completing a link while deleting the account can deadlock with two links
+- Trigger: a person with two pending links submits one while deleting the account on another device → a deadlock, 500 on one route, which can be retried.
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible (corrected from logged), later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: a deadlock or 500 is logged on `POST /api/auth/email/complete` or `DELETE /api/me` involving email_links, or a change makes either route hold email_links row locks for longer
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R3-3 — The worker's run aborts when a link is deleted mid-send
+- Trigger: a person requests a reset, then deletes the account while the worker's Brevo call is in flight → `_record` raises and that run stops, the rest running 15 s later.
+- Scores: trigger=plausible, impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: `notifications: run failed (NoResultFound)` or `(StaleDataError)` appears in the logs, or anything other than delete_me and the expiry sweep starts deleting email_links rows that can be sending
+- Guard: —
+- Override: —
+- Outcome: open
