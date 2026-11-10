@@ -9,7 +9,8 @@ whose G2 is its twin.
 
 The growing paths too, with the free plan's limits enforced (premium plan D7):
 adding a gift and creating a list on twin worlds, one with the activity, and
-putting back twin gifts, below the limit and at it.
+putting back twin gifts and keeping twin revealed gifts, below the limit and
+at it.
 """
 
 import re
@@ -26,6 +27,7 @@ from test_group_gifts import pledge
 from test_hidden_gifts import added
 from test_hidden_model import add_hidden, first_on, give, noon_after
 from test_reservations import mark_bought, reserve
+from test_roles import enforce
 from test_surprise import OWNER, STATES, build
 
 # Its fixtures, registered here by name.
@@ -112,12 +114,6 @@ ACTIVITIES = {
     "taken elsewhere": taken_elsewhere,
 }
 REQUESTS = [("PATCH", {"title": "Renamed"}), ("DELETE", None)]
-
-
-def enforce(client, billing_on, **limits):
-    """The free plan's limits enforced on this app (premium plan Conventions)."""
-    state = client.app.state
-    state.settings = state.settings.model_copy(update=billing_on | limits)
 
 
 def hidden_gift_added(client, world, gift):
@@ -256,6 +252,34 @@ def test_a_revealed_gifts_request_does_the_same_work_with_or_without_a_thread(
 
     assert owner_request(client, world.owner, method, first, body) == owner_request(
         client, world.owner, method, second, body
+    )
+
+
+@pytest.mark.parametrize(("limit", "expected"), [(20, 200), (3, 402)])
+def test_keeping_a_revealed_gift_does_the_same_work_with_or_without_a_thread(
+    client, world, engine, billing_on, limit, expected
+):
+    day = date.today() + timedelta(days=2)
+    first_on(client, world, day)
+    first, second = (
+        add_hidden(engine, world, world.first, world.ana, "Twin") for _ in range(2)
+    )
+    for gift in (first, second):
+        give(engine, world, gift, "bought")
+    commented_and_followed(client, world, first)
+    enforce(client, billing_on, free_max_gifts_per_list=limit)
+    client.app.state.clock = lambda: noon_after(day)
+    # The clock's jump records the session's use once, before the comparison.
+    client.get("/api/lists", headers=world.owner.headers)
+
+    status, statements = growth(
+        client, world.owner, "POST", f"/api/gifts/{first}/keep", None
+    )
+
+    assert status == expected
+    assert advisory_locks(statements)
+    assert (status, statements) == growth(
+        client, world.owner, "POST", f"/api/gifts/{second}/keep", None
     )
 
 

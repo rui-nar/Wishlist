@@ -27,6 +27,10 @@ The routes that name no object of a list (my lists, creating a list, shared
 with me, the join endpoints, uploading an image or giving its URL) have their
 own tests by role, below.
 
+`test_the_limit_by_role` runs the same scenario at the free plan's limits
+(premium plan U9): an owner's growth is refused, identically on both lists,
+and no giver route is limited.
+
 Later plans extend the scenario rather than writing their own: a plan that
 adds invitee activity adds it to the scenario and asserts that the recipient
 sees none of it. A new route under `GUARDED_PREFIXES` without a row in
@@ -634,6 +638,22 @@ def expected(endpoint: Endpoint, relation: str, list_key: str) -> int:
     }[relation]
 
 
+def enforce(client, billing_on, **limits):
+    """The free plan's limits enforced on this app (premium plan Conventions)."""
+    state = client.app.state
+    state.settings = state.settings.model_copy(update=billing_on | limits)
+
+
+def plan_limit(resource: str, limit: int) -> dict[str, Any]:
+    """The body of a refusal at the free plan's limit (premium plan D4)."""
+    return {
+        "detail": "The free plan's limit is reached",
+        "code": "plan_limit",
+        "resource": resource,
+        "limit": limit,
+    }
+
+
 def call(client, scenario: Scenario, actor: str, endpoint: Endpoint, ids):
     return client.request(
         endpoint.method,
@@ -1043,6 +1063,138 @@ def test_stripe_webhook_by_role(client, billing_client, scenario, actor):
     assert (absent.status_code, absent.json()) == (404, {"detail": "Not found"})
     assert gateway.calls == []
     assert owners_view(client, scenario) == before
+
+
+def giver_route(method: str, path: str) -> Endpoint:
+    return next(row for row in ENDPOINTS if (row.method, row.path) == (method, path))
+
+
+OCCASION = "/api/occasions/{occasion_id}"
+GIFT = OCCASION + "/gifts/{gift_id}"
+HIDDEN = OCCASION + "/hidden-gifts"
+# Every giver route, in an order where each still applies after the ones before
+# it, where the matrix gives each a fresh scenario: the hidden gift's image
+# before the gift goes, and a gift pledged on and released before it is bought.
+GIVER_RUN = [
+    giver_route("GET", OCCASION + "/claims"),
+    giver_route("GET", HIDDEN),
+    giver_route("POST", HIDDEN),
+    giver_route("PATCH", HIDDEN + "/{hidden_gift_id}"),
+    giver_route("GET", OCCASION + "/images/{hidden_image_id}/thumb"),
+    giver_route("DELETE", HIDDEN + "/{hidden_gift_id}"),
+    giver_route("GET", GIFT + "/comments"),
+    giver_route("POST", GIFT + "/comments"),
+    giver_route("PATCH", GIFT + "/comments/{comment_id}"),
+    giver_route("DELETE", GIFT + "/comments/{comment_id}"),
+    giver_route("PUT", GIFT + "/follow"),
+    giver_route("DELETE", GIFT + "/follow"),
+    giver_route("PUT", GIFT + "/pledge"),
+    giver_route("DELETE", GIFT + "/pledge"),
+    giver_route("POST", GIFT + "/reservation"),
+    giver_route("DELETE", GIFT + "/reservation"),
+    giver_route("POST", GIFT + "/bought"),
+]
+# The routes about what the first occasion's invitee wrote: nothing of their
+# own to an invitee of the second.
+NAMES_THE_FIRST_OCCASIONS = ("{hidden_gift_id}", "{hidden_image_id}", "{comment_id}")
+
+
+def test_every_giver_route_is_in_the_limit_run():
+    assert {str(row) for row in GIVER_RUN} == {
+        str(row) for row in ENDPOINTS if row.recipient is not None
+    }
+
+
+@pytest.mark.parametrize("actor", ACTORS)
+@pytest.mark.parametrize("list_key", LISTS)
+def test_the_limit_by_role(client, billing_on, scenario, list_key, actor):
+    """Both lists full and each of their owners at one list (premium plan D4,
+    D5, NEEDS "Only owners pay"): an owner's growth gets the same 402 on both
+    lists, what no owner may do gets the random id's answer, and every giver
+    route still works, for the giving owner and whatever the giver's plan."""
+    ids = scenario.lists[list_key]
+    relation = scenario.relation(actor, list_key)
+    headers = scenario.headers(actor)
+    enforce(client, billing_on, free_max_gifts_per_list=3, free_max_lists=1)
+    before = owners_view(client, scenario)
+    gift_route = "/api/lists/{}/gifts"
+    received_route = "/api/gifts/{}/received"
+    keep_route = "/api/gifts/{}/keep"
+    next_gift = {"title": "Next"}
+
+    new_list = client.post(
+        "/api/lists", json={"title": "Next", "recipient_kind": "self"}, headers=headers
+    )
+    new_gift = client.post(
+        gift_route.format(ids["list_id"]), json=next_gift, headers=headers
+    )
+    put_back = client.delete(received_route.format(ids["gift_id"]), headers=headers)
+    keep = client.post(keep_route.format(ids["gift_id"]), headers=headers)
+
+    assert owners_view(client, scenario) == before
+    if relation == SIGNED_OUT:
+        answers = {new_list.status_code, new_gift.status_code}
+        assert answers | {put_back.status_code, keep.status_code} == {401}
+    else:
+        if actor in (ME_OWNER, OTHER_OWNER):
+            assert (new_list.status_code, new_list.json()) == (
+                402,
+                plan_limit("lists", 1),
+            )
+        else:
+            # Their first list: they are not limited for being invited.
+            assert new_list.status_code == 201, new_list.text
+        if relation == OWNER:
+            assert (new_gift.status_code, new_gift.json()) == (
+                402,
+                plan_limit("gifts", 3),
+            )
+            assert put_back.status_code == 204, put_back.text
+            assert keep.status_code == 409, keep.text
+        else:
+            # Refused, and a real id cannot be told from a random one.
+            random = str(uuid.uuid4())
+            for real, probe in (
+                (
+                    new_gift,
+                    client.post(
+                        gift_route.format(random), json=next_gift, headers=headers
+                    ),
+                ),
+                (
+                    put_back,
+                    client.delete(received_route.format(random), headers=headers),
+                ),
+                (keep, client.post(keep_route.format(random), headers=headers)),
+            ):
+                assert (real.status_code, real.json()) == (404, {"detail": "Not found"})
+                assert (probe.status_code, probe.json()) == (
+                    real.status_code,
+                    real.json(),
+                )
+        for refused in (new_list, new_gift, put_back, keep):
+            if refused.status_code >= 400:
+                assert_reveals_nothing(
+                    refused.json(),
+                    scenario.hidden_from(actor),
+                    recipient=actor == ME_OWNER,
+                )
+
+    run, giver, occasion = GIVER_RUN, relation, ids[FIRST]
+    if relation == INVITEE_ELSEWHERE:
+        # Their own occasion, the second, where they are a giver.
+        run = [
+            row
+            for row in GIVER_RUN
+            if not any(name in row.path for name in NAMES_THE_FIRST_OCCASIONS)
+        ]
+        giver, occasion = INVITEE, ids[SECOND]
+    for endpoint in run:
+        answer = call(client, scenario, actor, endpoint, ids | {FIRST: occasion})
+        assert answer.status_code == expected(endpoint, giver, list_key), (
+            endpoint,
+            answer.text,
+        )
 
 
 def test_every_route_is_in_the_matrix(client):
