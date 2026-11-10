@@ -76,4 +76,4 @@ R1-1 remains a defect only for the wait it passes on to `add_gift`.
 - Decision: Guard (D4)
 - Guard: `warn_if_lapsed` logs a separate fixed WARNING for a granting row with no period end, with a test; who gets premium is unchanged
 - Override: —
-- Outcome: open
+- Outcome: guard added (b7d10ea)
