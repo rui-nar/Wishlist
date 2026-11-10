@@ -18,6 +18,7 @@ from starlette.convertors import PathConvertor, register_url_convertor
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.accounts import sessions
+from app.accounts.apple import AppleVerifier
 from app.accounts.apple_router import router as apple_router
 from app.accounts.email_router import router as email_router
 from app.accounts.google import GoogleVerifier
@@ -110,7 +111,9 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.state.google_verifier = (
         GoogleVerifier(settings.google_audiences) if settings.google_audiences else None
     )
-    app.state.apple_verifier = None
+    app.state.apple_verifier = (
+        AppleVerifier(settings.apple_audiences) if settings.apple_audiences else None
+    )
     app.state.clock = sessions.utc_now
     app.state.url_fetcher = SafeFetcher(version=settings.app_version)
     # None until every variable it needs is set: the worker then skips the
