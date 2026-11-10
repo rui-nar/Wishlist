@@ -102,7 +102,7 @@ on, and only the admin reads that log. Unlike a join token, it grants nothing.
 - Decision: Defer (D10)
 - Revisit when: a PostgreSQL deadlock involving `gift_claims` appears in the logs
 - Override: orchestrator, under the standing instruction: Fix now — the fix is inside the sweep and touches no request path; a 500 on account deletion is what RESERVING R9-3 and hidden gifts R3-1 were fixed for
-- Outcome: open
+- Outcome: fixed (c9bf53a)
 
 ### R6-2 — A digest row deleted during a refused send aborts the rest of the run
 - Trigger: an account or occasion is deleted while Brevo answers 429 or 5xx for that digest → `_requeue`'s `get_one` raises → the remaining digests of the run wait for the next one, 15 s later; nothing is sent twice
@@ -119,3 +119,43 @@ on, and only the admin reads that log. Unlike a join token, it grants nothing.
 - Revisit when: a worker run lasts over 10 minutes, a digest ends `failed/unknown` while its process was alive, `SEND_BATCH` or the mailer timeouts increase, or several app processes run permanently
 - Override: —
 - Outcome: open
+
+## Round 7 — 2026-11-10, integrated review, reviewed at f7b04fd
+
+### R7-1 — Reservations and pledges made before this release never follow their gift
+- Trigger: an invitee reserved or pledged before the deploy → after it another giver comments → the holder gets no email and sees "Follow" on a gift they hold
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=expensive (triager: was cheap; a later repair is a further data migration), fix=S/local, confidence=verified
+- Decision: Fix now (D5, floor F4)
+- Override: —
+- Outcome: fixed (5d012e9)
+
+### R7-2 — Seeding VAL from PROD carries PROD's pending notifications
+- Trigger: PROD has a pending event or digest when the nightly dump runs, the admin later seeds VAL from it, and email is configured on VAL → VAL's worker sends the allow-listed owner a second copy of any digest addressed to them, with VAL links
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: VAL sends an email for activity that happened on PROD, the VAL allow-list grows beyond the owner, or dumps or seeds become frequent enough that pending rows are routinely carried over
+- Override: —
+- Outcome: open
+
+## Delivery
+
+Orchestrated under the owner's standing instruction of 2026-11-09, after the
+hidden gifts plan on the same branch (`feat/hidden-gifts-comments`). Units of a
+multi-unit wave ran in worktrees (W2). Server checks ran in a detached Linux
+container on the dev Docker network, because Windows Application Control blocks
+the host venv's compiled modules.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Comment threads and following | Opus | S4 | 1 | — | yes | — |
+| U2 | Client: thread and follow toggle | Opus | S5 | 1 | X3 (bodyless `put` in `ApiClient`) | yes | — |
+| U3 | Outbox, auto-follow, gift deletion without cascades | Opus | S4 | 1 | — | yes | R1-1 to R1-6, R2-1, R2-2, R4-1 |
+| U4 | Client: email switch, language, unsubscribe page, deep links | Opus | S5 | 1 | — | yes | — |
+| U5 | Preferences and the unsubscribe route | Opus | S5 | 1 | — | yes | — |
+| U6 | The Brevo mailer and email content | Opus | S5 | 1 | — | yes | — |
+| U7 | The notification worker | Opus | S5 | 1 | X3 (`mailer.py`, empty sender name) | yes | R6-1, R6-2, R6-3 |
+| U8 | Environment variables and the owner's steps | Opus | S5 | 1 | — | yes | — |
+| U9 | No notification reaches the recipient, end to end | Opus | S5 | 1 | — | yes | — |
+| F2 | Claim holders follow their gifts on upgrade | Opus | S4 | 1 | — | yes | R7-1 |
+
+Deferred: R6-2, R6-3, R7-2, with their revisit conditions above.
