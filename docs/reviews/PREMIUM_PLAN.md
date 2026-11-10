@@ -7,3 +7,46 @@ Approval: under the owner's standing instruction of 2026-11-10 ("start with
 the following package of features related to the paywall. do it silently"),
 the orchestrator approves the triaged table after enforcing the floors, and
 answers envelope questions with its recommendation.
+
+## Round 1 — 2026-11-10, reviewed at b4a32b6
+
+Envelope question, answered by the orchestrator: activity on an already
+revealed gift is outside the surprise for waits, so `keep`'s own wait on a
+giver's `FOR KEY SHARE` (accepted by HIDDEN_GIFTS_PLAN D10) stays accepted.
+R1-1 remains a defect only for the wait it passes on to `add_gift`.
+
+### R1-1 — `add_gift` can wait on a giver through the advisory lock a concurrent keep holds
+- Trigger: a giver comments on or pledges to a revealed gift while its owner keeps it and an owner adds a gift to the same list → keep holds the advisory lock and blocks on the gift → the add blocks on the advisory lock
+- Scores: trigger=plausible, impact=security, detect=silent, later=cheap, fix=S/local, confidence=verified (triager: was inferred)
+- Decision: Fix now (D3, floor F1)
+- Override: —
+- Outcome: open
+
+### R1-2 — Webhook, portal and account deletion are gated on being able to sell
+- Trigger: the owner withdraws the offer or clears any selling setting → the webhook answers 404 → Stripe drops events after its retries → a renewal paid in that window loses Premium silently, and every subscriber's account deletion answers 409
+- Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=M/local, confidence=verified (triager: was inferred)
+- Decision: Fix now (D3, floor F3)
+- Override: —
+- Outcome: open
+
+### R1-3 — No way back after a webhook delivery window is missed
+- Trigger: the webhook is unreachable across a renewal for longer than Stripe's retries → the paying subscriber becomes free at `period_end` + 3 days until the next event, up to a year later
+- Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=verified (triager: was inferred)
+- Decision: Fix now (D3, floor F3)
+- Override: —
+- Outcome: open
+
+### R1-4 — `past_due` can keep Premium for a whole unpaid period
+- Trigger: a card declines at renewal, and Stripe's "if all retries fail" setting leaves the subscription as it is → Premium persists up to a year unpaid
+- Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D3, floor F3)
+- Override: —
+- Outcome: open
+
+### R1-5 — Account deletion when the customer was deleted at Stripe
+- Trigger: the customer is deleted by hand in the Stripe dashboard → `cancel_all` gets `resource_missing` → the deletion is unspecified and retries fail
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified (triager: was inferred)
+- Decision: Defer (D10): the plan's own flow keeps customers, and proceeding on `resource_missing` is unsafe, since a key for another Stripe account answers the same
+- Revisit when: a `DELETE /api/me` fails on `MissingAtStripe`, or a procedure starts deleting Stripe customers
+- Override: —
+- Outcome: open
