@@ -100,9 +100,10 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         app.state.media_purge.stop()
         engine.dispose()
 
-    # In production, no schema or docs page lists the admin routes (admin
-    # panel plan D2, review R1-2); `app.openapi()` still builds the schema.
-    hidden = settings.app_env == "production"
+    # Outside DEV, no schema or docs page lists the admin routes (admin panel
+    # plan D2, reviews R1-2, R2-1: VAL is public too); `app.openapi()` still
+    # builds the schema.
+    hidden = settings.app_env != "dev"
     app = FastAPI(
         title="Wishlist",
         version=settings.app_version,
@@ -145,6 +146,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     )
     _log_billing_gaps(settings)
     _log_email_sign_in_gap(settings)
+    _log_admin_gap(settings)
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.
@@ -233,6 +235,17 @@ def _log_billing_gaps(settings: Settings) -> None:
         _log.warning(
             "billing is not selling; missing or invalid: %s",
             ", ".join(settings.missing_selling_settings),
+        )
+
+
+def _log_admin_gap(settings: Settings) -> None:
+    """An entry of ADMIN_USER_IDS that is not an id makes no one admin (admin
+    panel plan D1, review R2-3). Named by its position only: the value may be
+    an address, and no address is logged."""
+    if settings.admin_ids_invalid:
+        _log.warning(
+            "ADMIN_USER_IDS: entries at positions %s are not account ids; ignored",
+            ", ".join(str(position) for position in settings.admin_ids_invalid),
         )
 
 

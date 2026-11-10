@@ -103,6 +103,21 @@ class Settings(BaseSettings):
         return frozenset(ids)
 
     @property
+    def admin_ids_invalid(self) -> list[int]:
+        """The positions (from 1, counted between commas) of the entries of
+        ADMIN_USER_IDS that are not ids. Never their values: one may be an
+        address."""
+        positions = []
+        for position, entry in enumerate(self.admin_user_ids.split(","), start=1):
+            if not entry.strip():
+                continue
+            try:
+                uuid.UUID(entry.strip())
+            except ValueError:
+                positions.append(position)
+        return positions
+
+    @property
     def billing_price(self) -> Decimal | None:
         amount = self.billing_price_amount.strip()
         price = Decimal(amount) if _PRICE_AMOUNT.fullmatch(amount) else None

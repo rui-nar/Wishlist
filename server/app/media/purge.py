@@ -242,8 +242,10 @@ def fill_sizes(db: Session, media_dir: Path) -> SizeCounts:
                 .where(Image.bytes.is_(None))
                 .order_by(Image.id)
                 .limit(SIZES_BATCH)
-                # FOR NO KEY UPDATE: a gift attaching the image meanwhile
-                # does not wait on it.
+                # FOR NO KEY UPDATE SKIP LOCKED: this never waits, and the
+                # foreign-key checks on `gifts.image_id` (FOR KEY SHARE) do not
+                # wait on it. An attach's FOR UPDATE or an account deletion's
+                # SET NULL on `uploaded_by` can wait for one batch, never more.
                 .with_for_update(key_share=True, skip_locked=True)
             )
             if after is not None:
