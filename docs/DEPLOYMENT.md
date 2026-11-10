@@ -1392,6 +1392,30 @@ VAL follows the `validation` tag. To take it back, move the tag to an older
 commit; the same limits apply (D15, and an image without `app.migrate`), and
 [seeding](#seeding-val-from-prod) resets it anyway.
 
+**Rolling back across the hidden gifts and comments release.** The rollback is
+image-only, as above: the previous release runs on this schema and never shows
+a hidden gift. During the rollback:
+
+- received gifts show on their lists again; hidden and revealed gifts are
+  invisible to everyone, and comments and follows are unreachable;
+- no notification event is written and no email is sent; events already
+  waiting are processed when this release runs again;
+- deleting an occasion deletes its bought hidden gifts instead of revealing
+  them;
+- gifts deleted during the rollback leave their activity unreachable, and the
+  worker removes it when this release runs again.
+
+**The surprise is not fully kept across this rollback.** The previous release
+does not maintain `occasions.latest_date`, so a recipient who moves an
+occasion's date into the past during the rollback sees that occasion's bought
+hidden gifts early, once this release runs again. Keep the rollback short and,
+on the way forward, check the occasions whose date moved earlier during it.
+
+A client of this release fails the occasion page against a rolled-back server,
+because `/hidden-gifts` answers 404. The web client is served by the server and
+rolls back with it; the mobile release must revisit this before builds are
+installed.
+
 ## Postgres major upgrade
 
 The Postgres image is pinned to one exact version everywhere (D2), and a
