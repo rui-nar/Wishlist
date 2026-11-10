@@ -28,9 +28,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.accounts.models import AuthThrottle, EmailLink
 from app.comments.models import Comment, GiftFollow
 from app.lists.models import Gift
-from app.notifications import digests, fanout
+from app.notifications import digests, email_links, fanout
 from app.notifications.digests import EmailConfig
 from app.notifications.mailer import BrevoMailer
 from app.notifications.models import (
@@ -46,6 +47,9 @@ _log = logging.getLogger(__name__)
 
 RUN_INTERVAL = timedelta(seconds=15)
 RETENTION = timedelta(days=30)
+# How long a sign-in link outlives its expiry, and a throttle row its window,
+# which lasts an hour at most (sign-in plan D6, D12).
+SIGN_IN_RETENTION = timedelta(days=1)
 # An arbitrary constant, naming this one lock.
 _HOUSEKEEPING_LOCK = 730_912_004
 
@@ -60,6 +64,11 @@ class RunCounts(NamedTuple):
     send_failed: int
     swept: int
     retained: int
+    links_sent: int
+    links_skipped: int
+    links_retried: int
+    links_failed: int
+    sign_in_swept: int
 
 
 def _named_by_pending_event(gift_id: ColumnElement) -> ColumnElement[bool]:
@@ -180,6 +189,24 @@ def retain(session_factory: sessionmaker[Session], now: datetime) -> int:
     return retained
 
 
+def sweep_sign_in(session_factory: sessionmaker[Session], now: datetime) -> int:
+    """Deletes the links expired for a day and the throttle rows past any
+    window (sign-in plan D6, D12): no address stays longer."""
+    cutoff = now - SIGN_IN_RETENTION
+    with session_factory() as db, db.begin():
+        if not _housekeeping_lock(db):
+            return 0
+        swept = 0
+        for statement in (
+            delete(EmailLink).where(EmailLink.expires_at < cutoff),
+            delete(AuthThrottle).where(AuthThrottle.window_started_at < cutoff),
+        ):
+            swept += db.execute(
+                statement.execution_options(synchronize_session=False)
+            ).rowcount
+    return swept
+
+
 def run_once(
     session_factory: sessionmaker[Session],
     mailer: BrevoMailer | None,
@@ -189,9 +216,13 @@ def run_once(
 ) -> RunCounts:
     """One run of D16's steps; one log line if it did anything, counts only."""
     fanned = fanout.fan_out_due(session_factory, now, should_stop)
+    # Before the digests: someone is waiting for this email (D6), and a batch
+    # of digests can take minutes.
+    links = email_links.send_due(session_factory, mailer, config, now, should_stop)
     sent = digests.send_due(session_factory, mailer, config, now, should_stop)
     swept = sweep(session_factory)
     retained = retain(session_factory, now)
+    sign_in_swept = sweep_sign_in(session_factory, now)
     counts = RunCounts(
         fanned.events,
         fanned.notifications,
@@ -202,11 +233,18 @@ def run_once(
         sent.failed,
         swept,
         retained,
+        links.sent,
+        links.skipped,
+        links.retried,
+        links.failed,
+        sign_in_swept,
     )
     if any(counts):
         _log.info(
             "notifications: events=%d notifications=%d events_failed=%d sent=%d"
-            " skipped=%d retried=%d send_failed=%d swept=%d retained=%d",
+            " skipped=%d retried=%d send_failed=%d swept=%d retained=%d"
+            " links_sent=%d links_skipped=%d links_retried=%d links_failed=%d"
+            " sign_in_swept=%d",
             *counts,
         )
     return counts

@@ -13,7 +13,7 @@ from app.accounts.deps import (
     lock_for_deletion,
 )
 from app.accounts.google import InvalidGoogleToken
-from app.accounts.models import User
+from app.accounts.models import EmailLink, User, UserIdentity
 from app.accounts.schemas import GoogleSignIn, SignedIn, UserOut
 from app.billing.closing import report_late_purchases, stop_billing
 from app.billing.schemas import BillingRefusal
@@ -80,6 +80,22 @@ def delete_me(request: Request, session: UnlockedSession, db: DbSession) -> Resp
     stopped = stop_billing(db, state.stripe_gateway, session.user_id, state.clock())
     if isinstance(stopped, JSONResponse):
         return stopped
+    # The links of their address (sign-in plan Boundaries crossed), before the
+    # user's lock: a link being used holds its row and then waits on the user,
+    # so taken after the lock this would deadlock with it. A link used
+    # meanwhile finishes first and is deleted here.
+    db.execute(
+        delete(EmailLink)
+        .where(
+            EmailLink.address.in_(
+                select(UserIdentity.subject).where(
+                    UserIdentity.user_id == session.user_id,
+                    UserIdentity.provider == identities.EMAIL,
+                )
+            )
+        )
+        .execution_options(synchronize_session=False)
+    )
     # The account locked first (`FOR UPDATE`, by `lock_for_deletion`), then every
     # occasion they give in or own, in the order every request takes them
     # (reserving plan D7): each request holds its user `FOR KEY SHARE` from

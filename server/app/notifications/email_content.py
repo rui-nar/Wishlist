@@ -48,6 +48,28 @@ _EN = {
     "unsubscribe": "Stop email notifications",
     "account": "Email settings",
     "link_line": "{label}: {url}",
+    "sign_in_create_subject": "Create your Wishlist account",
+    "sign_in_create_intro": (
+        "To finish creating your Wishlist account, choose a password."
+    ),
+    "sign_in_create_action": "Create my account",
+    "sign_in_reset_subject": "Reset your Wishlist password",
+    "sign_in_reset_intro": (
+        "To choose a new password for your Wishlist account, use the link below."
+    ),
+    "sign_in_reset_action": "Choose a new password",
+    "sign_in_lifetime": "This link works once and expires in 1 hour.",
+    "sign_in_android": (
+        "On Android, choose your password in the browser, then sign in with it "
+        "in the app."
+    ),
+    "sign_in_other_ways": (
+        "If you usually sign in with Google or Apple, use that button."
+    ),
+    "sign_in_why": (
+        "You are receiving this email because this address was entered on "
+        "Wishlist. If it was not you, you can ignore it."
+    ),
 }
 
 _FR = {
@@ -80,6 +102,31 @@ _FR = {
     ),
     "unsubscribe": "Arrêter les notifications par e-mail",
     "account": "Réglages des e-mails",
+    "sign_in_create_subject": "Créez votre compte Wishlist",
+    "sign_in_create_intro": (
+        "Pour terminer la création de votre compte Wishlist, choisissez un mot "
+        "de passe."
+    ),
+    "sign_in_create_action": "Créer mon compte",
+    "sign_in_reset_subject": "Réinitialisez votre mot de passe Wishlist",
+    "sign_in_reset_intro": (
+        "Pour choisir un nouveau mot de passe pour votre compte Wishlist, "
+        "utilisez le lien ci-dessous."
+    ),
+    "sign_in_reset_action": "Choisir un nouveau mot de passe",
+    "sign_in_lifetime": "Ce lien ne fonctionne qu'une fois et expire dans 1 heure.",
+    "sign_in_android": (
+        "Sur Android, choisissez votre mot de passe dans le navigateur, puis "
+        "connectez-vous avec lui dans l'application."
+    ),
+    "sign_in_other_ways": (
+        "Si vous vous connectez habituellement avec Google ou Apple, utilisez "
+        "ce bouton."
+    ),
+    "sign_in_why": (
+        "Vous recevez cet e-mail parce que cette adresse a été saisie sur "
+        "Wishlist. Si ce n'était pas vous, vous pouvez l'ignorer."
+    ),
     "link_line": "{label} : {url}",
 }
 
@@ -215,6 +262,34 @@ def render(digest: Digest) -> EmailMessage:
             "List-Unsubscribe": f"<{links.unsubscribe_one_click}>",
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
+    )
+
+
+def render_sign_in_link(language: str, creating: bool, url: str) -> EmailMessage:
+    """The email of a sign-in link (sign-in plan D8, D20, D21). It says what
+    any address may be sent, and no name; `url` holds only the base URL and
+    the signed token, whose alphabet is safe in a URL."""
+    strings = _STRINGS[language]
+
+    def say(key: str, **values: str) -> str:
+        return strings[key].format(**values)
+
+    kind = "sign_in_create" if creating else "sign_in_reset"
+    subject = say(f"{kind}_subject")
+    blocks: list[_Paragraph | _Quote] = [
+        _Paragraph(say("greeting_anonymous")),
+        _Paragraph(say(f"{kind}_intro")),
+        _Paragraph(say("sign_in_lifetime")),
+        _Paragraph(say("sign_in_android")),
+        _Paragraph(say("sign_in_other_ways")),
+    ]
+    action = say(f"{kind}_action")
+    why = say("sign_in_why")
+    return EmailMessage(
+        subject=subject,
+        html=_html(language, subject, blocks, action, url, why, []),
+        text=_text(blocks, action, url, why, [], say),
+        headers={},
     )
 
 

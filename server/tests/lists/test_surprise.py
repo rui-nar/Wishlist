@@ -56,7 +56,7 @@ import io
 import json
 import re
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -87,6 +87,17 @@ MOVED = date.today() + timedelta(days=10)
 
 OWNER = "owner"
 CO_OWNER = "co-owner"
+
+
+@pytest.fixture(autouse=True)
+def empty_throttle(engine: Any) -> Iterator[None]:
+    """`reads` calls the email routes, which count attempts per IP (sign-in plan
+    D12): each test starts with none."""
+    yield
+    with engine.begin() as connection:
+        connection.execute(text("TRUNCATE auth_throttle"))
+
+
 NAMES = {
     OWNER: "Olga Owner",
     CO_OWNER: "Cora Coowner",
@@ -774,6 +785,20 @@ def reads(
     for route in ("/api/version", "/api/config", "/api/health"):
         rec.call("GET", route)
     rec.call("POST", "/api/auth/google", json={"id_token": "not a token"})
+    # Nothing in them reads a list, a gift or an occasion. A fresh address
+    # each time, for the limits (cleared after every test, below).
+    address = f"{uuid.uuid4().hex}@example.test"
+    rec.call("POST", "/api/auth/email/start", json={"email": address, "language": "en"})
+    rec.call(
+        "POST",
+        "/api/auth/email/complete",
+        json={"token": "not a token", "password": "a long enough password"},
+    )
+    rec.call(
+        "POST",
+        "/api/auth/email/sign-in",
+        json={"email": address, "password": "a long enough password"},
+    )
 
 
 def activity(rec: Recorder) -> None:
