@@ -318,9 +318,25 @@ class NotRevealed implements Exception {
   String toString() => 'NotRevealed';
 }
 
+/// What the free plan limits (PREMIUM_PLAN D4).
+enum PlanLimitResource { lists, gifts }
+
+/// Growing a list the server answered 402 `plan_limit` (PREMIUM_PLAN D4): the
+/// free plan allows [limit] of [resource]. Nothing changed.
+class PlanLimitReached implements Exception {
+  const PlanLimitReached(this.resource, this.limit);
+
+  final PlanLimitResource resource;
+  final int limit;
+
+  @override
+  String toString() => 'PlanLimitReached';
+}
+
 /// The list, gift and occasion calls of a list's owner. Errors are
 /// [ApiClient]'s: a list, gift or occasion that is gone, or not the user's,
-/// is an [ApiException] with status 404 (D7).
+/// is an [ApiException] with status 404 (D7). Growing a list can also be
+/// [PlanLimitReached].
 class ListsRepository {
   ListsRepository(this._api);
 
@@ -343,11 +359,14 @@ class ListsRepository {
     required RecipientKind recipientKind,
     String? recipientName,
   }) async {
-    final created = await _api.postJson('/api/lists', {
-      'title': title,
-      'recipient_kind': recipientKind.json,
-      if (recipientKind == RecipientKind.other) 'recipient_name': recipientName,
-    });
+    final created = await _limited(
+      () => _api.postJson('/api/lists', {
+        'title': title,
+        'recipient_kind': recipientKind.json,
+        if (recipientKind == RecipientKind.other)
+          'recipient_name': recipientName,
+      }),
+    );
     return created['id'] as String;
   }
 
@@ -370,9 +389,11 @@ class ListsRepository {
       _api.delete('/api/lists/${_segment(id)}');
 
   Future<Gift> addGift(String listId, GiftDraft gift) async => Gift.fromJson(
-        await _api.postJson(
-          '/api/lists/${_segment(listId)}/gifts',
-          gift.toJson(),
+        await _limited(
+          () => _api.postJson(
+            '/api/lists/${_segment(listId)}/gifts',
+            gift.toJson(),
+          ),
         ),
       );
 
@@ -393,15 +414,19 @@ class ListsRepository {
   /// Puts a received gift back where it was, with its reservations (D5). A
   /// gift that is not received is fine; [NotRevealed] when it cannot be put
   /// back yet.
-  Future<void> putBack(String giftId) => _revealedOnly(
-        () => _api.delete('/api/gifts/${_segment(giftId)}/received'),
+  Future<void> putBack(String giftId) => _limited(
+        () => _revealedOnly(
+          () => _api.delete('/api/gifts/${_segment(giftId)}/received'),
+        ),
       );
 
   /// Keeps a revealed gift on the list; the answer is the gift now on it,
   /// under a new id (D6). [NotRevealed] for a gift that is not revealed.
   Future<Gift> keep(String giftId) async => Gift.fromJson(
-        await _revealedOnly(
-          () => _api.postJson('/api/gifts/${_segment(giftId)}/keep', {}),
+        await _limited(
+          () => _revealedOnly(
+            () => _api.postJson('/api/gifts/${_segment(giftId)}/keep', {}),
+          ),
         ),
       );
 
@@ -416,6 +441,31 @@ class ListsRepository {
       }
       rethrow;
     }
+  }
+
+  /// A 402 `plan_limit` becomes [PlanLimitReached]; anything else stays
+  /// [ApiClient]'s.
+  static Future<T> _limited<T>(Future<T> Function() call) async {
+    try {
+      return await call();
+    } on ApiException catch (error) {
+      final refused = _planLimit(error);
+      if (refused != null) throw refused;
+      rethrow;
+    }
+  }
+
+  /// Null for any other answer, a resource this client does not know
+  /// included: that is a failure like any other.
+  static PlanLimitReached? _planLimit(ApiException error) {
+    if (error.statusCode != 402) return null;
+    return switch (error.body) {
+      {'code': 'plan_limit', 'resource': 'lists', 'limit': final int limit} =>
+        PlanLimitReached(PlanLimitResource.lists, limit),
+      {'code': 'plan_limit', 'resource': 'gifts', 'limit': final int limit} =>
+        PlanLimitReached(PlanLimitResource.gifts, limit),
+      _ => null,
+    };
   }
 
   /// Sends the image's bytes; the answer is a pending image that saving a

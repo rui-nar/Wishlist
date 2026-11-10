@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishlist/main.dart';
+import 'package:wishlist/src/billing/billing_repository.dart';
 
 import 'support/fake_lists_server.dart';
 
@@ -101,6 +102,12 @@ void main() {
       server.details['POST /api/images/from-url'] = 'url_fetch_failed';
       return '/lists/$list/gifts/new';
     },
+    // Refused at the free plan's limit (PREMIUM_PLAN D18).
+    'plan_limit_dialog': (server) {
+      final list = server.addList('Christmas', recipientName: 'Léa');
+      server.refuseAtLimit('POST /api/lists/$list/gifts', 'gifts', 20);
+      return '/lists/$list/gifts/new';
+    },
     'list_occasions': (server) {
       server.accounts.publicBaseUrl = 'https://wishlist.example';
       final list = server.addList('Christmas', recipientName: 'Léa');
@@ -151,6 +158,17 @@ void main() {
         'https://shop.example/h.png',
       );
       await tester.tap(find.text('Use this image'));
+      await tester.pumpAndSettle();
+    },
+    // As on the web, where the dialog has its second button.
+    'plan_limit_dialog': (tester) async {
+      debugOnTheWeb = true;
+      addTearDown(() => debugOnTheWeb = null);
+      await tester.enterText(fieldLabelled('What is it?'), 'Wool socks');
+      final add = find.widgetWithText(FilledButton, 'Add a gift');
+      await tester.ensureVisible(add);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
       await tester.pumpAndSettle();
     },
     // The Received section open, its gift in view.

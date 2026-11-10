@@ -121,6 +121,10 @@ class FakeListsServer {
   /// (GIFT_IMAGES D11).
   final details = <String, String>{};
 
+  /// `'<METHOD> <path>'` → the whole JSON body of the answer [status] forces,
+  /// for a refusal that says more than a `detail`.
+  final answers = <String, Map<String, dynamic>>{};
+
   /// Image id → its `{id, width, height}`: pending ones (uploaded, not yet
   /// attached) and attached ones. The paths are made when it is shown, as
   /// the server does (GIFT_IMAGES D7).
@@ -140,6 +144,23 @@ class FakeListsServer {
   int _next = 0;
 
   late final http.Client client = MockClient(_handle);
+
+  /// Refuses [call] as the server does at the free plan's limit
+  /// (PREMIUM_PLAN D4), until [allowGrowth].
+  void refuseAtLimit(String call, String resource, int limit) {
+    status[call] = 402;
+    answers[call] = {
+      'detail': "The free plan's limit is reached",
+      'code': 'plan_limit',
+      'resource': resource,
+      'limit': limit,
+    };
+  }
+
+  void allowGrowth(String call) {
+    status.remove(call);
+    answers.remove(call);
+  }
 
   /// A list of Alice's; someone else's, owned by [ownerNames], when given.
   String addList(
@@ -746,6 +767,8 @@ class FakeListsServer {
     await hold?.future;
     final forced = status[call];
     if (forced != null) {
+      final answer = answers[call];
+      if (answer != null) return http.Response(jsonEncode(answer), forced);
       final detail = details[call];
       return detail == null
           ? http.Response('', forced)

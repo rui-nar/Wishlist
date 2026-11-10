@@ -193,6 +193,75 @@ void main() {
       await expectLater(repository().keep('g1'), throwsA(isA<NotRevealed>()));
     });
 
+    group('the free plan limit (PREMIUM_PLAN D4)', () {
+      Matcher limit(PlanLimitResource resource, int limit) => throwsA(
+            isA<PlanLimitReached>()
+                .having((e) => e.resource, 'resource', resource)
+                .having((e) => e.limit, 'limit', limit),
+          );
+
+      const draft = GiftDraft(title: 'Book');
+
+      Future<Object?> createList() => repository().createList(
+            title: 'Birthday',
+            recipientKind: RecipientKind.self,
+          );
+
+      test('a 402 plan_limit on the four growing calls is PlanLimitReached',
+          () async {
+        code = 402;
+        answer = {
+          'detail': "The free plan's limit is reached",
+          'code': 'plan_limit',
+          'resource': 'lists',
+          'limit': 1,
+        };
+        await expectLater(createList(), limit(PlanLimitResource.lists, 1));
+
+        answer = {
+          'detail': "The free plan's limit is reached",
+          'code': 'plan_limit',
+          'resource': 'gifts',
+          'limit': 20,
+        };
+        final gifts = limit(PlanLimitResource.gifts, 20);
+        await expectLater(repository().addGift('l1', draft), gifts);
+        await expectLater(repository().putBack('g1'), gifts);
+        await expectLater(repository().keep('g1'), gifts);
+      });
+
+      for (final (name, refusal) in <(String, Object)>[
+        ('another code', {'detail': 'Pay', 'code': 'other'}),
+        ('no code', {'detail': 'Pay'}),
+        (
+          'a resource it does not know',
+          {'detail': 'Pay', 'code': 'plan_limit', 'resource': 'x', 'limit': 1},
+        ),
+        (
+          'no limit',
+          {'detail': 'Pay', 'code': 'plan_limit', 'resource': 'gifts'},
+        ),
+      ]) {
+        test('a 402 with $name stays the ApiClient one', () async {
+          code = 402;
+          answer = refusal;
+          final failure = throwsA(
+            isA<ApiException>().having((e) => e.statusCode, 'statusCode', 402),
+          );
+          await expectLater(createList(), failure);
+          await expectLater(repository().addGift('l1', draft), failure);
+          await expectLater(repository().putBack('g1'), failure);
+          await expectLater(repository().keep('g1'), failure);
+        });
+      }
+
+      test('plan_limit on another status stays the ApiClient one', () async {
+        code = 403;
+        answer = {'code': 'plan_limit', 'resource': 'lists', 'limit': 1};
+        await expectLater(createList(), throwsA(isA<ApiException>()));
+      });
+    });
+
     test('any other error stays the ApiClient one', () async {
       code = 409;
       answer = {'detail': 'Refused', 'code': 'other'};
