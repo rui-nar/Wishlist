@@ -30,9 +30,46 @@ const kAlice = {
 /// The unsubscribe token [FakeServer] accepts.
 const kUnsubscribeToken = 'v1.dXNlcg.c2lnbmF0dXJl';
 
+/// `GET /api/billing` (PREMIUM_PLAN D11); by default the unset state: free,
+/// nothing on sale and no limit applied.
+Map<String, Object?> billingStatus({
+  String plan = 'free',
+  String? status,
+  String? renewsAt,
+  String? endsAt,
+  Map<String, Object?>? limits = const {
+    'max_lists': 1,
+    'max_gifts_per_list': 20,
+  },
+  bool enforced = false,
+  Map<String, Object?>? offer,
+  bool canManage = false,
+  Map<String, Object?> legal = const {
+    'terms_url': null,
+    'privacy_url': null,
+    'withdrawal_url': null,
+  },
+}) =>
+    {
+      'plan': plan,
+      'source': plan == 'premium' ? 'stripe' : null,
+      'status': status,
+      'renews_at': renewsAt,
+      'ends_at': endsAt,
+      'limits': limits,
+      'enforced': enforced,
+      'offer': offer,
+      'can_manage': canManage,
+      'legal': legal,
+    };
+
+/// The offer of a server that is selling, as in `GET /api/billing`.
+const kBillingOffer = {'amount': '49.00', 'currency': 'EUR', 'interval': 'year'};
+
 /// The server's account endpoints (ACCOUNTS_PLAN D7), preferences and
-/// unsubscribing (COMMENTS_NOTIFICATIONS_PLAN D18) and `/api/version`, in
-/// memory. [status] forces an answer for `'<METHOD> <path>'`.
+/// unsubscribing (COMMENTS_NOTIFICATIONS_PLAN D18), billing (PREMIUM_PLAN
+/// D11) and `/api/version`, in memory. [status] forces an answer for
+/// `'<METHOD> <path>'`.
 class FakeServer {
   FakeServer({this.googleClientId = 'test-client-id', this.publicBaseUrl});
 
@@ -61,6 +98,11 @@ class FakeServer {
   /// The `Authorization` header of every unsubscribe call that reached the
   /// server, null when it had none.
   final unsubscribeSessions = <String?>[];
+
+  /// What `GET /api/billing` answers.
+  Map<String, Object?> billing = billingStatus();
+  String checkoutUrl = 'https://checkout.stripe.test/session';
+  String portalUrl = 'https://billing.stripe.test/session';
   int _next = 0;
 
   late final http.Client client = MockClient(_handle);
@@ -127,6 +169,12 @@ class FakeServer {
         }
         preferences.addAll(body.cast<String, Object>());
         return json(preferences);
+      case 'GET /api/billing':
+        return user == null ? unauthorized : json(billing);
+      case 'POST /api/billing/checkout':
+        return user == null ? unauthorized : json({'url': checkoutUrl});
+      case 'POST /api/billing/portal':
+        return user == null ? unauthorized : json({'url': portalUrl});
     }
     // Any later endpoint depends on current_user (D5).
     return user == null ? unauthorized : http.Response('', 404);
