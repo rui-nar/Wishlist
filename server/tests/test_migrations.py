@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, make_url, text
+from sqlalchemy.exc import IntegrityError
 
 SERVER_DIR = Path(__file__).resolve().parent.parent
 
@@ -411,6 +412,89 @@ def test_downgrading_the_notifications_revision_clears_what_it_allowed(
                 text("SELECT to_regclass('notification_events') IS NULL")
             )
             assert tables is True
+    finally:
+        engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+    check = alembic(empty_database_url, "check")
+    assert check.returncode == 0, check.stderr
+
+
+def test_the_admin_panel_revision_upgrades_and_downgrades_with_a_manual_row(
+    empty_database_url,
+):
+    """Admin panel plan, Boundaries crossed: an image made before the revision
+    gets a null size, a `manual` entitlement is accepted, and a downgrade
+    deletes the `manual` rows only, so the narrower CHECKs hold again."""
+    before = alembic(empty_database_url, "upgrade", "b91e4f27d6c3")
+    assert before.returncode == 0, before.stderr
+    user, image = uuid.uuid4(), uuid.uuid4()
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        _insert_user(connection, user)
+        _insert_a_purchase(connection, user)
+        connection.execute(
+            text(
+                "INSERT INTO images (id, uploaded_by, width, height)"
+                " VALUES (:id, :user, 10, 10)"
+            ),
+            {"id": image, "user": user},
+        )
+    engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        assert connection.scalar(text("SELECT bytes FROM images")) is None
+        connection.execute(
+            text(
+                "INSERT INTO entitlements (id, user_id, source, external_id, status,"
+                " period_end, cancel_at_period_end, read_at) VALUES (:id, :user,"
+                " 'manual', :external, 'active', now() + interval '1 year', false,"
+                " now())"
+            ),
+            {"id": uuid.uuid4(), "user": user, "external": str(uuid.uuid4())},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO admin_actions (id, admin_user_id, action,"
+                " target_user_id, detail) VALUES (:id, :user, 'grant_premium',"
+                " :user, '{}')"
+            ),
+            {"id": uuid.uuid4(), "user": user},
+        )
+    engine.dispose()
+
+    downgrade = alembic(empty_database_url, "downgrade", "b91e4f27d6c3")
+    assert downgrade.returncode == 0, downgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.connect() as connection:
+            sources = connection.scalars(text("SELECT source FROM entitlements"))
+            assert list(sources) == ["stripe"]
+            assert connection.scalar(text("SELECT count(*) FROM images")) == 1
+            assert (
+                connection.scalar(text("SELECT to_regclass('admin_actions')")) is None
+            )
+            column = connection.scalar(
+                text(
+                    "SELECT count(*) FROM information_schema.columns"
+                    " WHERE table_name = 'images' AND column_name = 'bytes'"
+                )
+            )
+            assert column == 0
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO billing_customers (user_id, source, customer_id)"
+                    " VALUES (:user, 'manual', 'x')"
+                ),
+                {"user": user},
+            )
     finally:
         engine.dispose()
 

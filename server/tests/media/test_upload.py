@@ -97,6 +97,21 @@ def test_an_upload_is_a_pending_image_of_its_uploader(
             assert (stored.format, stored.size) == ("WEBP", size)
 
 
+def test_an_upload_records_the_size_of_its_two_files(upload, engine, media_dir):
+    """Admin panel plan D7: the panel reads sizes from the database only."""
+    image_id = uuid.UUID(upload()["id"])
+
+    with engine.connect() as connection:
+        recorded = connection.scalar(
+            text("SELECT bytes FROM images WHERE id = :id"), {"id": image_id}
+        )
+    on_disk = sum(
+        images.image_path(media_dir, image_id, variant).stat().st_size
+        for variant in images.VARIANTS
+    )
+    assert recorded == on_disk > 0
+
+
 def test_the_uploader_reads_a_pending_image(client, ada, upload, media_dir):
     image = upload()
 

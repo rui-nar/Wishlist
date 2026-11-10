@@ -85,6 +85,13 @@ class UserOut(BaseModel):
     display_name: str
 
 
+class Me(UserOut):
+    """`GET /api/me`: the client shows the admin panel's entry by it (admin
+    panel plan D2). Sign-in's answers do not carry it: the client asks here."""
+
+    is_admin: bool
+
+
 class SignedIn(BaseModel):
     token: str
     user: UserOut

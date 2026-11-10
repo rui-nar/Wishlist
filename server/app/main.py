@@ -74,17 +74,16 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         # the directory as not writable.
         with contextlib.suppress(OSError):
             settings.media_dir.mkdir(parents=True, exist_ok=True)
-        # Only where dumps can be dated (gift images plan D10); stopped
-        # before the engine goes.
-        app.state.media_purge = None
-        if settings.backup_dir is not None:
-            app.state.media_purge = MediaPurge(
-                app.state.session_factory,
-                settings.media_dir,
-                settings.backup_dir,
-                lambda: app.state.clock(),
-            )
-            app.state.media_purge.start()
+        # Everywhere, for the photo sizes (admin panel plan D7); it purges
+        # only where dumps can be dated (gift images plan D10). Stopped before
+        # the engine goes.
+        app.state.media_purge = MediaPurge(
+            app.state.session_factory,
+            settings.media_dir,
+            settings.backup_dir,
+            lambda: app.state.clock(),
+        )
+        app.state.media_purge.start()
         # Stopped before the engine goes too (comments plan D16).
         app.state.notification_worker = None
         if settings.notifications_worker:
@@ -98,11 +97,20 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         yield
         if app.state.notification_worker is not None:
             app.state.notification_worker.stop()
-        if app.state.media_purge is not None:
-            app.state.media_purge.stop()
+        app.state.media_purge.stop()
         engine.dispose()
 
-    app = FastAPI(title="Wishlist", version=settings.app_version, lifespan=lifespan)
+    # In production, no schema or docs page lists the admin routes (admin
+    # panel plan D2, review R1-2); `app.openapi()` still builds the schema.
+    hidden = settings.app_env == "production"
+    app = FastAPI(
+        title="Wishlist",
+        version=settings.app_version,
+        lifespan=lifespan,
+        openapi_url=None if hidden else "/openapi.json",
+        docs_url=None if hidden else "/docs",
+        redoc_url=None if hidden else "/redoc",
+    )
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)

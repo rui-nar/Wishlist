@@ -3,6 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 
 import app.accounts.models  # noqa: F401
+import app.admin.models  # noqa: F401
 import app.billing.models  # noqa: F401
 import app.comments.models  # noqa: F401
 import app.lists.models  # noqa: F401

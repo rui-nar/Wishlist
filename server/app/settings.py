@@ -4,7 +4,9 @@ No `.env` file is read here: the dev scripts load it into the environment, and
 the compose files pass it with `env_file:`.
 """
 
+import contextlib
 import re
+import uuid
 from decimal import Decimal
 from pathlib import Path
 from typing import Literal
@@ -86,6 +88,19 @@ class Settings(BaseSettings):
     legal_terms_url: str = ""
     legal_privacy_url: str = ""
     legal_withdrawal_url: str = ""
+    # Comma-separated account ids of the admins (admin panel plan D1), never
+    # addresses. Empty: no admin, and /api/admin answers 404 to everyone.
+    admin_user_ids: str = ""
+
+    @property
+    def admin_ids(self) -> frozenset[uuid.UUID]:
+        # An entry that is not an id makes no one admin: a typo grants nothing,
+        # and does not stop the app.
+        ids = set()
+        for entry in self.admin_user_ids.split(","):
+            with contextlib.suppress(ValueError):
+                ids.add(uuid.UUID(entry.strip()))
+        return frozenset(ids)
 
     @property
     def billing_price(self) -> Decimal | None:

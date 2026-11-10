@@ -14,7 +14,7 @@ from app.accounts.deps import (
 )
 from app.accounts.google import InvalidGoogleToken
 from app.accounts.models import EmailLink, User, UserIdentity
-from app.accounts.schemas import GoogleSignIn, SignedIn, UserOut
+from app.accounts.schemas import GoogleSignIn, Me, SignedIn, UserOut
 from app.billing.closing import report_late_purchases, stop_billing
 from app.billing.schemas import BillingRefusal
 from app.db import DbSession
@@ -64,8 +64,11 @@ def sign_out(session: CurrentSession, db: DbSession) -> Response:
 
 
 @router.get("/me")
-def me(user: CurrentUser) -> UserOut:
-    return _user_out(user)
+def me(request: Request, user: CurrentUser) -> Me:
+    return Me(
+        **_user_out(user).model_dump(),
+        is_admin=user.id in request.app.state.settings.admin_ids,
+    )
 
 
 @router.delete(

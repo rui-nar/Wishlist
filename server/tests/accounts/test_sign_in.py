@@ -126,7 +126,7 @@ def test_first_sign_in_creates_one_user_and_a_working_token(client, google, engi
     assert count(engine, "user_identities") == 1
     me = client.get("/api/me", headers={"Authorization": f"Bearer {body['token']}"})
     assert me.status_code == 200
-    assert me.json() == body["user"]
+    assert me.json() == body["user"] | {"is_admin": False}
 
 
 def test_second_sign_in_finds_the_same_user_and_refreshes_it(sign_in, client, engine):

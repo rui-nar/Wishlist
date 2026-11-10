@@ -20,7 +20,7 @@ from app.lists.models import Gift, List
 from app.main import create_app
 from app.media.images import image_path
 from app.media.models import Image, MediaOrphan
-from app.media.purge import MediaPurge, horizon, purge
+from app.media.purge import MediaPurge, SizeCounts, fill_sizes, horizon, purge
 from app.settings import Settings
 
 NOW = datetime(2026, 11, 8, 12, tzinfo=UTC)
@@ -626,13 +626,17 @@ def test_the_run_logs_one_line(db, media_dir, backups, caplog):
 # The job (D10).
 
 
-def test_the_job_runs_only_with_a_backup_directory(database_url, tmp_path, backups):
+@pytest.mark.parametrize("with_backups", [False, True])
+def test_the_job_runs_with_or_without_a_backup_directory(
+    database_url, tmp_path, backups, with_backups
+):
+    """Without one it only measures sizes (admin panel plan D7, review R1-4);
+    `test_the_job_without_a_backup_directory_measures_and_purges_nothing`."""
     settings = {"database_url": database_url, "media_dir": tmp_path / "media"}
+    if with_backups:
+        settings["backup_dir"] = backups
 
     with TestClient(create_app(Settings(**settings))) as client:
-        assert client.app.state.media_purge is None
-
-    with TestClient(create_app(Settings(**settings, backup_dir=backups))) as client:
         job = client.app.state.media_purge
         assert job.is_alive()
         started = time.monotonic()
@@ -662,3 +666,121 @@ def test_the_job_runs_the_purge_with_the_clock(db, media_dir, backups, caplog):
     assert any(
         r.getMessage().startswith("media purge: horizon=") for r in caplog.records
     )
+
+
+def run_job(db, media_dir, backup_dir, until):
+    """Starts the job with no delay, waits for `until()`, then stops it."""
+    job = MediaPurge(
+        sessionmaker(bind=db),
+        media_dir,
+        backup_dir,
+        lambda: NOW,
+        first_run_delay=timedelta(0),
+    )
+    job.start()
+    deadline = time.monotonic() + 10
+    while not until() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    job.stop()
+
+
+def test_the_job_without_a_backup_directory_measures_and_purges_nothing(
+    db, media_dir, caplog
+):
+    measured = add_image(db, media_dir, attached_at=NOW - 30 * DAY)
+    orphan = orphan_files(media_dir)
+
+    with caplog.at_level(logging.INFO, logger="app.media.purge"):
+        run_job(db, media_dir, None, lambda: size_of(db, measured) is not None)
+
+    assert size_of(db, measured) == 8
+    # The row no gift needs and the orphan are untouched: no purge ran.
+    assert has_row(db, measured)
+    assert has_files(media_dir, orphan)
+    assert first_seen(db, orphan) is None
+    assert not any("media purge" in r.getMessage() for r in caplog.records)
+
+
+def test_the_job_measures_sizes_after_a_skipped_purge(db, media_dir, backups):
+    """With a backup directory but no dump to date, the purge is skipped and
+    the sizes are measured all the same (review R1-4)."""
+    measured = add_image(db, media_dir, on_gift=True)
+
+    run_job(db, media_dir, backups, lambda: size_of(db, measured) is not None)
+
+    assert size_of(db, measured) == 8
+
+
+# The photo sizes (admin panel plan D7).
+
+
+def size_of(engine, image_id):
+    with Session(engine) as session:
+        return session.scalar(select(Image.bytes).where(Image.id == image_id))
+
+
+def set_size(engine, image_id, size):
+    with Session(engine) as session, session.begin():
+        session.get_one(Image, image_id).bytes = size
+
+
+def test_sizes_fill_old_rows_and_skip_missing_files(db, media_dir, monkeypatch, caplog):
+    # Batches of 2, so that several batches run.
+    monkeypatch.setattr("app.media.purge.SIZES_BATCH", 2)
+    old = [add_image(db, media_dir, on_gift=True) for _ in range(5)]
+    missing = add_image(db, media_dir, on_gift=True, files=False)
+    half = add_image(db, media_dir, on_gift=True)
+    image_path(media_dir, half, "thumb").unlink()
+    known = add_image(db, media_dir, on_gift=True)
+    set_size(db, known, 12345)
+
+    with (
+        caplog.at_level(logging.INFO, logger="app.media.purge"),
+        Session(db) as session,
+    ):
+        counts = fill_sizes(session, media_dir)
+
+    assert counts == SizeCounts(filled=5, skipped=2)
+    assert [size_of(db, image_id) for image_id in old] == [8] * 5
+    assert size_of(db, missing) is None
+    assert size_of(db, half) is None
+    # Never measured again, whatever the disk says.
+    assert size_of(db, known) == 12345
+    assert [r.getMessage() for r in caplog.records if r.name == "app.media.purge"] == [
+        "media sizes: filled=5 skipped=2"
+    ]
+    # Nothing on disk was deleted.
+    assert all(has_files(media_dir, image_id) for image_id in old)
+
+
+def test_sizes_with_nothing_to_measure_log_nothing(db, media_dir, caplog):
+    known = add_image(db, media_dir, on_gift=True)
+    set_size(db, known, 8)
+
+    with (
+        caplog.at_level(logging.INFO, logger="app.media.purge"),
+        Session(db) as session,
+    ):
+        assert fill_sizes(session, media_dir) == SizeCounts(0, 0)
+
+    assert [r for r in caplog.records if r.name == "app.media.purge"] == []
+
+
+def test_sizes_skip_a_row_another_transaction_holds_without_waiting(db, media_dir):
+    """An account's deletion sets `uploaded_by` to null on its images: the
+    measuring never waits on it, so neither can wait on the other."""
+    held = add_image(db, media_dir, on_gift=True)
+    free = add_image(db, media_dir, on_gift=True)
+
+    with db.connect() as other, other.begin():
+        other.execute(
+            text("SELECT 1 FROM images WHERE id = :id FOR UPDATE"), {"id": held}
+        )
+        started = time.monotonic()
+        with Session(db) as session:
+            counts = fill_sizes(session, media_dir)
+        assert time.monotonic() - started < 2
+
+    assert counts == SizeCounts(filled=1, skipped=0)
+    assert size_of(db, held) is None
+    assert size_of(db, free) == 8

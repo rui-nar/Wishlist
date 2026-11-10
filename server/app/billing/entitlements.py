@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.accounts.models import User
-from app.billing.models import ACTIVE, PAST_DUE, Entitlement
+from app.billing.models import ACTIVE, MANUAL, PAST_DUE, Entitlement
 
 _log = logging.getLogger(__name__)
 
@@ -140,10 +140,14 @@ def is_premium(db: Session, user_id: uuid.UUID, now: datetime) -> bool:
 def warn_if_lapsed(db: Session, user_id: uuid.UUID, now: datetime) -> None:
     """Logs each row still granting premium past its grace: its provider's
     events were probably lost. Nothing runs when premium ends, so a lapse is
-    only found where it is read (D2). Ids and fixed words only."""
+    only found where it is read (D2). Ids and fixed words only.
+
+    A manual grant has no events to lose: its end is the date the admin chose
+    (admin panel plan D8, review R1-6), so it is left out."""
     lapsed = db.execute(
         select(Entitlement.id, Entitlement.source).where(
             Entitlement.user_id == user_id,
+            Entitlement.source != MANUAL,
             Entitlement.status.in_(_GRANTING),
             Entitlement.period_end <= now - GRACE,
         )

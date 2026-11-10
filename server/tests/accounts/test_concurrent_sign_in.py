@@ -111,7 +111,7 @@ def test_a_sign_in_during_its_accounts_deletion_makes_a_new_account(
     me = client.get(
         "/api/me", headers={"Authorization": f"Bearer {signed_in['token']}"}
     )
-    assert me.json() == signed_in["user"]
+    assert me.json() == signed_in["user"] | {"is_admin": False}
 
 
 def test_a_sign_in_racing_its_accounts_deletion(client, google, engine, sign_in):
@@ -147,7 +147,7 @@ def test_a_sign_in_racing_its_accounts_deletion(client, google, engine, sign_in)
         if count(engine, "users") == 0:
             assert me.status_code == 401
         else:
-            assert me.json() == signed_in.json()["user"]
+            assert me.json() == signed_in.json()["user"] | {"is_admin": False}
             client.delete("/api/me", headers={"Authorization": f"Bearer {new_token}"})
         assert count(engine, "users") == 0
         assert count(engine, "sessions") == 0
