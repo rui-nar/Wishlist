@@ -28,6 +28,19 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Apple sign-in (sign-in plan D16): the server's redirect brings Apple's
+             answer back to the app through this activity. -->
+        <activity
+            android:name="com.aboutyou.dart_packages.sign_in_with_apple.SignInWithAppleCallback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="signinwithapple" />
+                <data android:path="callback" />
+            </intent-filter>
+        </activity>
         <!-- pasteboard (GIFT_IMAGES D14) requires it: the plugin shares images it
              writes to the clipboard from the app's cache through this
              provider. Only the cache directory is exposed. -->

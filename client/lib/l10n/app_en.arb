@@ -960,7 +960,23 @@
   },
   "registerPrompt": "Your Google account is all you need.",
   "@registerPrompt": {
-    "description": "The sign-in screen opened with Register: the line under the heading."
+    "description": "The sign-in screen opened with Register: the line under the heading, when Google is the only way offered."
+  },
+  "registerPromptChoose": "Choose how you want to sign up.",
+  "@registerPromptChoose": {
+    "description": "The sign-in screen opened with Register: the line under the heading, when other ways than Google are offered."
+  },
+  "signInWithApple": "Continue with Apple",
+  "@signInWithApple": {
+    "description": "The sign-in screen: the Sign in with Apple button."
+  },
+  "signInAppleRejected": "Apple sign-in could not be verified. Try again.",
+  "@signInAppleRejected": {
+    "description": "The sign-in screen: the server refused the Apple sign-in."
+  },
+  "signInAppleFailed": "Apple sign-in did not complete. Try again.",
+  "@signInAppleFailed": {
+    "description": "The sign-in screen: Apple's own sign-in flow failed before reaching the server."
   },
   "whatIsWishlist": "What is Wishlist?",
   "@whatIsWishlist": {

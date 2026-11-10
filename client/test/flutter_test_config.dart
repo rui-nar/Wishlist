@@ -21,6 +21,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
     'assets/fonts/space_grotesk/SpaceGrotesk-Bold.ttf',
   ]);
 
+  // Named by sign_in_with_apple's button. Absent outside Apple's platforms,
+  // where the platform's default font is used; Inter stands in for it here.
+  await _load('.SF Pro Text', ['assets/fonts/inter/Inter-Regular.ttf']);
+
   // The SDK's icon font; `flutter test` sets FLUTTER_ROOT.
   final sdk = Platform.environment['FLUTTER_ROOT'];
   if (sdk == null) {

@@ -44,7 +44,8 @@ enum AuthStatus {
   /// No session.
   signedOut,
 
-  /// The server is checking a Google ID token, or an email and password.
+  /// The server is checking a Google or Apple ID token, or an email and
+  /// password.
   signingIn,
 
   /// Signed in as [AuthController.user].
@@ -58,6 +59,13 @@ enum AuthStatus {
 enum SignInFailure {
   /// The server refused the Google ID token (401).
   rejected,
+
+  /// The server refused the Apple ID token (401).
+  appleRejected,
+
+  /// Apple's own flow failed before reaching the server. Cancelling is not
+  /// a failure.
+  appleFailed,
 
   /// The email address and password do not match an account (401). One
   /// answer for every cause, so nothing is learnt about the address (D10).
@@ -153,6 +161,24 @@ class AuthController extends ChangeNotifier {
         {'id_token': idToken},
         refused: SignInFailure.rejected,
       );
+
+  /// Exchanges an Apple ID token for a session (`POST /api/auth/apple`).
+  /// [nonce] is the raw one whose hash Apple signed; [name] comes from the
+  /// first authorisation only (sign-in plan D15).
+  Future<void> signInWithApple({
+    required String idToken,
+    required String nonce,
+    String? name,
+  }) =>
+      _signIn(
+        '/api/auth/apple',
+        {'id_token': idToken, 'nonce': nonce, 'name': ?name},
+        refused: SignInFailure.appleRejected,
+        invalidIsRefused: true,
+      );
+
+  /// Apple's own flow failed: no token reached the server.
+  void appleFlowFailed() => _fail(SignInFailure.appleFailed);
 
   /// Exchanges an email address and password for a session
   /// (`POST /api/auth/email/sign-in`). An address or password the server
