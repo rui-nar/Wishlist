@@ -2,19 +2,18 @@
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import Select, delete, exists, or_, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy import delete, exists, or_, select
+from sqlalchemy.orm import aliased
 
-from app.accounts import sessions
+from app.accounts import identities, sessions
 from app.accounts.deps import (
     CurrentSession,
     CurrentUser,
     UnlockedSession,
     lock_for_deletion,
 )
-from app.accounts.google import GoogleIdentity, InvalidGoogleToken
-from app.accounts.models import User, UserIdentity
+from app.accounts.google import InvalidGoogleToken
+from app.accounts.models import User
 from app.accounts.schemas import GoogleSignIn, SignedIn, UserOut
 from app.billing.closing import report_late_purchases, stop_billing
 from app.billing.schemas import BillingRefusal
@@ -26,8 +25,6 @@ from app.lists.visibility import of_lists
 from app.reserving.release import delete_gift_claims, lock_occasions, release_activity
 
 router = APIRouter(prefix="/api", tags=["accounts"])
-
-GOOGLE = "google"
 
 
 @router.post("/auth/google")
@@ -48,7 +45,14 @@ def sign_in_with_google(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Google ID token",
         ) from None
-    user = _user_for(db, identity)
+    user = identities.user_for(
+        db,
+        identities.GOOGLE,
+        identity.sub,
+        identity.email,
+        identity.name,
+        refresh_name=True,
+    )
     token = sessions.create(db, user.id, request.app.state.clock())
     return SignedIn(token=token, user=_user_out(user))
 
@@ -128,50 +132,6 @@ def delete_me(request: Request, session: UnlockedSession, db: DbSession) -> Resp
     # token of the account is refused from the next request on.
     db.execute(delete(User).where(User.id == user.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-def _user_for(db: Session, identity: GoogleIdentity) -> User:
-    """The account of this Google identity, created at its first sign-in.
-
-    Found by Google's `sub`, never by email (D1). Email and name are refreshed
-    from the token at each sign-in, for display only.
-    """
-    # Locked as the update below would lock it: an account deleted at the
-    # same moment either waits for this sign-in (and deletes its session
-    # with it) or committed first and is not found, and the sign-in makes a
-    # new account, as a moment later.
-    user = db.scalar(
-        _by_google_sub(identity.sub).with_for_update(key_share=True, of=User)
-    )
-    if user is None:
-        try:
-            # A savepoint: if a concurrent first sign-in of the same Google
-            # account commits first, the unique (provider, subject) constraint
-            # refuses this insert, and only the savepoint is rolled back.
-            with db.begin_nested():
-                user = User(email=identity.email, display_name=identity.name)
-                db.add(user)
-                db.flush()
-                db.add(
-                    UserIdentity(user_id=user.id, provider=GOOGLE, subject=identity.sub)
-                )
-                db.flush()
-            return user
-        except IntegrityError:
-            # Each statement sees what was committed before it started, so the
-            # winner's rows are visible here.
-            user = db.scalars(_by_google_sub(identity.sub)).one()
-    user.email = identity.email
-    user.display_name = identity.name
-    return user
-
-
-def _by_google_sub(sub: str) -> Select[tuple[User]]:
-    return (
-        select(User)
-        .join(UserIdentity, UserIdentity.user_id == User.id)
-        .where(UserIdentity.provider == GOOGLE, UserIdentity.subject == sub)
-    )
 
 
 def _user_out(user: User) -> UserOut:

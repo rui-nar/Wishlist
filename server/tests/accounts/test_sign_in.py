@@ -1,8 +1,11 @@
 import logging
 
+import pytest
 from sqlalchemy import text
 
 from app.accounts.sessions import hash_token
+from app.main import _log_email_sign_in_gap
+from app.settings import Settings
 
 
 def count(engine, table: str) -> int:
@@ -16,13 +19,89 @@ def test_config_gives_the_web_client_id(make_client):
     response = client.get("/api/config")
 
     assert response.status_code == 200
-    assert response.json() == {"google_client_id": "web-id", "public_base_url": None}
+    assert response.json() == {
+        "google_client_id": "web-id",
+        "public_base_url": None,
+        "apple_client_id": None,
+        "apple_redirect_uri": None,
+        "email_sign_in": False,
+    }
 
 
 def test_config_without_google(make_client):
     response = make_client(google_client_ids="").get("/api/config")
 
-    assert response.json() == {"google_client_id": None, "public_base_url": None}
+    assert response.json() == {
+        "google_client_id": None,
+        "public_base_url": None,
+        "apple_client_id": None,
+        "apple_redirect_uri": None,
+        "email_sign_in": False,
+    }
+
+
+def test_config_gives_the_apple_client_id(make_client):
+    client = make_client(apple_client_ids=" services-id , bundle-id ")
+
+    assert client.get("/api/config").json()["apple_client_id"] == "services-id"
+
+
+def test_config_gives_the_apple_redirect_uri(make_client):
+    client = make_client(public_base_url=" https://wishlist.example.com/ ")
+
+    assert (
+        client.get("/api/config").json()["apple_redirect_uri"]
+        == "https://wishlist.example.com/api/auth/apple/callback"
+    )
+
+
+def test_config_offers_email_sign_in_with_a_mailer_and_a_secret(make_client):
+    client = make_client(notification_secret="a-secret")
+
+    assert client.get("/api/config").json()["email_sign_in"] is True
+
+
+def test_config_does_not_offer_email_sign_in_without_a_mailer(make_client):
+    client = make_client(notification_secret="a-secret")
+    client.app.state.mailer = None
+
+    assert client.get("/api/config").json()["email_sign_in"] is False
+
+
+def test_config_does_not_offer_email_sign_in_without_a_secret(make_client):
+    client = make_client(notification_secret=" ")
+
+    assert client.get("/api/config").json()["email_sign_in"] is False
+
+
+EMAIL_ON = {
+    "brevo_api_key": "a-key",
+    "email_sender_address": "sender@example.test",
+    "notification_secret": "a-secret",
+    "public_base_url": "https://wishlist.example.test",
+}
+EMAIL_OFF = dict.fromkeys(EMAIL_ON, "")
+WORKER_OFF_WARNING = "NOTIFICATIONS_WORKER is off"
+
+
+def test_starting_with_email_sign_in_and_no_worker_warns(make_client, caplog):
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        make_client(notifications_worker=False, **EMAIL_ON)
+
+    assert WORKER_OFF_WARNING in caplog.text
+    assert EMAIL_ON["brevo_api_key"] not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "values", [{**EMAIL_ON, "notifications_worker": True}, EMAIL_OFF]
+)
+def test_no_warning_when_the_links_can_go_or_none_are_made(values, caplog):
+    settings = Settings(database_url="postgresql+psycopg://x:y@localhost/z", **values)
+
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        _log_email_sign_in_gap(settings)
+
+    assert WORKER_OFF_WARNING not in caplog.text
 
 
 def test_config_gives_the_share_links_base_url(make_client):

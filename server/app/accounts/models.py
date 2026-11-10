@@ -10,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     String,
     UniqueConstraint,
     func,
@@ -18,6 +19,15 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+
+LINK_CREATE = "create"
+LINK_RESET = "reset"
+
+LINK_PENDING = "pending"
+LINK_SENDING = "sending"
+LINK_SENT = "sent"
+LINK_SKIPPED = "skipped"
+LINK_FAILED = "failed"
 
 
 class User(Base):
@@ -73,3 +83,60 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PasswordCredential(Base):
+    """The password of an account whose identity has provider `email` and the
+    normalised address as subject (sign-in plan D3)."""
+
+    __tablename__ = "password_credentials"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    password_hash: Mapped[str] = mapped_column(String)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class EmailLink(Base):
+    """A link mailed to an address to create an account or reset a password
+    (sign-in plan D3). Not tied to `users`: it exists before any account does,
+    so an unverified address never reaches `users` (D2)."""
+
+    __tablename__ = "email_links"
+    __table_args__ = (
+        CheckConstraint("language IN ('en', 'fr')", "language"),
+        CheckConstraint(f"purpose IN ('{LINK_CREATE}', '{LINK_RESET}')", "purpose"),
+        CheckConstraint(
+            f"status IN ('{LINK_PENDING}', '{LINK_SENDING}', '{LINK_SENT}', "
+            f"'{LINK_SKIPPED}', '{LINK_FAILED}')",
+            "status",
+        ),
+        # The worker's next batch, as for the digests.
+        Index("ix_email_links_status_created_at", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    # Normalised (D4). Indexed: a used link ends the address's others (D9), and
+    # deleting an account deletes them.
+    address: Mapped[str] = mapped_column(String, index=True)
+    purpose: Mapped[str] = mapped_column(String(6))
+    language: Mapped[str] = mapped_column(String(2))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(7), server_default=LINK_PENDING)
+    # When a worker took it to send.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(server_default="0")
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuthThrottle(Base):
+    """One counter of the sign-in limits (sign-in plan D12): only the hash of
+    what it counts, so no address or IP is stored."""
+
+    __tablename__ = "auth_throttle"
+
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    count: Mapped[int]

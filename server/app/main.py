@@ -18,6 +18,8 @@ from starlette.convertors import PathConvertor, register_url_convertor
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.accounts import sessions
+from app.accounts.apple_router import router as apple_router
+from app.accounts.email_router import router as email_router
 from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
 from app.billing.router import router as billing_router
@@ -108,6 +110,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.state.google_verifier = (
         GoogleVerifier(settings.google_audiences) if settings.google_audiences else None
     )
+    app.state.apple_verifier = None
     app.state.clock = sessions.utc_now
     app.state.url_fetcher = SafeFetcher(version=settings.app_version)
     # None until every variable it needs is set: the worker then skips the
@@ -130,6 +133,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         else None
     )
     _log_billing_gaps(settings)
+    _log_email_sign_in_gap(settings)
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.
@@ -145,15 +149,27 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         return {"version": settings.app_version, "env": settings.app_env}
 
     @app.get("/api/config")
-    def config() -> dict[str, str | None]:
+    def config() -> dict[str, str | bool | None]:
         # Read by the clients at start, so one build serves every environment
         # (accounts plan D6). The first client ID is the web client's.
         audiences = settings.google_audiences
+        apple_audiences = settings.apple_audiences
         # Without its trailing slash: the client appends /join#<token>.
         public_base_url = settings.public_base_url.strip().rstrip("/")
         return {
             "google_client_id": audiences[0] if audiences else None,
             "public_base_url": public_base_url or None,
+            # What the sign-in screen offers (sign-in plan D18).
+            "apple_client_id": apple_audiences[0] if apple_audiences else None,
+            "apple_redirect_uri": (
+                f"{public_base_url}/api/auth/apple/callback"
+                if public_base_url
+                else None
+            ),
+            "email_sign_in": (
+                app.state.mailer is not None
+                and bool(settings.notification_secret.strip())
+            ),
         }
 
     @app.get("/api/health")
@@ -173,6 +189,8 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         )
 
     app.include_router(accounts_router)
+    app.include_router(email_router)
+    app.include_router(apple_router)
     app.include_router(lists_router)
     app.include_router(media_router)
     app.include_router(reserving_router)
@@ -204,6 +222,16 @@ def _log_billing_gaps(settings: Settings) -> None:
         _log.warning(
             "billing is not selling; missing or invalid: %s",
             ", ".join(settings.missing_selling_settings),
+        )
+
+
+def _log_email_sign_in_gap(settings: Settings) -> None:
+    """The worker sends the links: without it they would expire unsent
+    (sign-in plan D18, review R1-5)."""
+    if not settings.missing_email_settings and not settings.notifications_worker:
+        _log.warning(
+            "email sign-in is configured but NOTIFICATIONS_WORKER is off:"
+            " its links will not be sent"
         )
 
 
