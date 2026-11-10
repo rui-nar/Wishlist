@@ -94,3 +94,7 @@ No findings.
 - Guard: —
 - Override: —
 - Outcome: open
+
+## Round 4 — 2026-11-10, unit review of U3, reviewed at 376fdad
+
+No findings.
