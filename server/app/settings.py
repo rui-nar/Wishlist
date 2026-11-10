@@ -35,6 +35,41 @@ class Settings(BaseSettings):
     # (lists plan D5); /api/config hands it to the mobile apps. Empty in DEV:
     # the web client builds the link on its own origin.
     public_base_url: str = ""
+    # Signs the unsubscribe links of emails (comments plan D18); rotating it
+    # invalidates every link sent. Empty: every unsubscribe token is refused.
+    notification_secret: str = ""
+    # Brevo's API key and the sender it knows (comments plan D19). Email is sent
+    # only when these, NOTIFICATION_SECRET and PUBLIC_BASE_URL are all set.
+    brevo_api_key: str = ""
+    email_sender_address: str = ""
+    # An empty value, unlike an absent one, means no sender name.
+    email_sender_name: str = "Wishlist"
+    # Comma-separated. Outside production, the only addresses ever emailed: VAL
+    # holds PROD's real addresses (D19). Empty there: nobody is emailed.
+    email_allowed_recipients: str = ""
+    # False: the worker does not run, and activity waits in the outbox (D16).
+    notifications_worker: bool = True
+
+    @property
+    def missing_email_settings(self) -> list[str]:
+        """The variables that keep email off, by the name the operator sets."""
+        values = {
+            "BREVO_API_KEY": self.brevo_api_key,
+            "EMAIL_SENDER_ADDRESS": self.email_sender_address,
+            "NOTIFICATION_SECRET": self.notification_secret,
+            "PUBLIC_BASE_URL": self.public_base_url.strip().rstrip("/"),
+        }
+        return [name for name, value in values.items() if not value.strip()]
+
+    @property
+    def email_allowed_addresses(self) -> frozenset[str]:
+        # Compared whatever the case: Google may report an address differently
+        # from how the operator typed it.
+        return frozenset(
+            address.strip().casefold()
+            for address in self.email_allowed_recipients.split(",")
+            if address.strip()
+        )
 
     @property
     def google_audiences(self) -> list[str]:

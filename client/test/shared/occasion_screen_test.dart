@@ -110,11 +110,12 @@ void main() {
     expect(find.text('Rename'), findsNothing);
 
     // Only the invitee's own calls: Shared with me, under this page, the
-    // occasion and its activity.
+    // occasion, its activity and its hidden gifts.
     expect(server.calls.toSet(), {
       'GET /api/shared',
       'GET /api/occasions/$occasion',
       'GET /api/occasions/$occasion/claims',
+      'GET /api/occasions/$occasion/hidden-gifts',
     });
   });
 

@@ -27,7 +27,11 @@ const kAlice = {
   'display_name': 'Alice Martin',
 };
 
-/// The server's account endpoints (ACCOUNTS_PLAN D7) and `/api/version`, in
+/// The unsubscribe token [FakeServer] accepts.
+const kUnsubscribeToken = 'v1.dXNlcg.c2lnbmF0dXJl';
+
+/// The server's account endpoints (ACCOUNTS_PLAN D7), preferences and
+/// unsubscribing (COMMENTS_NOTIFICATIONS_PLAN D18) and `/api/version`, in
 /// memory. [status] forces an answer for `'<METHOD> <path>'`.
 class FakeServer {
   FakeServer({this.googleClientId = 'test-client-id', this.publicBaseUrl});
@@ -44,6 +48,19 @@ class FakeServer {
   /// Every request, as `'<METHOD> <path>'`.
   final calls = <String>[];
   bool deleted = false;
+
+  /// Alice's `email_notifications` and `language`.
+  final preferences = <String, Object>{
+    'email_notifications': true,
+    'language': 'en',
+  };
+
+  /// The body of every `PATCH /api/me/preferences`, oldest first.
+  final preferencePatches = <Map<String, dynamic>>[];
+
+  /// The `Authorization` header of every unsubscribe call that reached the
+  /// server, null when it had none.
+  final unsubscribeSessions = <String?>[];
   int _next = 0;
 
   late final http.Client client = MockClient(_handle);
@@ -67,6 +84,13 @@ class FakeServer {
     final user = sessions[token];
     http.Response json(Object body) => http.Response(jsonEncode(body), 200);
     final unauthorized = http.Response('{"detail":"Not authenticated"}', 401);
+    if (request.method == 'POST' &&
+        request.url.path.startsWith('/api/unsubscribe/')) {
+      unsubscribeSessions.add(auth);
+      final valid = request.url.pathSegments.last == kUnsubscribeToken;
+      if (valid) preferences['email_notifications'] = false;
+      return http.Response('', valid ? 204 : 404);
+    }
     switch (call) {
       case 'GET /api/config':
         return json({
@@ -91,6 +115,18 @@ class FakeServer {
         sessions.clear();
         deleted = true;
         return http.Response('', 204);
+      case 'GET /api/me/preferences':
+        return user == null ? unauthorized : json(preferences);
+      case 'PATCH /api/me/preferences':
+        if (user == null) return unauthorized;
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        preferencePatches.add(body);
+        final language = body['language'];
+        if (language != null && language != 'en' && language != 'fr') {
+          return http.Response('', 422);
+        }
+        preferences.addAll(body.cast<String, Object>());
+        return json(preferences);
     }
     // Any later endpoint depends on current_user (D5).
     return user == null ? unauthorized : http.Response('', 404);

@@ -5,8 +5,8 @@ Every route resolves its occasion through `giving_occasion`, so a recipient
 gets the random-id 404 for every route and every state of their gifts (D4).
 Writes follow one lock order (D7): the user `FOR KEY SHARE` (taken by
 `current_session`), the occasion `FOR SHARE`, the gift `FOR KEY SHARE`, then
-the claim; they write `gift_claims` and
-`claim_participants` only, never a row an owner reads (D3).
+the claim; they write `gift_claims`, `claim_participants` and
+`gift_follows` only, never a row an owner reads (D3).
 
 A 409 is returned, not raised, so it keeps the `code` its body needs. The
 only write it can commit is the purge of an expired claim, which changes
@@ -28,9 +28,11 @@ from sqlalchemy.orm import Session
 
 from app.accounts.deps import CurrentUser
 from app.accounts.models import User
+from app.comments.follows import auto_follow
 from app.db import DbSession
-from app.lists.access import giving_occasion, not_found
-from app.lists.models import Gift, Occasion
+from app.lists.access import giving_gift, giving_occasion
+from app.lists.models import Gift
+from app.lists.visibility import in_occasion
 from app.reserving.models import GROUP as GROUP_KIND
 from app.reserving.models import RESERVATION, ClaimParticipant, GiftClaim
 from app.reserving.rules import has_passed, is_live, purge_expired, remove_participant
@@ -68,12 +70,13 @@ def occasion_claims(
     # Live claims, and the caller's own claims of this occasion that have
     # expired: they may still mark those bought (D8, review R3-1). Anyone
     # else's expired claim is gone, for this occasion's invitees too, and
-    # counts as taken nowhere.
+    # counts as taken nowhere. Only of the gifts the occasion shows: its
+    # hidden gifts included, received gifts left out (hidden gifts plan D4).
     rows = db.execute(
         select(GiftClaim, is_live(now).label("live"))
         .join(Gift, Gift.id == GiftClaim.gift_id)
         .where(
-            Gift.list_id == occasion.list_id,
+            in_occasion(occasion),
             or_(
                 is_live(now),
                 and_(
@@ -112,7 +115,7 @@ def reserve(
     user: CurrentUser,
     db: DbSession,
 ) -> GiftClaimOut | JSONResponse:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     now = request.app.state.clock()
     if has_passed(occasion.date, now):
         return _conflict(PASSED)
@@ -125,6 +128,8 @@ def reserve(
         and _is_mine(db, held, occasion.id, user)
     ):
         return _conflict(TAKEN)
+    if created:
+        auto_follow(db, occasion.id, gift_id, user.id)
     return _gift_claim_out(db, gift_id, occasion.id, user, now)
 
 
@@ -140,7 +145,7 @@ def release(
     user: CurrentUser,
     db: DbSession,
 ) -> Response:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     if has_passed(occasion.date, request.app.state.clock()):
         return _conflict(PASSED)
     claim = _locked_claim(db, gift_id)
@@ -168,7 +173,7 @@ def mark_bought(
     user: CurrentUser,
     db: DbSession,
 ) -> GiftClaimOut | JSONResponse:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     now = request.app.state.clock()
     if has_passed(occasion.date, now):
         # The one write a passed occasion allows: recording a gift handed
@@ -181,6 +186,7 @@ def mark_bought(
         # A free gift is reserved and bought at once.
         created, claim = _take(db, gift_id, occasion.id, user, now, bought_at=now)
         if created:
+            auto_follow(db, occasion.id, gift_id, user.id)
             return _gift_claim_out(db, gift_id, occasion.id, user, now)
         # My reservation, or a group gift I am in, here.
         if claim is None or not _is_mine(db, claim, occasion.id, user):
@@ -205,7 +211,7 @@ def pledge(
     user: CurrentUser,
     db: DbSession,
 ) -> GiftClaimOut | JSONResponse:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     now = request.app.state.clock()
     if has_passed(occasion.date, now):
         return _conflict(PASSED)
@@ -231,6 +237,7 @@ def pledge(
         db, gift_id, occasion.id, user, now, bought_at=None, kind=GROUP_KIND, **pledged
     )
     if created:
+        auto_follow(db, occasion.id, gift_id, user.id)
         return _gift_claim_out(db, gift_id, occasion.id, user, now)
     # A reservation, mine included (release it first), or anything held from
     # another occasion.
@@ -249,6 +256,7 @@ def pledge(
             set_=pledged,
         )
     )
+    auto_follow(db, occasion.id, gift_id, user.id)
     return _gift_claim_out(db, gift_id, occasion.id, user, now)
 
 
@@ -264,7 +272,7 @@ def leave_group(
     user: CurrentUser,
     db: DbSession,
 ) -> Response:
-    occasion = _giving_gift(db, user, occasion_id, gift_id)
+    occasion = giving_gift(db, user, occasion_id, gift_id)
     if has_passed(occasion.date, request.app.state.clock()):
         return _conflict(PASSED)
     claim = _locked_claim(db, gift_id)
@@ -286,28 +294,6 @@ def _conflict(code: ConflictCode) -> JSONResponse:
         status_code=status.HTTP_409_CONFLICT,
         content={"detail": _CONFLICTS[code], "code": code},
     )
-
-
-def _giving_gift(
-    db: Session, user: User, occasion_id: uuid.UUID, gift_id: uuid.UUID
-) -> Occasion:
-    """The occasion, if the user gives in it and the gift is on its list;
-    otherwise 404 (D6).
-
-    The gift is locked `FOR KEY SHARE` (D7 step 2): its deletion at the same
-    moment either committed before (404) or waits for this request, while an
-    owner's edit of it is not blocked. Only its list id is read, so the gift
-    row is never in the session to be written back (D3).
-    """
-    occasion = giving_occasion(db, user, occasion_id)
-    list_id = db.scalar(
-        select(Gift.list_id)
-        .where(Gift.id == gift_id)
-        .with_for_update(read=True, key_share=True)
-    )
-    if list_id != occasion.list_id:
-        raise not_found()
-    return occasion
 
 
 def _take(

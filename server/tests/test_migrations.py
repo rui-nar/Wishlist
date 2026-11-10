@@ -46,3 +46,195 @@ def test_upgrade_head_then_check_on_an_empty_database(empty_database_url):
 
     check = alembic(empty_database_url, "check")
     assert check.returncode == 0, check.stderr
+
+
+def test_the_comments_revision_makes_claim_holders_follow_their_gifts(
+    empty_database_url,
+):
+    """Review R7-1: every participant of a claim with an occasion follows its
+    gift, and nobody else does: not the owner, not an invitee with no claim,
+    not the buyer of a gift whose occasion was deleted."""
+    before = alembic(empty_database_url, "upgrade", "e5d38ed51007")
+    assert before.returncode == 0, before.stderr
+    owner, invitee, reserver, pledger, joiner, buyer = (uuid.uuid4() for _ in range(6))
+    list_id, occasion, reserved, group, bought = (uuid.uuid4() for _ in range(5))
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users (id, email, display_name) VALUES (:id, :email, 'U')"
+            ),
+            [
+                {"id": user, "email": f"{user}@example.com"}
+                for user in (owner, invitee, reserver, pledger, joiner, buyer)
+            ],
+        )
+        connection.execute(
+            text(
+                "INSERT INTO lists (id, title, recipient_kind)"
+                " VALUES (:id, 'L', 'self')"
+            ),
+            {"id": list_id},
+        )
+        connection.execute(
+            text("INSERT INTO list_owners (list_id, user_id) VALUES (:list, :user)"),
+            {"list": list_id, "user": owner},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO occasions (id, list_id, name, date)"
+                " VALUES (:id, :list, 'O', '2099-12-25')"
+            ),
+            {"id": occasion, "list": list_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO occasion_members (occasion_id, user_id)"
+                " VALUES (:occasion, :user)"
+            ),
+            [
+                {"occasion": occasion, "user": user}
+                for user in (invitee, reserver, pledger, joiner)
+            ],
+        )
+        connection.execute(
+            text(
+                "INSERT INTO gifts (id, list_id, title, description, links)"
+                " VALUES (:id, :list, 'G', '', '{}')"
+            ),
+            [{"id": gift, "list": list_id} for gift in (reserved, group, bought)],
+        )
+        connection.execute(
+            text(
+                "INSERT INTO gift_claims (gift_id, occasion_id, kind, bought_at)"
+                " VALUES (:reserved, :occasion, 'reservation', NULL),"
+                " (:group, :occasion, 'group', NULL),"
+                " (:bought, NULL, 'reservation', now())"
+            ),
+            {
+                "reserved": reserved,
+                "group": group,
+                "bought": bought,
+                "occasion": occasion,
+            },
+        )
+        connection.execute(
+            text(
+                "INSERT INTO claim_participants (gift_id, user_id)"
+                " VALUES (:gift, :user)"
+            ),
+            [
+                {"gift": reserved, "user": reserver},
+                {"gift": group, "user": pledger},
+                {"gift": group, "user": joiner},
+                {"gift": bought, "user": buyer},
+            ],
+        )
+    engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.connect() as connection:
+            follows = connection.execute(
+                text(
+                    "SELECT occasion_id, gift_id, user_id, following FROM gift_follows"
+                )
+            )
+            assert {tuple(row) for row in follows} == {
+                (occasion, reserved, reserver, True),
+                (occasion, group, pledger, True),
+                (occasion, group, joiner, True),
+            }
+    finally:
+        engine.dispose()
+    check = alembic(empty_database_url, "check")
+    assert check.returncode == 0, check.stderr
+
+
+def test_the_comments_revision_follows_nothing_when_nothing_is_claimed(
+    empty_database_url,
+):
+    before = alembic(empty_database_url, "upgrade", "e5d38ed51007")
+    assert before.returncode == 0, before.stderr
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM gift_follows")) == 0
+    finally:
+        engine.dispose()
+
+
+def test_downgrading_the_notifications_revision_clears_what_it_allowed(
+    empty_database_url,
+):
+    """Comments plan, Boundaries crossed: orphaned claims and unbought claims
+    with no occasion are deleted, the foreign key and the check restored, and
+    a bought claim with no occasion, valid in both, stays."""
+    assert alembic(empty_database_url, "upgrade", "head").returncode == 0
+    orphan, unbought, bought = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    list_id = uuid.uuid4()
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO lists (id, title, recipient_kind)"
+                " VALUES (:id, 'L', 'self')"
+            ),
+            {"id": list_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO gifts (id, list_id, title, description, links)"
+                " VALUES (:unbought, :list, 'U', '', '{}'),"
+                " (:bought, :list, 'B', '', '{}')"
+            ),
+            {"unbought": unbought, "bought": bought, "list": list_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO gift_claims (gift_id, kind, bought_at) VALUES"
+                " (:orphan, 'reservation', now()),"
+                " (:unbought, 'reservation', NULL),"
+                " (:bought, 'reservation', now())"
+            ),
+            {"orphan": orphan, "unbought": unbought, "bought": bought},
+        )
+    engine.dispose()
+
+    downgrade = alembic(empty_database_url, "downgrade", "b7c3e9a14f20")
+    assert downgrade.returncode == 0, downgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.connect() as connection:
+            remaining = connection.scalars(text("SELECT gift_id FROM gift_claims"))
+            assert list(remaining) == [bought]
+            restored = connection.scalars(
+                text(
+                    "SELECT conname FROM pg_constraint WHERE conname IN"
+                    " ('fk_gift_claims_gift_id_gifts', 'ck_gift_claims_occasion_id')"
+                    " ORDER BY conname"
+                )
+            )
+            assert list(restored) == [
+                "ck_gift_claims_occasion_id",
+                "fk_gift_claims_gift_id_gifts",
+            ]
+            tables = connection.scalar(
+                text("SELECT to_regclass('notification_events') IS NULL")
+            )
+            assert tables is True
+    finally:
+        engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+    check = alembic(empty_database_url, "check")
+    assert check.returncode == 0, check.stderr

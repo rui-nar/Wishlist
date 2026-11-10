@@ -3,11 +3,14 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../api/api_client.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import 'auth_controller.dart';
+import 'preferences_repository.dart';
 
-/// The signed-in user's name and email, the version screen, sign-out and
+/// The signed-in user's name and email, the email notifications switch
+/// (COMMENTS_NOTIFICATIONS_PLAN D20), the version screen, sign-out and
 /// account deletion (ACCOUNTS_PLAN D10). Signing out or deleting ends the
 /// session; the router's guard then shows the sign-in screen.
 class AccountScreen extends StatefulWidget {
@@ -20,6 +23,61 @@ class AccountScreen extends StatefulWidget {
 class _AccountScreenState extends State<AccountScreen> {
   /// While signing out or deleting: the buttons are disabled.
   bool _busy = false;
+
+  late final _preferences = PreferencesRepository.of(context);
+
+  /// What the switch shows; null until read, and it stays off and disabled
+  /// when the read fails.
+  bool? _emailNotifications;
+
+  /// A change of the switch is on its way: no second one starts meanwhile.
+  bool _savingEmail = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    try {
+      final preferences = await _preferences.preferences();
+      if (mounted) {
+        setState(() => _emailNotifications = preferences.emailNotifications);
+      }
+    } catch (error) {
+      if (mounted && error is! UnauthorizedException) {
+        _say(AppLocalizations.of(context).emailNotificationsLoadFailed);
+      }
+    }
+  }
+
+  /// Shows [on] at once, and goes back if the server refuses it.
+  Future<void> _setEmailNotifications(bool on) async {
+    final l10n = AppLocalizations.of(context);
+    setState(() {
+      _emailNotifications = on;
+      _savingEmail = true;
+    });
+    try {
+      final preferences = await _preferences.setEmailNotifications(on);
+      if (mounted) {
+        setState(() => _emailNotifications = preferences.emailNotifications);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _emailNotifications = !on);
+        // A 401 signs the user out: the sign-in screen says enough.
+        if (error is! UnauthorizedException) {
+          _say(l10n.emailNotificationsSaveFailed);
+        }
+      }
+    }
+    if (mounted) setState(() => _savingEmail = false);
+  }
+
+  void _say(String message) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(message)));
 
   Future<void> _signOut() async {
     setState(() => _busy = true);
@@ -73,7 +131,19 @@ class _AccountScreenState extends State<AccountScreen> {
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      const SizedBox(height: Spacing.s24),
+                      const SizedBox(height: Spacing.s12),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(l10n.emailNotifications),
+                        subtitle: Text(l10n.emailNotificationsHint),
+                        value: _emailNotifications ?? false,
+                        onChanged: _emailNotifications == null ||
+                                _savingEmail ||
+                                _busy
+                            ? null
+                            : _setEmailNotifications,
+                      ),
+                      const SizedBox(height: Spacing.s12),
                     ],
                     OutlinedButton.icon(
                       onPressed: () => context.push('/about'),

@@ -348,6 +348,60 @@
   "@deleteFailed": {
     "description": "A message after the server did not delete a list or a gift."
   },
+  "markReceived": "Mark as received",
+  "@markReceived": {
+    "description": "The gift form: the button that takes the gift off the list, under \"Received\". The same on every gift."
+  },
+  "revealedTitle": "Gifts from your occasions",
+  "@revealedTitle": {
+    "description": "List detail: the heading of the gifts that people giving for a passed occasion added and bought, shown to the list's owners."
+  },
+  "revealedReceived": "Received",
+  "@revealedReceived": {
+    "description": "List detail, a gift from an occasion: the button marking it received."
+  },
+  "revealedKeep": "Keep on my list",
+  "@revealedKeep": {
+    "description": "List detail, a gift from an occasion: the button adding it to the list as an ordinary gift."
+  },
+  "revealedDismiss": "Dismiss",
+  "@revealedDismiss": {
+    "description": "List detail, a gift from an occasion: the button deleting it, and the confirming dialog's button."
+  },
+  "dismissGiftTitle": "Dismiss this gift?",
+  "@dismissGiftTitle": {
+    "description": "The title of the dialog confirming a gift from an occasion is dismissed."
+  },
+  "dismissGiftBody": "The gift is deleted. This cannot be undone.",
+  "@dismissGiftBody": {
+    "description": "The dialog confirming a gift from an occasion is dismissed: what dismissing does."
+  },
+  "receivedTitle": "Received ({count})",
+  "@receivedTitle": {
+    "description": "List detail: the heading of the gifts marked received, which opens and closes the section, with how many there are.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "putBack": "Put back",
+  "@putBack": {
+    "description": "List detail, a received gift: the button putting it back on the list."
+  },
+  "putBackNotRevealed": "This gift can be put back once its occasion has passed again.",
+  "@putBackNotRevealed": {
+    "description": "List detail: a received gift from an occasion cannot be put back, because the occasion's date was moved later since."
+  },
+  "deleteReceivedBody": "The gift is removed from your received gifts. This cannot be undone.",
+  "@deleteReceivedBody": {
+    "description": "The dialog confirming a received gift's deletion: what deleting does."
+  },
+  "occasionDateEarlierWarning": "Hidden gifts added by your guests are revealed after the later date anyway.",
+  "@occasionDateEarlierWarning": {
+    "description": "The occasion form: under the date, when it is earlier than the occasion's saved date. Shown on every occasion alike."
+  },
   "occasionsTitle": "Occasions",
   "@occasionsTitle": {
     "description": "List detail: the heading of the occasions section."
@@ -464,7 +518,7 @@
   "@deleteOccasionTitle": {
     "description": "The dialog before deleting an occasion."
   },
-  "deleteOccasionBody": "Its invitees lose access to the list through it, and its link stops working. This cannot be undone.",
+  "deleteOccasionBody": "Its invitees lose access to the list through it, and its link stops working. Hidden gifts added for this occasion are deleted too, except those bought once the occasion has passed. This cannot be undone.",
   "@deleteOccasionBody": {
     "description": "The dialog before deleting an occasion."
   },
@@ -896,9 +950,9 @@
   "@welcomeSurpriseTitle": {
     "description": "The welcome page: the title of the card about keeping the surprise."
   },
-  "welcomeSurpriseBody": "Whoever a list is for never sees what was reserved or bought. The people you invite see who is giving what, and can team up on a bigger gift.",
+  "welcomeSurpriseBody": "Whoever a list is for never sees what was reserved, bought or said. The people you invite see who is giving what, talk it over under each gift, team up on a bigger gift, and can add hidden gifts of their own: the ones bought are revealed once the occasion has passed.",
   "@welcomeSurpriseBody": {
-    "description": "The welcome page: the text of the card about keeping the surprise: the recipient sees nothing of what was reserved or bought, invitees see who gives what."
+    "description": "The welcome page: the text of the card about keeping the surprise: the recipient sees nothing of what was reserved, bought or said; invitees see who gives what, comment under each gift, and can add hidden gifts."
   },
   "registerTitle": "Create your account",
   "@registerTitle": {
@@ -999,5 +1053,217 @@
   "imageReadFailed": "This image could not be read. Try another one.",
   "@imageReadFailed": {
     "description": "The gift form: the picked image could not be read from the device."
+  },
+  "hiddenGiftsTitle": "Hidden gifts",
+  "@hiddenGiftsTitle": {
+    "description": "An occasion, for its givers: the heading of the section of gifts givers added, which the recipient does not see."
+  },
+  "hiddenGiftsExplanation": "Only the people giving for this occasion see these. {name} will see the ones bought, once the occasion has passed.",
+  "@hiddenGiftsExplanation": {
+    "description": "An occasion, for its givers: the line under the Hidden gifts heading. name is who the gifts are for.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Léa"
+      }
+    }
+  },
+  "addHiddenGift": "Add a hidden gift",
+  "@addHiddenGift": {
+    "description": "An occasion, for its givers: the button that adds a hidden gift; also the title and button of the form that adds one."
+  },
+  "hiddenGiftAddedBy": "Added by {name}",
+  "@hiddenGiftAddedBy": {
+    "description": "An occasion, for its givers: the chip of a hidden gift someone else added.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Ana"
+      }
+    }
+  },
+  "hiddenGiftAddedByYou": "Added by you",
+  "@hiddenGiftAddedByYou": {
+    "description": "An occasion, for its givers: the chip of a hidden gift the user added."
+  },
+  "hiddenGiftDeleteBody": "It is removed for everyone giving for this occasion. This cannot be undone.",
+  "@hiddenGiftDeleteBody": {
+    "description": "The confirmation before deleting a hidden gift, under the same title as deleting a list gift."
+  },
+  "hiddenGiftBoughtNow": "This gift has been bought: it can no longer be changed.",
+  "@hiddenGiftBoughtNow": {
+    "description": "A hidden gift, when the server refuses a change because it has been bought meanwhile."
+  },
+  "hiddenGiftNotAuthor": "Only the person who added this gift can change it.",
+  "@hiddenGiftNotAuthor": {
+    "description": "A hidden gift, when the server refuses a change by someone other than its author."
+  },
+  "backToOccasion": "Back to the occasion",
+  "@backToOccasion": {
+    "description": "The hidden gift form, when the gift no longer exists: goes back to the occasion."
+  },
+  "commentsTitle": "Comments",
+  "@commentsTitle": {
+    "description": "A gift's sheet, for the givers of its occasion: the title of the comment thread."
+  },
+  "commentsEmpty": "No comments yet. Only the people giving for this occasion can read them.",
+  "@commentsEmpty": {
+    "description": "A gift's sheet: the comment thread has no comment yet."
+  },
+  "commentHint": "Add a comment",
+  "@commentHint": {
+    "description": "A gift's sheet: the hint of the field that writes or edits a comment."
+  },
+  "commentCounter": "{count} / {max}",
+  "@commentCounter": {
+    "description": "A gift's sheet: how many characters the comment being written has, of how many it may have.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "12"
+      },
+      "max": {
+        "type": "int",
+        "example": "2000"
+      }
+    }
+  },
+  "commentTooLong": "A comment can be up to {max} characters.",
+  "@commentTooLong": {
+    "description": "A gift's sheet: the comment being written is too long to send.",
+    "placeholders": {
+      "max": {
+        "type": "int",
+        "example": "2000"
+      }
+    }
+  },
+  "commentSend": "Send",
+  "@commentSend": {
+    "description": "A gift's sheet: the button that posts the comment being written."
+  },
+  "commentEdit": "Edit",
+  "@commentEdit": {
+    "description": "A gift's sheet: the button under the user's own comment that lets them change it."
+  },
+  "commentDeleteTitle": "Delete this comment?",
+  "@commentDeleteTitle": {
+    "description": "The title of the confirmation before deleting one's own comment."
+  },
+  "commentDeleteBody": "It disappears for everyone giving for this occasion. This cannot be undone.",
+  "@commentDeleteBody": {
+    "description": "The confirmation before deleting one's own comment."
+  },
+  "commentEdited": "{when} · edited",
+  "@commentEdited": {
+    "description": "A gift's sheet: when a comment was written, for a comment changed since.",
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "Today at 14:30"
+      }
+    }
+  },
+  "commentDeletedUser": "Deleted user",
+  "@commentDeletedUser": {
+    "description": "A gift's sheet: the author of a comment whose account has been deleted."
+  },
+  "commentToday": "Today at {time}",
+  "@commentToday": {
+    "description": "A gift's sheet: when a comment written today was written.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "14:30"
+      }
+    }
+  },
+  "commentYesterday": "Yesterday at {time}",
+  "@commentYesterday": {
+    "description": "A gift's sheet: when a comment written yesterday was written.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "14:30"
+      }
+    }
+  },
+  "commentOnDate": "{date} at {time}",
+  "@commentOnDate": {
+    "description": "A gift's sheet: when a comment written before yesterday was written.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "4 Mar"
+      },
+      "time": {
+        "type": "String",
+        "example": "14:30"
+      }
+    }
+  },
+  "commentsLoadFailed": "The comments could not be loaded.",
+  "@commentsLoadFailed": {
+    "description": "A gift's sheet: in place of the thread, when it could not be loaded."
+  },
+  "commentsUnavailable": "This conversation is no longer available.",
+  "@commentsUnavailable": {
+    "description": "A gift's sheet: the gift has left the occasion, or the user no longer gives for it."
+  },
+  "commentGoneNow": "That is no longer there. The comments have been refreshed.",
+  "@commentGoneNow": {
+    "description": "A message after the server refused a comment or follow change because the comment or the gift is gone."
+  },
+  "commentRefused": "This comment could not be saved. Check its text and try again.",
+  "@commentRefused": {
+    "description": "A message after the server refused the text of a comment."
+  },
+  "giftFollow": "Follow",
+  "@giftFollow": {
+    "description": "A gift's sheet, in its header: the button that starts following the gift, to be told of what happens to it."
+  },
+  "giftFollowing": "Following",
+  "@giftFollowing": {
+    "description": "A gift's sheet, in its header: the user follows the gift; tapping stops."
+  },
+  "emailNotifications": "Email notifications",
+  "@emailNotifications": {
+    "description": "The account screen: the switch that turns email notifications on and off."
+  },
+  "emailNotificationsHint": "Emails about the gifts you give or follow.",
+  "@emailNotificationsHint": {
+    "description": "The account screen: the line under the email notifications switch."
+  },
+  "emailNotificationsLoadFailed": "Your email notifications setting could not be loaded. Try again later.",
+  "@emailNotificationsLoadFailed": {
+    "description": "The account screen: a snack bar when the email notifications setting could not be read; the switch stays disabled."
+  },
+  "emailNotificationsSaveFailed": "Your email notifications setting could not be changed. Try again.",
+  "@emailNotificationsSaveFailed": {
+    "description": "The account screen: a snack bar when the email notifications switch could not be saved; the switch goes back."
+  },
+  "unsubscribeTitle": "Email notifications",
+  "@unsubscribeTitle": {
+    "description": "The unsubscribe page, opened from a link in an email: the title in its app bar."
+  },
+  "unsubscribeBody": "You will stop receiving emails about the gifts you give or follow.",
+  "@unsubscribeBody": {
+    "description": "The unsubscribe page: what the button does."
+  },
+  "unsubscribeAction": "Stop email notifications",
+  "@unsubscribeAction": {
+    "description": "The unsubscribe page: the one button, which turns email notifications off."
+  },
+  "unsubscribeDone": "Email notifications are off. You can turn them back on from your account.",
+  "@unsubscribeDone": {
+    "description": "The unsubscribe page: the confirmation, pointing to the account screen."
+  },
+  "unsubscribeInvalid": "This link is not valid. Open it again from your email, or change your email notifications from your account.",
+  "@unsubscribeInvalid": {
+    "description": "The unsubscribe page: the link has no token, or the server refused it."
+  },
+  "unsubscribeOpenAccount": "Go to my account",
+  "@unsubscribeOpenAccount": {
+    "description": "The unsubscribe page: the button that opens the account screen, after signing in if needed."
   }
 }

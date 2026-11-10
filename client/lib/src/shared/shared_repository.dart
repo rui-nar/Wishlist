@@ -70,6 +70,44 @@ class SharedGift extends GiftDraft {
   final GiftImage? image;
 }
 
+/// A gift a giver added to an occasion, as its givers see it
+/// (HIDDEN_GIFTS_PLAN D7). No user id and no timestamp: [mine] says whether
+/// the user added it.
+class HiddenGift extends SharedGift {
+  const HiddenGift({
+    required super.id,
+    required super.title,
+    super.description,
+    super.links,
+    super.priceAmount,
+    super.priceCurrency,
+    super.image,
+    required this.author,
+    required this.mine,
+  });
+
+  factory HiddenGift.fromJson(Map<String, dynamic> json) {
+    final gift = SharedGift.fromJson(json);
+    return HiddenGift(
+      id: gift.id,
+      title: gift.title,
+      description: gift.description,
+      links: gift.links,
+      priceAmount: gift.priceAmount,
+      priceCurrency: gift.priceCurrency,
+      image: gift.image,
+      author: json['author'] as String?,
+      mine: json['mine'] as bool,
+    );
+  }
+
+  /// Who added it; null once their account is deleted (D8).
+  final String? author;
+
+  /// The user added it: they alone may edit or delete it (D8).
+  final bool mine;
+}
+
 /// `GET /api/occasions/{id}`, told apart by its `role`.
 sealed class OccasionView {
   const OccasionView();
@@ -234,6 +272,81 @@ class ClaimConflict implements Exception {
 
   @override
   String toString() => 'ClaimConflict: ${code.name}';
+}
+
+/// Why the server refused a change to a hidden gift (HIDDEN_GIFTS_PLAN D7).
+enum HiddenGiftRefusal {
+  /// Only the author changes it (a 403).
+  notAuthor,
+
+  /// It is bought, which is final (a 409).
+  bought,
+
+  /// The occasion's date has passed (a 409).
+  passed,
+}
+
+/// A change to a hidden gift the server refused with a [refusal] code.
+class HiddenGiftRefused implements Exception {
+  const HiddenGiftRefused(this.refusal);
+
+  final HiddenGiftRefusal refusal;
+
+  @override
+  String toString() => 'HiddenGiftRefused: ${refusal.name}';
+}
+
+/// A comment under a gift, in one occasion (COMMENTS_NOTIFICATIONS_PLAN D3,
+/// D5). No user id: [mine] says whether the user wrote it.
+class Comment {
+  const Comment({
+    required this.id,
+    required this.authorName,
+    required this.mine,
+    required this.body,
+    required this.createdAt,
+    required this.edited,
+  });
+
+  factory Comment.fromJson(Map<String, dynamic> json) => Comment(
+        id: json['id'] as String,
+        authorName: json['author_name'] as String?,
+        mine: json['mine'] as bool,
+        body: json['body'] as String,
+        createdAt: DateTime.parse(json['created_at'] as String),
+        edited: json['edited'] as bool,
+      );
+
+  final String id;
+
+  /// Null once the author's account is deleted (D3).
+  final String? authorName;
+
+  /// The user wrote it: they alone may edit or delete it (D2).
+  final bool mine;
+
+  /// Plain text, shown as it is.
+  final String body;
+  final DateTime createdAt;
+  final bool edited;
+}
+
+/// A gift's comments in one occasion, and whether the user follows it (D5).
+class GiftThread {
+  const GiftThread({required this.following, required this.comments});
+
+  factory GiftThread.fromJson(Map<String, dynamic> json) => GiftThread(
+        following: json['following'] as bool,
+        comments: [
+          for (final comment in json['comments'] as List<dynamic>)
+            Comment.fromJson(comment as Map<String, dynamic>),
+        ],
+      );
+
+  final bool following;
+
+  /// Oldest first.
+  final List<Comment> comments;
 }
 
 /// Who opens a link, for the join screen.
@@ -402,6 +515,110 @@ class SharedRepository {
   /// Leaves the group gift; not being in it is fine.
   Future<void> leaveGroup(String occasionId, String giftId) =>
       _claim(() => _api.delete('${_gift(occasionId, giftId)}/pledge'));
+
+  /// The occasion's hidden gifts, for a giver of it, oldest first; never
+  /// called for a recipient (HIDDEN_GIFTS_PLAN D14).
+  Future<List<HiddenGift>> hiddenGifts(String occasionId) async => [
+        for (final gift in await _api.getJsonList(_hiddenGifts(occasionId)))
+          HiddenGift.fromJson(gift as Map<String, dynamic>),
+      ];
+
+  /// Adds a hidden gift, by the user. [HiddenGiftRefused] `passed` once the
+  /// occasion's date has passed.
+  Future<HiddenGift> addHiddenGift(String occasionId, GiftDraft gift) =>
+      _changeHidden(() async => HiddenGift.fromJson(
+            await _api.postJson(_hiddenGifts(occasionId), gift.toJson()),
+          ));
+
+  /// Edits the user's hidden gift. [HiddenGiftRefused] `notAuthor`, `bought`
+  /// or `passed`.
+  Future<HiddenGift> updateHiddenGift(
+    String occasionId,
+    String giftId,
+    GiftDraft gift,
+  ) =>
+      _changeHidden(() async => HiddenGift.fromJson(
+            await _api.patchJson(
+              '${_hiddenGifts(occasionId)}/${_segment(giftId)}',
+              gift.toJson(),
+            ),
+          ));
+
+  /// Deletes the user's hidden gift. [HiddenGiftRefused] `notAuthor`,
+  /// `bought` or `passed`.
+  Future<void> deleteHiddenGift(String occasionId, String giftId) =>
+      _changeHidden(
+        () => _api.delete('${_hiddenGifts(occasionId)}/${_segment(giftId)}'),
+      );
+
+  /// The gift's comments and whether the user follows it, for a giver of the
+  /// occasion; never called for a recipient (COMMENTS_NOTIFICATIONS_PLAN D5,
+  /// D20).
+  Future<GiftThread> thread(String occasionId, String giftId) async =>
+      GiftThread.fromJson(await _api.getJson(_comments(occasionId, giftId)));
+
+  /// Posts a comment, which follows the gift unless the user stopped (D4).
+  Future<Comment> comment(
+    String occasionId,
+    String giftId,
+    String body,
+  ) async =>
+      Comment.fromJson(
+        await _api.postJson(_comments(occasionId, giftId), {'body': body}),
+      );
+
+  /// Changes the user's comment.
+  Future<Comment> editComment(
+    String occasionId,
+    String giftId,
+    String commentId,
+    String body,
+  ) async =>
+      Comment.fromJson(
+        await _api.patchJson(
+          '${_comments(occasionId, giftId)}/${_segment(commentId)}',
+          {'body': body},
+        ),
+      );
+
+  /// Deletes the user's comment.
+  Future<void> deleteComment(
+    String occasionId,
+    String giftId,
+    String commentId,
+  ) =>
+      _api.delete('${_comments(occasionId, giftId)}/${_segment(commentId)}');
+
+  /// Follows the gift; following it already is fine.
+  Future<void> follow(String occasionId, String giftId) =>
+      _api.put('${_gift(occasionId, giftId)}/follow');
+
+  /// Stops following the gift, for good until followed by hand again (D4).
+  Future<void> unfollow(String occasionId, String giftId) =>
+      _api.delete('${_gift(occasionId, giftId)}/follow');
+
+  static String _comments(String occasionId, String giftId) =>
+      '${_gift(occasionId, giftId)}/comments';
+
+  static String _hiddenGifts(String occasionId) =>
+      '/api/occasions/${_segment(occasionId)}/hidden-gifts';
+
+  /// A refusal with a known code becomes a [HiddenGiftRefused]; anything
+  /// else stays [ApiClient]'s.
+  static Future<T> _changeHidden<T>(Future<T> Function() call) async {
+    try {
+      return await call();
+    } on ApiException catch (error) {
+      final refusal = switch ((error.statusCode, error.body?['code'])) {
+        (403, 'not_author') => HiddenGiftRefusal.notAuthor,
+        (409, 'bought') => HiddenGiftRefusal.bought,
+        (409, 'passed') => HiddenGiftRefusal.passed,
+        _ => null,
+      };
+      if (refusal != null) throw HiddenGiftRefused(refusal);
+      rethrow;
+    }
+  }
 
   /// A 409 with a known code becomes a [ClaimConflict]; anything else stays
   /// [ApiClient]'s.

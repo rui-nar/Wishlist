@@ -12,6 +12,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
@@ -23,6 +24,14 @@ from sqlalchemy.orm import Session
 from app.accounts.deps import CurrentUser
 from app.accounts.models import User
 from app.db import DbSession
+from app.hidden_gifts.lifecycle import (
+    NotRevealed,
+    delete_unbought_by,
+    keep_revealed,
+    set_received,
+    settle_occasion_deletion,
+)
+from app.lists import visibility
 from app.lists.access import (
     INVITEE,
     OWNER,
@@ -44,6 +53,8 @@ from app.lists.models import (
     OccasionRemoval,
 )
 from app.lists.schemas import (
+    NOT_REVEALED,
+    GiftConflict,
     GiftCreate,
     GiftOut,
     GiftUpdate,
@@ -72,20 +83,35 @@ from app.media.gift_images import (
 )
 from app.media.images import ImageRejected
 from app.media.models import Image
+from app.notifications import events
 from app.reserving.release import (
     delete_gift_claims,
     delete_unbought_claims,
+    drop_gift_activity,
     lock_occasions,
     release_activity,
 )
 
 router = APIRouter(prefix="/api", tags=["lists"])
 
+_NOT_REVEALED_RESPONSE = {status.HTTP_409_CONFLICT: {"model": GiftConflict}}
+# The fields whose change notifies the gift's givers (comments plan D10).
+_NOTIFIED_FIELDS = (
+    "title",
+    "description",
+    "links",
+    "price_amount",
+    "price_currency",
+    "image_id",
+)
+
 
 @router.get("/lists")
 def my_lists(user: CurrentUser, db: DbSession) -> list[ListSummary]:
+    # Hidden, revealed and received gifts count towards nothing (hidden
+    # gifts plan D12).
     gift_count = (
-        select(func.count(Gift.id)).where(Gift.list_id == List.id).scalar_subquery()
+        select(func.count(Gift.id)).where(visibility.counted(List.id)).scalar_subquery()
     )
     occasion_count = (
         select(func.count(Occasion.id))
@@ -123,12 +149,25 @@ def create_list(body: ListCreate, user: CurrentUser, db: DbSession) -> ListOut:
 
 
 @router.get("/lists/{list_id}")
-def get_list(list_id: uuid.UUID, user: CurrentUser, db: DbSession) -> ListDetail:
+def get_list(
+    list_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
+) -> ListDetail:
     found = owned_list(db, user, list_id)
+    now = request.app.state.clock()
+    received = _gifts_where(
+        db, visibility.received(found.id), visibility.RECEIVED_ORDER
+    )
+    revealed = _gifts_where(
+        db, visibility.undecided(found.id, now), visibility.REVEALED_ORDER
+    )
     return ListDetail(
         **_list_out(found).model_dump(),
         gifts=[_gift_out(gift, image) for gift, image in _gifts(db, found.id)],
         occasions=_occasions_out(db, Occasion.list_id == found.id),
+        # The owners' own record, and the revealed gifts alone: no author,
+        # buyer, occasion or date (hidden gifts plan D5, D6).
+        received=[_gift_out(gift, image) for gift, image in received],
+        revealed=[_gift_out(gift, image) for gift, image in revealed],
     )
 
 
@@ -160,9 +199,10 @@ def delete_list(list_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Respons
     # an unbought claim must never meet the occasions' cascade (reserving
     # plan D11, review R1-1).
     lock_occasions(db, Occasion.list_id == found.id)
-    delete_gift_claims(db, Gift.list_id == found.id)
-    # The foreign keys cascade to its owners, gifts, occasions, members and
-    # removals.
+    # Its hidden and revealed gifts' claims too (hidden gifts plan D9).
+    delete_gift_claims(db, visibility.of_lists(List.id == found.id))
+    # The foreign keys cascade to its owners, gifts (on it and for it),
+    # occasions, members and removals.
     db.execute(delete(List).where(List.id == found.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -200,30 +240,111 @@ def update_gift(
     user: CurrentUser,
     db: DbSession,
 ) -> GiftOut:
-    gift = owned_gift(db, user, gift_id)
+    now = request.app.state.clock()
+    gift = owned_gift(db, user, gift_id, now)
     if "image_id" in body.model_fields_set:
         # Locked until the request commits: two changes of the image at the
         # same moment take turns, so each one detaches, and stamps, the image
         # the other attached.
         db.refresh(gift, with_for_update=True)
+    before = {field: getattr(gift, field) for field in _NOTIFIED_FIELDS}
     for field in body.model_fields_set - {"image_id"}:
         setattr(gift, field, getattr(body, field))
     if "image_id" in body.model_fields_set:
-        _set_image(db, user, gift, body.image_id, request.app.state.clock())
+        _set_image(db, user, gift, body.image_id, now)
     # Either half of the price may be sent alone; the result must still be
     # both or neither.
     if (gift.price_amount is None) != (gift.price_currency is None):
         raise _invalid("price_currency", "a price has both an amount and a currency")
     db.flush()
     db.refresh(gift)
+    # Stored against stored, as read back: decided by the owner's input and
+    # the gift alone, never by its activity (comments plan D10, D12). A
+    # revealed gift has no place on the list, and notifies nobody.
+    changed = [f for f in _NOTIFIED_FIELDS if getattr(gift, f) != before[f]]
+    if changed and gift.list_id is not None:
+        events.gift_changed(db, gift.id, user.id, changed)
     return _gift_out(gift, _image_of(db, gift))
 
 
 @router.delete("/gifts/{gift_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_gift(gift_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
-    gift = owned_gift(db, user, gift_id)
+def delete_gift(
+    gift_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
+) -> Response:
+    gift = owned_gift(db, user, gift_id, request.app.state.clock())
+    # Locked as every claim write expects (reserving plan D7): one holding
+    # the gift waits to commit, a later one finds it gone. Its activity stays,
+    # out of reach, for the worker (comments plan D13), so the same statements
+    # run whatever it was (D12). Deleted at the same moment: nothing is left
+    # to do, no second event, the same answer.
+    locked = db.execute(
+        select(
+            Gift.title,
+            Gift.list_id,
+            visibility.received(visibility.list_of(gift)).label("received"),
+        )
+        .where(Gift.id == gift.id)
+        .with_for_update()
+    ).one_or_none()
+    if locked is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    drop_gift_activity(db, [gift.id])
+    # A revealed gift has no place on the list, and notifies nobody (D10).
+    if locked.list_id is not None:
+        events.gift_deleted(db, gift.id, user.id, locked.title, locked.received)
     db.execute(delete(Gift).where(Gift.id == gift.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/gifts/{gift_id}/received",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def mark_received(
+    gift_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
+) -> Response:
+    # The same answer for every gift whatever its activity: marking says
+    # nothing about what was bought (hidden gifts plan D5). Its claim is kept,
+    # so putting it back restores it.
+    now = request.app.state.clock()
+    gift = owned_gift(db, user, gift_id, now)
+    set_received(db, gift, now, now)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/gifts/{gift_id}/received",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=_NOT_REVEALED_RESPONSE,
+)
+def put_back(
+    gift_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
+) -> Response:
+    # Back in its place, with its claim as it was (hidden gifts plan D5).
+    now = request.app.state.clock()
+    gift = owned_gift(db, user, gift_id, now)
+    try:
+        set_received(db, gift, None, now)
+    except NotRevealed:
+        return _not_revealed()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/gifts/{gift_id}/keep", response_model=GiftOut, responses=_NOT_REVEALED_RESPONSE
+)
+def keep_gift(
+    gift_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
+) -> GiftOut | JSONResponse:
+    # A revealed gift, now on the list under a new id (hidden gifts plan D6).
+    now = request.app.state.clock()
+    gift = owned_gift(db, user, gift_id, now)
+    try:
+        kept = keep_revealed(db, gift, now)
+    except NotRevealed:
+        return _not_revealed()
+    db.refresh(kept)
+    return _gift_out(kept, _image_of(db, kept))
 
 
 @router.post("/lists/{list_id}/occasions", status_code=status.HTTP_201_CREATED)
@@ -266,7 +387,14 @@ def update_occasion(
     occasion_id: uuid.UUID, body: OccasionUpdate, user: CurrentUser, db: DbSession
 ) -> OccasionOut:
     occasion = owned_occasion(db, user, occasion_id)
-    for field in body.model_fields_set:
+    if "date" in body.model_fields_set:
+        # Read again under the lock the update takes anyway (FOR NO KEY
+        # UPDATE, so nothing new waits on it): two date changes at once take
+        # turns, so neither loses the latest date the other kept, which
+        # would bring a reveal forward (hidden gifts plan D3).
+        db.refresh(occasion, with_for_update={"key_share": True})
+        visibility.move_date(occasion, body.date)
+    for field in body.model_fields_set - {"date"}:
         setattr(occasion, field, getattr(body, field))
     db.flush()
     return _occasion_out(db, occasion)
@@ -274,14 +402,27 @@ def update_occasion(
 
 @router.delete("/occasions/{occasion_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_occasion(
-    occasion_id: uuid.UUID, user: CurrentUser, db: DbSession
+    occasion_id: uuid.UUID, request: Request, user: CurrentUser, db: DbSession
 ) -> Response:
     occasion = owned_occasion(db, user, occasion_id)
     # Locked so that no claim is made in it meanwhile; its unbought claims go
     # with it, its bought ones stay with no occasion, so their gifts stay
     # taken (reserving plan D11, review R1-1).
     lock_occasions(db, Occasion.id == occasion.id)
+    # Its dates as committed: a date change at the same moment decides the
+    # reveal below (hidden gifts plan D3). Deleted at the same moment: the
+    # same answer.
+    reread = db.scalar(
+        select(Occasion)
+        .where(Occasion.id == occasion.id)
+        .execution_options(populate_existing=True)
+    )
+    if reread is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     delete_unbought_claims(db, occasion.id)
+    # Its hidden gifts revealed or deleted, never left to the cascade
+    # (hidden gifts plan D9).
+    settle_occasion_deletion(db, occasion, request.app.state.clock())
     # The foreign keys cascade to its members and removals.
     db.execute(delete(Occasion).where(Occasion.id == occasion.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -377,6 +518,11 @@ def remove_member(
     # write of theirs waits on the occasion's lock, then is refused
     # (reserving plan D10).
     release_activity(db, user_id, occasion.id)
+    # And the hidden gifts they added that nobody bought: the owner's remedy
+    # against an abusive invitee (hidden gifts plan D8). Same answer either
+    # way, and one event, listing them or none (comments plan D10, D12).
+    gone = delete_unbought_by(db, user_id, occasion.id)
+    events.gifts_removed(db, occasion.id, user.id, gone)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -488,6 +634,17 @@ def _invalid(field: str, message: str) -> RequestValidationError:
     )
 
 
+def _not_revealed() -> JSONResponse:
+    # Returned, not raised, so the body keeps its `code`. Nothing was
+    # written.
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=GiftConflict(
+            detail="This gift is not revealed", code=NOT_REVEALED
+        ).model_dump(),
+    )
+
+
 def _list_out(found: List) -> ListOut:
     return ListOut(
         id=found.id,
@@ -513,7 +670,7 @@ def _image_of(db: Session, gift: Gift) -> Image | None:
 def _gift_out(gift: Gift, image: Image | None) -> GiftOut:
     return GiftOut(
         id=gift.id,
-        list_id=gift.list_id,
+        list_id=visibility.list_of(gift),
         title=gift.title,
         description=gift.description,
         links=gift.links,
@@ -524,12 +681,23 @@ def _gift_out(gift: Gift, image: Image | None) -> GiftOut:
 
 
 def _gifts(db: Session, list_id: uuid.UUID) -> list[tuple[Gift, Image | None]]:
-    """The list's gifts, oldest first (D3), each with its image."""
+    """The gifts the list shows, oldest first (D3), each with its image:
+    never a hidden or received one (hidden gifts plan D4)."""
+    return _gifts_where(db, visibility.on_list(list_id), (Gift.created_at, Gift.id))
+
+
+def _gifts_where(
+    db: Session,
+    where: ColumnElement[bool],
+    order: tuple[Any, ...],
+) -> list[tuple[Gift, Image | None]]:
+    """The gifts matching a condition of `visibility`, in `order`, each with
+    its image."""
     rows = db.execute(
         select(Gift, Image)
         .outerjoin(Image, Image.id == Gift.image_id)
-        .where(Gift.list_id == list_id)
-        .order_by(Gift.created_at, Gift.id)
+        .where(where)
+        .order_by(*order)
     )
     return [(gift, image) for gift, image in rows]
 

@@ -10,6 +10,7 @@ occasion they were invited to.
 import logging
 import threading
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
@@ -19,8 +20,9 @@ from sqlalchemy.orm import Session
 from app.accounts.deps import CurrentUser, UnlockedSession, lock_signed_in
 from app.accounts.models import User, UserSession
 from app.db import DbSession
-from app.lists.access import not_found, owns_list, visible_occasion
-from app.lists.models import Gift
+from app.lists.access import OWNER, not_found, owns_list, visible_occasion
+from app.lists.models import OTHER, Gift, List
+from app.lists.visibility import in_occasion, is_owner_visible, list_of, on_list
 from app.media.gift_images import owner_image_out
 from app.media.images import (
     MAX_BYTES,
@@ -129,7 +131,9 @@ def get_image(
     if variant not in VARIANTS:
         raise not_found()
     image = db.get(Image, image_id)
-    if image is None or not _readable_by_owner(db, user, image):
+    if image is None or not _readable_by_owner(
+        db, user, image, request.app.state.clock()
+    ):
         raise not_found()
     return _image_response(request, image, variant)
 
@@ -148,16 +152,22 @@ def get_occasion_image(
 
     Through `visible_occasion`, as every invitee read: an invitee of another
     occasion of the list, someone removed from this one or a stranger gets
-    the 404 of a random id.
+    the 404 of a random id. Its givers see the gifts the occasion shows them,
+    its hidden gifts included; the owners of a "for me" list, its recipients,
+    only the gifts on their list (hidden gifts plan D4).
     """
     if variant not in VARIANTS:
         raise not_found()
-    occasion, _ = visible_occasion(db, user, occasion_id)
-    # The occasion shows its list's gifts. A detached image is on no gift.
+    occasion, role = visible_occasion(db, user, occasion_id)
+    recipient = (
+        role == OWNER and db.get_one(List, occasion.list_id).recipient_kind != OTHER
+    )
+    shown = on_list(occasion.list_id) if recipient else in_occasion(occasion)
+    # A detached image is on no gift.
     image = db.scalar(
         select(Image)
         .join(Gift, Gift.image_id == Image.id)
-        .where(Image.id == image_id, Gift.list_id == occasion.list_id)
+        .where(Image.id == image_id, shown)
     )
     if image is None:
         raise not_found()
@@ -213,14 +223,19 @@ async def _read_body(request: Request) -> bytes:
     return bytes(body)
 
 
-def _readable_by_owner(db: Session, user: User, image: Image) -> bool:
+def _readable_by_owner(db: Session, user: User, image: Image, now: datetime) -> bool:
     if image.attached_at is None:
         # Pending: its uploader only.
         return image.uploaded_by == user.id
-    # Attached: the owners of its gift's list. Detached (no gift any more):
-    # nobody, its uploader included (review R1-6).
-    list_id = db.scalar(select(Gift.list_id).where(Gift.image_id == image.id))
-    return list_id is not None and owns_list(db, user, list_id)
+    # Attached: the owners of its gift's list, if they see the gift (hidden
+    # gifts plan D4). Detached (no gift any more): nobody, its uploader
+    # included (review R1-6).
+    gift = db.scalar(select(Gift).where(Gift.image_id == image.id))
+    return (
+        gift is not None
+        and owns_list(db, user, list_of(gift))
+        and is_owner_visible(db, gift, now)
+    )
 
 
 def _refused(exc: ImageRejected) -> HTTPException:

@@ -19,3 +19,5 @@ the plan.
 | [WEB_LAYOUT_PLAN](WEB_LAYOUT_PLAN.md) | — | feat/web-layout (#9) |
 | [GIFT_IMAGES_PLAN](GIFT_IMAGES_PLAN.md) | — | feat/images-reserving |
 | [RESERVING_PLAN](RESERVING_PLAN.md) | — | feat/images-reserving |
+| [HIDDEN_GIFTS_PLAN](HIDDEN_GIFTS_PLAN.md) | — | feat/hidden-gifts-comments |
+| [COMMENTS_NOTIFICATIONS_PLAN](COMMENTS_NOTIFICATIONS_PLAN.md) | — | feat/hidden-gifts-comments |

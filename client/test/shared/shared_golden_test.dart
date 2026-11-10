@@ -117,6 +117,54 @@ String _giverOccasion(FakeListsServer server) {
   return '/lists/$list/occasions/$occasion';
 }
 
+/// Bob's occasion joined, with a hidden gift of each kind: Alice's, Carol's
+/// reserved by Dan, and one whose author's account is deleted
+/// (HIDDEN_GIFTS_PLAN D14).
+String _hiddenOccasion(FakeListsServer server) {
+  final occasion = _bobsOccasion(server);
+  server.joined.add(occasion);
+  server.addHidden(
+    occasion,
+    'Weekend by the sea',
+    author: kAliceName,
+    mine: true,
+    description: 'Two nights, for her and Tom',
+    priceAmount: '240.00',
+    priceCurrency: 'EUR',
+  );
+  final carols = server.addHidden(
+    occasion,
+    'Ice skates',
+    author: 'Carol Lambert',
+  );
+  server.addClaim(carols, occasion, [FakeListsServer.giver('Dan Moreau')]);
+  server.addHidden(occasion, 'Candle set');
+  return occasion;
+}
+
+/// Bob's occasion joined, the book reserved by Carol so that the sheet has
+/// no action above the thread; with [comments]: Carol's, Alice's edited one,
+/// and one whose author's account is deleted (COMMENTS_NOTIFICATIONS_PLAN
+/// D20).
+String _threadOccasion(FakeListsServer server, {bool comments = true}) {
+  final occasion = _bobsOccasion(server);
+  server.joined.add(occasion);
+  final book = server.gifts[1]['id'] as String;
+  server.addClaim(book, occasion, [FakeListsServer.giver('Carol Lambert')]);
+  if (comments) {
+    server
+      ..addComment(
+        occasion,
+        book,
+        'I found the illustrated edition. Should I wait for the sale?',
+        author: 'Carol Lambert',
+      )
+      ..addComment(occasion, book, 'Yes, it ends on Friday.', mine: true, edited: true)
+      ..addComment(occasion, book, 'I can pick it up.');
+  }
+  return occasion;
+}
+
 void main() {
   const brightnesses = {'light': Brightness.light, 'dark': Brightness.dark};
 
@@ -148,6 +196,20 @@ void main() {
         ('/shared/${_passedOccasion(server)}', null),
     'occasion_giver': (server) => (_giverOccasion(server), null),
     'pledge_dialog': (server) => ('/shared/${_groupOccasion(server)}', null),
+    'occasion_hidden_gifts': (server) =>
+        ('/shared/${_hiddenOccasion(server)}', null),
+    'hidden_gift_sheet_author': (server) =>
+        ('/shared/${_hiddenOccasion(server)}', null),
+    'hidden_gift_form': (server) {
+      final occasion = _bobsOccasion(server);
+      server.joined.add(occasion);
+      return ('/shared/$occasion/hidden/new', null);
+    },
+    'gift_thread': (server) => ('/shared/${_threadOccasion(server)}', null),
+    'gift_thread_empty': (server) =>
+        ('/shared/${_threadOccasion(server, comments: false)}', null),
+    'gift_thread_edit': (server) =>
+        ('/shared/${_threadOccasion(server)}', null),
     'join_confirmation': (server) {
       _bobsOccasion(server);
       return ('/join', 'tok');
@@ -155,8 +217,27 @@ void main() {
     'join_error': (server) => ('/join', 'gone'),
   };
 
+  Future<void> openBook(WidgetTester tester) async {
+    await tester.tap(find.text('A book about the sea'));
+    await tester.pumpAndSettle();
+  }
+
   // What is tapped once the screen is shown.
   final then = <String, Future<void> Function(WidgetTester)>{
+    'hidden_gift_sheet_author': (tester) async {
+      final mine = find.text('Weekend by the sea');
+      await tester.ensureVisible(mine);
+      await tester.pumpAndSettle();
+      await tester.tap(mine);
+      await tester.pumpAndSettle();
+    },
+    'gift_thread': (tester) => openBook(tester),
+    'gift_thread_empty': (tester) => openBook(tester),
+    'gift_thread_edit': (tester) async {
+      await openBook(tester);
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+    },
     'gift_sheet_group': (tester) async {
       await tester.tap(find.text('Noise-cancelling headphones'));
       await tester.pumpAndSettle();
@@ -173,8 +254,14 @@ void main() {
     },
   };
 
-  // Every activity chip needs a taller screen.
-  const tall = {'occasion_activity'};
+  // Every activity chip, or a whole thread, needs a taller screen.
+  const tall = {
+    'occasion_activity',
+    'occasion_hidden_gifts',
+    'gift_thread',
+    'gift_thread_empty',
+    'gift_thread_edit',
+  };
 
   group('goldens', skip: _skip, () {
     for (final MapEntry(key: screen, value: setUp) in screens.entries) {

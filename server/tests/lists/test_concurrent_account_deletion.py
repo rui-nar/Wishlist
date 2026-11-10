@@ -9,8 +9,9 @@ locks as `DELETE /api/me` takes them: the user `FOR UPDATE`, then their
 occasions.
 """
 
+import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import partial
 
 import pytest
@@ -323,3 +324,64 @@ def test_two_deletions_of_one_account_at_once(client, make_account, rows):
 
         assert sorted(response.status_code for response in responses) == [204, 401]
         assert rows("users", "id", ana.id) == 0
+
+
+def test_dismissing_a_hidden_gift_during_its_authors_deletion_never_deadlocks(
+    client, make_account, occasion, engine, rows
+):
+    # Review R3-1. Ana added a hidden gift and bought it with Ben as a group
+    # gift. The owner dismisses it, holding its locks as `delete_gift` takes
+    # them: the gift `FOR UPDATE`, then its claims. Ana's deletion releases
+    # her group gift (its claim) and sets the gift's `hidden_by` to null (the
+    # gift): it must wait on the gift before taking any claim.
+    ana, ben = make_account("Ana"), make_account("Ben")
+    for account in (ana, ben):
+        assert join(client, account, occasion).status_code == 200
+    gift = uuid.uuid4()
+    values = {"gift": gift, "occasion": occasion[0], "ana": ana.id, "ben": ben.id}
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO gifts (id, for_list_id, hidden_occasion_id, hidden_by,"
+                " title, description, links)"
+                " SELECT :gift, list_id, id, :ana, 'Hidden', '', '{}'"
+                " FROM occasions WHERE id = :occasion"
+            ),
+            values,
+        )
+        connection.execute(
+            text(
+                "INSERT INTO gift_claims (gift_id, occasion_id, kind, bought_at)"
+                " VALUES (:gift, :occasion, 'group', :now)"
+            ),
+            values | {"now": datetime.now(UTC)},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO claim_participants (gift_id, user_id)"
+                " VALUES (:gift, :ana), (:gift, :ben)"
+            ),
+            values,
+        )
+
+    with engine.connect() as dismissing:
+        dismissing.execute(
+            text("SELECT id FROM gifts WHERE id = :gift FOR UPDATE"), values
+        )
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            deleting = pool.submit(delete_account, client, ana)
+            wait_until_blocked_on_a_lock(engine)
+            # Had the deletion taken the claim before the gift, these would
+            # deadlock with it.
+            dismissing.execute(
+                text("DELETE FROM gift_claims WHERE gift_id = :gift"), values
+            )
+            dismissing.execute(text("DELETE FROM gifts WHERE id = :gift"), values)
+            dismissing.commit()
+            deleted = deleting.result(timeout=TIMEOUT_SECONDS)
+
+    assert deleted.status_code == 204, deleted.text
+    assert rows("gifts", "id", gift) == 0
+    assert rows("gift_claims", "gift_id", gift) == 0
+    assert_nothing_names(rows, ana.id)
+    assert_claims_consistent(engine)

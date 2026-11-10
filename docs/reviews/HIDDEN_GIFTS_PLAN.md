@@ -1,0 +1,113 @@
+# Review ledger — Hidden gifts and received marking
+
+Subject: docs/plans/HIDDEN_GIFTS_PLAN.md
+Envelope: plan section "Review envelope", plus REVIEW.md defaults
+
+Approval: under the owner's standing instruction of 2026-11-09 ("go with
+hidden gifts & comments & notifications. same thing, do it all silently"),
+the orchestrator approves the triaged table after enforcing the floors, and
+answers envelope questions with its recommendation.
+
+## Round 1 — 2026-11-09, reviewed at 0a7111d
+
+Envelope questions, answered by the orchestrator: (1) moving a date earlier
+keeps the later reveal date; the client shows, identically on every
+occasion, a warning when a date is moved earlier, so a typo can be noticed
+before it is saved. (2) An owner's removal of an invitee also deletes that
+person's unbought hidden gifts (the owner's remedy against an abusive
+invitee, per-row work the RESERVING envelope accepts for removal); leaving
+on one's own keeps them. (3) The rollback runbook states the window in
+which `latest_date` is not maintained, instead of claiming no leak.
+
+### R1-1 — A received hidden gift leaves "Received" when its occasion's date moves later, and is deleted with the occasion
+- Trigger: owner marks a revealed hidden gift received → moves the occasion's date to next year → the gift leaves Received → owner deletes the occasion → the received gift is deleted
+- Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D3, floor F2)
+- Override: —
+- Outcome: fixed (in plan: D4, D5, D9; U1, U3)
+
+### R1-2 — Cascades from gifts that COMMENTS_NOTIFICATIONS_PLAN D13 removes
+- Trigger: the comments delivery drops `gift_claims.gift_id → gifts` → D6, D9, D15 and the U3/U5 tests describe cascades that no longer exist
+- Scores: trigger=concrete, impact=maintainability, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (in plan: D6, D9, D15; `drop_gift_activity`, U1)
+
+### R1-3 — Dismissing or editing a revealed hidden gift emails its buyer, while keep and received do not
+- Trigger: the recipient dismisses (DELETE) or edits (PATCH) a revealed hidden gift → `gift_deleted`/`gift_changed` reaches the giver who bought it
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/shared, confidence=verified (triager: was inferred)
+- Decision: Defer (D8)
+- Override: orchestrator, under the standing instruction: Fix now — the product question is decided (NEEDS, Notifications: a revealed gift's dismissal or edit notifies nobody, like keep and received); fixed in COMMENTS_NOTIFICATIONS_PLAN (whether a gift is revealed is the owner's own data, so the condition keeps D12)
+- Outcome: fixed (in plan: COMMENTS_NOTIFICATIONS_PLAN D10)
+
+## Round 2 — 2026-11-09, reviewed at c05577d
+
+Envelope question, answered by the orchestrator: when an owner's removal of
+an author deletes their hidden gift, its remaining participants are notified
+that the gift was removed (recorded in NEEDS, Notifications).
+
+### R2-1 — Put back on a received hidden gift whose reveal date moved later loses it
+- Trigger: owner marks a revealed hidden gift received → moves the occasion's date later → puts the gift back → it leaves every owner view → deleting the occasion deletes it
+- Scores: trigger=plausible, impact=data-loss, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D3, floor F2)
+- Override: —
+- Outcome: fixed (in plan: D5, D6; U3 `not_revealed`)
+
+### R2-2 — Removal deletes a hidden gift right after `participants_left` listed it
+- Trigger: owner removes an invitee who wrote an unbought hidden group gift others pledged on → the gift is deleted in the same transaction → the fan-out finds no gift row; pledgers get nothing, or the whole event fails
+- Scores: trigger=concrete (triager: was plausible), impact=degraded-ux, detect=silent, later=cheap, fix=S/shared, confidence=verified
+- Decision: Defer (D8)
+- Override: orchestrator, under the standing instruction: Fix now — the notification is now a NEEDS requirement, and a failing fan-out would also drop the notifications about the leaver's other group gifts
+- Outcome: fixed (in plan: D15; COMMENTS_NOTIFICATIONS_PLAN `gifts_removed`)
+
+## Round 3 — 2026-11-09, unit review of U1, reviewed at 29ec85f
+
+### R3-1 — Dismissing a revealed hidden gift can deadlock with its author's account deletion
+- Trigger: the author of a hidden gift who bought it deletes their account while the recipient dismisses it → `delete_gift` holds the gift and waits on the claim; `delete_me` holds the claim (release) and waits on the gift (`hidden_by` SET NULL) → deadlock, one 500
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/shared, confidence=verified
+- Decision: Defer (D10)
+- Override: orchestrator, under the standing instruction: Fix now — D10's lock order (user → occasions → gifts → claims) is a stated invariant of the plan and the fix is one helper in `lifecycle.py`; account deletion answering 500 is what RESERVING R9-3 was fixed for
+- Outcome: fixed (ff1bbbf, `lock_authored`)
+
+## Round 4 — 2026-11-09, unit review of U5, reviewed at 2322000
+
+No findings.
+
+## Round 5 — 2026-11-09, integrated review, reviewed at 316b828
+
+Envelope question, answered by the orchestrator: a new installed client
+against a rolled-back server fails the occasion page, because `/hidden-gifts`
+answers 404. Accepted and stated in the plan's rollback notes, with no code
+change: the web client rolls back with the server and no mobile build exists
+yet. To revisit with the mobile release.
+
+### R5-1 — Deleting an occasion before its reveal destroys bought hidden gifts without warning
+- Trigger: the recipient deletes the occasion the morning after the event, before 12:00 UTC on D+1 or before a later `latest_date` → the confirmation mentions only access and the link → bought hidden gifts are deleted and never revealed
+- Scores: trigger=concrete, impact=degraded-ux, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Override: —
+- Outcome: fixed (5f2f3d0)
+
+## Delivery
+
+Orchestrated under the owner's standing instruction of 2026-11-09, in the
+same branch as the comments and notifications plan
+(`feat/hidden-gifts-comments`). Units of a multi-unit wave ran in worktrees
+(W2). Server checks ran in a Linux container on the dev Docker network,
+because Windows Application Control blocks the host venv's compiled modules.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | The hidden-gift model and the visibility guard | Opus | S4 | 1 | — | yes | R1-1, R1-2, R3-1 |
+| U2 | Welcome copy mentions hidden gifts | Sonnet | — | 1 | blocked on goldens (`pwsh` refused in the worktree), regenerated by the orchestrator | yes | — |
+| U3 | Received, put back and keep | Opus | S4 | 1 | X3 (`test_lists.py` expected dicts) | yes | R1-1, R2-1 |
+| U4 | Client: received and revealed gifts | Opus | S5 | 1 | — | yes | R2-1 |
+| U5 | Hidden-gift routes for givers | Opus | S5 | 1 | — | yes | — |
+| U6 | Client: hidden gifts for givers | Opus | S5 | 1 | — | yes | — |
+| U7 | The recipient sees nothing of hidden gifts | Opus | S5 | 1 | run time doubled; 3.5 minutes accepted, nothing trimmed | yes | R1-1 |
+| F1 | Occasion deletion warns about hidden gifts | Sonnet | — | 1 | — | yes | R5-1 |
+
+Integrated checks at 316b828: server 692 passed outside `test_roles.py`, with
+ruff, format and `alembic check` clean (`test_roles.py`, 784 passed at
+2322000, same server code); client analyze clean, 518 passed, 96 goldens
+matched.

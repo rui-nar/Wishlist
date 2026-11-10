@@ -8,13 +8,15 @@ a random UUID.
 """
 
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from fastapi import HTTPException, status
-from sqlalchemy import exists, select
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, and_, exists, not_, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.accounts.models import User
+from app.lists import visibility
 from app.lists.models import OTHER, Gift, List, ListOwner, Occasion, OccasionMember
 
 OWNER = "owner"
@@ -39,12 +41,20 @@ def owned_list(db: Session, user: User, list_id: uuid.UUID) -> List:
     return found
 
 
-def owned_gift(db: Session, user: User, gift_id: uuid.UUID) -> Gift:
-    """The gift, if the user owns its list (through `owned_list`); otherwise 404."""
+def owned_gift(db: Session, user: User, gift_id: uuid.UUID, now: datetime) -> Gift:
+    """The gift, if the user owns its list (through `owned_list`) and its
+    owners see it (`visibility.owner_visible`); otherwise 404.
+
+    A hidden gift not revealed at `now` answers what a random id answers, to
+    every owner, those of a "for someone else" list included: they reach it
+    as givers (hidden gifts plan D4, D7).
+    """
     gift = db.get(Gift, gift_id)
     if gift is None:
         raise not_found()
-    owned_list(db, user, gift.list_id)
+    owned_list(db, user, visibility.list_of(gift))
+    if not visibility.is_owner_visible(db, gift, now):
+        raise not_found()
     return gift
 
 
@@ -108,6 +118,73 @@ def giving_occasion(
             raise not_found()
     occasion, role = visible_occasion(db, user, occasion_id)
     if role == OWNER and db.get_one(List, occasion.list_id).recipient_kind != OTHER:
+        raise not_found()
+    return occasion
+
+
+def giver_condition(
+    user_id: uuid.UUID | ColumnElement[uuid.UUID],
+    occasion_id: uuid.UUID | ColumnElement[uuid.UUID],
+) -> ColumnElement[bool]:
+    """`giving_occasion`'s rule as a SQL expression, for the worker (comments
+    plan D11): ownership of a "for me" list is checked first, so a recipient
+    is never a giver, even one who was a member.
+
+    On aliases, so the rule means the same whatever the enclosing query
+    selects from: only the columns passed in correlate.
+    """
+    occasion = aliased(Occasion)
+    listing = aliased(List)
+    owner = aliased(ListOwner)
+    member = aliased(OccasionMember)
+    owns = exists().where(
+        occasion.id == occasion_id,
+        owner.list_id == occasion.list_id,
+        owner.user_id == user_id,
+    )
+    owns_for_someone_else = exists().where(
+        occasion.id == occasion_id,
+        owner.list_id == occasion.list_id,
+        owner.user_id == user_id,
+        listing.id == occasion.list_id,
+        listing.recipient_kind == OTHER,
+    )
+    is_member = exists().where(
+        member.occasion_id == occasion_id, member.user_id == user_id
+    )
+    return or_(owns_for_someone_else, and_(not_(owns), is_member))
+
+
+def giving_gift(
+    db: Session,
+    user: User,
+    occasion_id: uuid.UUID,
+    gift_id: uuid.UUID,
+    lock: bool = True,
+) -> Occasion:
+    """The occasion, if the user gives in it and its givers see the gift (on
+    its list or one of its hidden gifts, not received); otherwise 404
+    (reserving plan D6, hidden gifts plan D4, comments plan D6).
+
+    For a write, the gift is locked `FOR KEY SHARE` (reserving plan D7 step
+    2): its deletion at the same moment either committed before (404) or
+    waits for this request, while an owner's edit of it, or its receipt, is
+    not blocked. A read passes `lock=False`, which locks neither the occasion
+    nor the gift. Only the gift's id is read, so the row is never in the
+    session to be written back (reserving plan D3).
+    """
+    occasion = giving_occasion(db, user, occasion_id, lock=lock)
+    if lock:
+        found = visibility.lock_gift_in_occasion(db, gift_id, occasion)
+    else:
+        found = bool(
+            db.scalar(
+                select(
+                    exists().where(Gift.id == gift_id, visibility.in_occasion(occasion))
+                )
+            )
+        )
+    if not found:
         raise not_found()
     return occasion
 

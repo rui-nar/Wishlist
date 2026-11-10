@@ -9,6 +9,7 @@ import '../design/tokens.dart';
 import '../design/widgets/status_chip.dart';
 import '../lists/common.dart';
 import '../lists/price.dart';
+import 'gift_thread.dart';
 import 'shared_repository.dart';
 
 /// What a giver can do to a gift, each a button of the sheet.
@@ -20,6 +21,8 @@ enum GiftAction {
   joinGroup,
   changeAmount,
   leaveGroup,
+  edit,
+  delete,
 }
 
 /// The actions [claim] allows the user. Once the occasion has [passed],
@@ -58,6 +61,40 @@ List<GiftAction> giftActions(
         ];
 }
 
+/// Whether the user may edit or delete [gift]: a hidden gift they added, not
+/// bought, while the occasion has not [passed] (HIDDEN_GIFTS_PLAN D8).
+bool authorMayChange(
+  SharedGift gift,
+  GiftClaim? claim, {
+  required bool passed,
+}) =>
+    gift is HiddenGift && gift.mine && !passed && !(claim?.bought ?? false);
+
+/// The rose chip of who added [gift], a hidden gift; null once their account
+/// is deleted (HIDDEN_GIFTS_PLAN D8, D14).
+StatusChip? authorChip(AppLocalizations l10n, HiddenGift gift) {
+  final author = gift.author;
+  if (author == null) return null;
+  return StatusChip(
+    label: gift.mine
+        ? l10n.hiddenGiftAddedByYou
+        : l10n.hiddenGiftAddedBy(personName(l10n, author)),
+    icon: Icons.person_outline,
+    variant: StatusChipVariant.inviteeActivity,
+  );
+}
+
+/// What to say when the server refused a change to a hidden gift.
+String hiddenGiftRefusalMessage(
+  AppLocalizations l10n,
+  HiddenGiftRefusal refusal,
+) =>
+    switch (refusal) {
+      HiddenGiftRefusal.notAuthor => l10n.hiddenGiftNotAuthor,
+      HiddenGiftRefusal.bought => l10n.hiddenGiftBoughtNow,
+      HiddenGiftRefusal.passed => l10n.claimPassedNow,
+    };
+
 /// The rose chip of [claim]: who reserved or bought it, a group gift and
 /// how many are in it, or taken.
 StatusChip claimChip(AppLocalizations l10n, GiftClaim claim) {
@@ -92,50 +129,115 @@ StatusChip claimChip(AppLocalizations l10n, GiftClaim claim) {
   );
 }
 
-/// The gift's sheet: its title, price and details, its claim with the
-/// pledges, and the buttons of [giftActions]. Returns the action tapped,
-/// which the caller confirms and sends; null when closed.
+/// The gift's sheet: its title, price and details, who added a hidden gift,
+/// its claim with the pledges, the buttons of [giftActions], then Edit and
+/// Delete for the author ([authorMayChange]), then the comments, with the
+/// follow toggle in the header (COMMENTS_NOTIFICATIONS_PLAN D20). Returns the
+/// action tapped, which the caller confirms and sends; null when closed.
 Future<GiftAction?> showGiftSheet(
   BuildContext context, {
+  required SharedRepository repository,
+  required String occasionId,
   required SharedGift gift,
   required GiftClaim? claim,
   required bool passed,
-}) =>
-    showModalBottomSheet<GiftAction>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) =>
-          _GiftSheet(gift: gift, claim: claim, passed: passed),
-    );
+}) {
+  final pageMessenger = ScaffoldMessenger.of(context);
+  return showModalBottomSheet<GiftAction>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (context) => _GiftSheet(
+      repository: repository,
+      occasionId: occasionId,
+      gift: gift,
+      claim: claim,
+      passed: passed,
+      pageMessenger: pageMessenger,
+    ),
+  );
+}
 
-class _GiftSheet extends StatelessWidget {
+class _GiftSheet extends StatefulWidget {
   const _GiftSheet({
+    required this.repository,
+    required this.occasionId,
     required this.gift,
     required this.claim,
     required this.passed,
+    required this.pageMessenger,
   });
 
+  final SharedRepository repository;
+  final String occasionId;
   final SharedGift gift;
   final GiftClaim? claim;
   final bool passed;
+
+  /// Says a write's failure once the sheet has closed.
+  final ScaffoldMessengerState pageMessenger;
+
+  @override
+  State<_GiftSheet> createState() => _GiftSheetState();
+}
+
+class _GiftSheetState extends State<_GiftSheet> {
+  /// The sheet's own messenger: the page's snack bars are drawn behind it.
+  final _messenger = GlobalKey<ScaffoldMessengerState>();
+  late final GiftThreadController _thread;
+  late AppLocalizations _l10n;
+
+  @override
+  void initState() {
+    super.initState();
+    _thread = GiftThreadController(
+      repository: widget.repository,
+      occasionId: widget.occasionId,
+      giftId: widget.gift.id,
+      onFailure: _say,
+    )..load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _l10n = AppLocalizations.of(context);
+  }
+
+  @override
+  void dispose() {
+    _thread.dispose();
+    super.dispose();
+  }
+
+  void _say(Object error, {required bool write}) {
+    (_messenger.currentState ?? widget.pageMessenger).showSnackBar(
+      SnackBar(
+        content: Text(commentFailureMessage(_l10n, error, write: write)),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final locale = Localizations.localeOf(context).toString();
-    final claim = this.claim;
+    final claim = widget.claim;
+    final gift = widget.gift;
+    final passed = widget.passed;
     final actions = giftActions(
       claim,
       passed: passed,
       priced: gift.priceCurrency != null,
     );
+    final author = gift is HiddenGift ? authorChip(l10n, gift) : null;
+    final mayChange = authorMayChange(gift, claim, passed: passed);
     final total = claim == null ? null : _total(claim, locale, l10n);
     final metadata = theme.textTheme.bodyLarge?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
-    return SafeArea(
+    final content = SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
           Spacing.s24,
@@ -146,7 +248,15 @@ class _GiftSheet extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(gift.title, style: theme.textTheme.titleLarge),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(gift.title, style: theme.textTheme.titleLarge),
+                ),
+                GiftFollowToggle(controller: _thread),
+              ],
+            ),
             if (gift.priceAmount != null)
               Text(
                 formatPrice(gift.priceAmount!, gift.priceCurrency!, locale),
@@ -155,6 +265,10 @@ class _GiftSheet extends StatelessWidget {
             if (gift.description.isNotEmpty) ...[
               const SizedBox(height: Spacing.s12),
               Text(gift.description, style: theme.textTheme.bodyLarge),
+            ],
+            if (author != null) ...[
+              const SizedBox(height: Spacing.s16),
+              Align(alignment: Alignment.centerLeft, child: author),
             ],
             if (claim != null) ...[
               const SizedBox(height: Spacing.s16),
@@ -219,6 +333,44 @@ class _GiftSheet extends StatelessWidget {
                       child: Text(_label(l10n, action)),
                     ),
             ],
+            if (mayChange) ...[
+              SizedBox(height: actions.isEmpty ? Spacing.s16 : Spacing.s8),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(GiftAction.edit),
+                child: Text(_label(l10n, GiftAction.edit)),
+              ),
+              const SizedBox(height: Spacing.s8),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(GiftAction.delete),
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.colorScheme.error,
+                ),
+                child: Text(_label(l10n, GiftAction.delete)),
+              ),
+            ],
+            const SizedBox(height: Spacing.s24),
+            GiftThreadSection(controller: _thread),
+          ],
+        ),
+      ),
+    );
+    // Above the keyboard, now that the sheet has fields; the snack bars of
+    // its messenger show over it, and the empty scaffold takes no tap.
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: ScaffoldMessenger(
+        key: _messenger,
+        child: Stack(
+          children: [
+            content,
+            const Positioned.fill(
+              child: IgnorePointer(
+                child: Scaffold(
+                  backgroundColor: Colors.transparent,
+                  resizeToAvoidBottomInset: false,
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -229,8 +381,8 @@ class _GiftSheet extends StatelessWidget {
   /// every pledge with an amount is in its currency (D9: an owner may have
   /// changed the currency since); pledges without an amount add nothing.
   String? _total(GiftClaim claim, String locale, AppLocalizations l10n) {
-    final price = gift.priceAmount;
-    final currency = gift.priceCurrency;
+    final price = widget.gift.priceAmount;
+    final currency = widget.gift.priceCurrency;
     final pledges = [
       for (final participant in claim.participants)
         if (participant.pledgeAmount != null) participant,
@@ -260,6 +412,8 @@ String _label(AppLocalizations l10n, GiftAction action) => switch (action) {
       GiftAction.joinGroup => l10n.claimJoinGroup,
       GiftAction.changeAmount => l10n.claimChangeAmount,
       GiftAction.leaveGroup => l10n.claimLeaveGroup,
+      GiftAction.edit => l10n.editGift,
+      GiftAction.delete => l10n.deleteGift,
     };
 
 /// What the pledge dialog gives back: the amount, a decimal string in the

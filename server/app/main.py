@@ -19,10 +19,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.accounts import sessions
 from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
+from app.comments.router import router as comments_router
 from app.db import create_db_engine, create_session_factory
+from app.hidden_gifts.router import router as hidden_gifts_router
 from app.lists.router import router as lists_router
 from app.media.purge import MediaPurge
 from app.media.router import router as media_router
+from app.notifications.digests import EmailConfig
+from app.notifications.mailer import BrevoMailer
+from app.notifications.router import router as notifications_router
+from app.notifications.worker import NotificationWorker
 from app.reserving.router import router as reserving_router
 from app.safe_fetch import SafeFetcher
 from app.settings import Settings
@@ -71,7 +77,19 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
                 lambda: app.state.clock(),
             )
             app.state.media_purge.start()
+        # Stopped before the engine goes too (comments plan D16).
+        app.state.notification_worker = None
+        if settings.notifications_worker:
+            app.state.notification_worker = NotificationWorker(
+                app.state.session_factory,
+                lambda: app.state.mailer,
+                EmailConfig.from_settings(settings),
+                lambda: app.state.clock(),
+            )
+            app.state.notification_worker.start()
         yield
+        if app.state.notification_worker is not None:
+            app.state.notification_worker.stop()
         if app.state.media_purge is not None:
             app.state.media_purge.stop()
         engine.dispose()
@@ -87,6 +105,17 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     )
     app.state.clock = sessions.utc_now
     app.state.url_fetcher = SafeFetcher(version=settings.app_version)
+    # None until every variable it needs is set: the worker then skips the
+    # digests that come due (comments plan D19).
+    app.state.mailer = (
+        None
+        if settings.missing_email_settings
+        else BrevoMailer(
+            settings.brevo_api_key,
+            settings.email_sender_address,
+            settings.email_sender_name,
+        )
+    )
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.
@@ -133,6 +162,9 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.include_router(lists_router)
     app.include_router(media_router)
     app.include_router(reserving_router)
+    app.include_router(hidden_gifts_router)
+    app.include_router(comments_router)
+    app.include_router(notifications_router)
     app.add_exception_handler(RequestValidationError, _validation_error)
 
     # Registered last, so every /api route above takes precedence.

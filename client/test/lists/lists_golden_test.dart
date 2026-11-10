@@ -57,6 +57,20 @@ void main() {
       server.addGift(list, 'Wool socks');
       return '/lists/$list';
     },
+    // A revealed gift and a received one (HIDDEN_GIFTS_PLAN D13).
+    'list_detail_received': (server) {
+      final list = server.addList('Birthday');
+      server.addGift(list, 'Wool socks');
+      server.addRevealed(
+        list,
+        'Noise-cancelling headphones',
+        links: ['https://shop.example/h'],
+        priceAmount: '149.00',
+        priceCurrency: 'EUR',
+      );
+      server.markReceived(server.addGift(list, 'A book about the sea'));
+      return '/lists/$list';
+    },
     'gift_form': (server) {
       final list = server.addList('Christmas', recipientName: 'Léa');
       final gift = server.addGift(
@@ -106,6 +120,12 @@ void main() {
       final occasion = server.addOccasion(list, 'Christmas 2026', '2026-12-24');
       return '/lists/$list/occasions/$occasion/edit';
     },
+    // The date moved earlier: the warning under it (HIDDEN_GIFTS_PLAN D13).
+    'occasion_form_warning': (server) {
+      final list = server.addList('Christmas', recipientName: 'Léa');
+      final occasion = server.addOccasion(list, 'Christmas 2026', '2026-12-24');
+      return '/lists/$list/occasions/$occasion/edit';
+    },
     'occasion_members': (server) {
       final list = server.addList('Christmas', recipientName: 'Léa');
       final occasion = server.addOccasion(
@@ -131,6 +151,23 @@ void main() {
         'https://shop.example/h.png',
       );
       await tester.tap(find.text('Use this image'));
+      await tester.pumpAndSettle();
+    },
+    // The Received section open, its gift in view.
+    'list_detail_received': (tester) async {
+      final received = find.text('Received (1)');
+      await tester.ensureVisible(received);
+      await tester.pumpAndSettle();
+      await tester.tap(received);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('A book about the sea'));
+      await tester.pumpAndSettle();
+    },
+    'occasion_form_warning': (tester) async {
+      await tester.tap(find.byIcon(Icons.calendar_today_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('15'));
+      await tester.tap(find.text('OK'));
       await tester.pumpAndSettle();
     },
     // The occasions, below the gifts.

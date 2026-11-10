@@ -381,14 +381,17 @@ void main() {
       final gift = priced('Headphones');
       server.addClaim(gift, occasion, [alice]);
       await startApp(tester, server, '/shared/$occasion');
-      final calls = server.calls.length;
+      // Opening the sheet loads its thread, which is no write.
+      final thread = 'GET /api/occasions/$occasion/gifts/$gift/comments';
+      int calls() => server.calls.where((call) => call != thread).length;
+      final before = calls();
       for (final action in ['Release', 'Mark as bought']) {
         await openSheet(tester, 'Headphones');
         await tapInSheet(tester, action);
         await tapInDialog(tester, 'Cancel');
       }
 
-      expect(server.calls.length, calls);
+      expect(calls(), before);
       expect(roseChip(tester, 'Headphones')!.label, 'Reserved by you');
     });
 

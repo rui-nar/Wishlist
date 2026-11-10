@@ -35,6 +35,9 @@ below; replace them as you run the commands.
 | `<old-postgres-tag>` | the exact Postgres image tag before a major upgrade, e.g. `18.6` |
 | `<postgres-password>` | never typed: the text in `deploy/*/.env.example` that [step 5](#5-env-files) replaces with a generated password |
 | `<google-web-client-id>` | the ID of Wishlist's web OAuth client in the Google Cloud console, ending in `.apps.googleusercontent.com` ([step 11](#11-google-sign-in)). Public, not a secret, but never committed |
+| `<brevo-api-key>` | an API key of the Brevo account that sends Wishlist's emails ([Release-specific steps](#release-specific-steps)). Secret: pasted at a prompt, never typed into a command or committed |
+| `<sender-address>` | the address emails come from, a sender verified in that Brevo account. Never committed |
+| `<owner-address>` | the owner's own email address, the one their account on VAL signs in with. Never committed |
 
 Four placeholders are also the literal text of files in `deploy/`:
 `<prod-host>` and `<val-host>` in `Caddyfile.snippet`, `<deploy-user>` in
@@ -44,7 +47,8 @@ files. Inside the `sed` and `grep` patterns that fill in or check those files
 
 Commands are marked **[VPS]** (bash, logged in as `<deploy-user>`),
 **[dev]** (PowerShell in the repository checkout on the Windows dev machine),
-**[GitHub]** (the web UI of `rui-nar/Wishlist`) or **[Google Cloud]** (the
+**[GitHub]** (the web UI of `rui-nar/Wishlist`), **[Brevo]** (the console of
+the Brevo account that sends the emails) or **[Google Cloud]** (the
 Google Cloud console, in Wishlist's project).
 
 ## What Wishlist adds to the VPS
@@ -301,7 +305,9 @@ app itself, the mobile apps send no `Origin`), and `FORWARDED_ALLOW_IPS`
 `GOOGLE_CLIENT_IDS` stays empty until [step 11](#11-google-sign-in): until
 then the app runs and answers sign-in with "Google sign-in is not
 configured". `PUBLIC_BASE_URL` stays empty until Caddy serves the hosts
-([step 6](#6-caddy)). Never add `MEDIA_DIR` or `APP_VERSION`: the image sets both, and
+([step 6](#6-caddy)). Email stays off until its variables are filled in
+([Release-specific steps](#release-specific-steps)): the app runs without
+them. Never add `MEDIA_DIR` or `APP_VERSION`: the image sets both, and
 the comments in `.env.example` say what breaks otherwise.
 
 Things to know about these files:
@@ -421,7 +427,8 @@ the hook.
 
 **[VPS]** Now that the hosts are served, give each app its public address,
 which share links are built on (`<PUBLIC_BASE_URL>/join#<token>`). The web
-client would fall back to its own address; the mobile apps cannot:
+client would fall back to its own address; the mobile apps cannot, and no
+email is sent while it is empty:
 
 ```bash
 # literal placeholder: <val-host>, <prod-host> are this document's, replace them
@@ -702,7 +709,7 @@ curl.exe -s https://<traxjourney-prod-host>/api/version
 curl.exe -s https://<traxjourney-val-host>/api/version
 ```
 
-**[dev]** No secret was committed. Every Wishlist secret is 64 hex digits
+**[dev]** No secret was committed. Every secret generated here is 64 hex digits
 (`openssl rand -hex 32`); the only such strings in the repository are the
 package hashes in the two lock files:
 
@@ -1154,6 +1161,126 @@ Run these on the host **before** deploying the release named, once.
   that `free -m` shows "available" of at least 1150 MB; if not, stop and
   decide before deploying.
 
+- **The release with comments and email notifications** (the first with
+  `NOTIFICATION_SECRET` in the `.env.example` files).
+
+  **The migrations of this release run on deploy, by themselves.** The
+  image's entrypoint applies them before the app starts: on VAL when its image
+  arrives, on PROD during `.\deploy.ps1 -Target Prod`. Nothing is run by hand.
+  If one fails the app does not start: `docker compose logs app` in its
+  directory says why. To see which ones:
+  `git diff --name-only <previous-release> <release> -- server/alembic/versions`.
+
+  Email is off until the steps below are done. The release runs normally
+  without them and they can come later, but the emails due until then are
+  dropped, never sent afterwards. VAL first, checked, then PROD.
+
+  **[Brevo]** The owner has a sending key (`<brevo-api-key>`) and a verified
+  sender (`<sender-address>`, with SPF and DKIM on its domain). Setting up the
+  account and the DNS records is not part of this runbook.
+
+  **[VPS]** `PUBLIC_BASE_URL` must be set in **both** `.env`, VAL's and
+  PROD's. Email stays off in an environment where it is empty, even with
+  everything below filled in:
+
+  ```bash
+  grep -n '^PUBLIC_BASE_URL=' /opt/wishlist-val/.env /opt/wishlist/.env   # each with its https:// origin
+  ```
+
+  If one is empty or missing, run the commands of [step 6](#6-caddy) that set
+  it.
+
+  **[VPS]** Each `.env` gets the new lines if it predates them, from the
+  examples at the release (step 2 with `REF=<release>`). The first `grep` keeps
+  a second run from adding them twice:
+
+  ```bash
+  cd /opt/wishlist-val
+  grep -q '^NOTIFICATION_SECRET=' .env || \
+      grep -E '^(BREVO_API_KEY|EMAIL_|NOTIFICATION)' "$SRC/deploy/val/.env.example" >> .env
+  cd /opt/wishlist
+  grep -q '^NOTIFICATION_SECRET=' .env || \
+      grep -E '^(BREVO_API_KEY|EMAIL_|NOTIFICATION)' "$SRC/deploy/prod/.env.example" >> .env
+  grep -c -E '^(BREVO_API_KEY|EMAIL_|NOTIFICATION)' /opt/wishlist-val/.env /opt/wishlist/.env   # :6 for VAL, :5 for PROD
+  ```
+
+  `EMAIL_SENDER_NAME` and `NOTIFICATIONS_WORKER` keep the examples' values.
+  Never leave `NOTIFICATIONS_WORKER` empty: the app would refuse to start.
+  `false` stops the worker, and activity waits until it is back on.
+
+  **[VPS]** Fill in VAL. `NOTIFICATION_SECRET` signs the unsubscribe links:
+  each environment generates its own, never shared (VAL holds PROD's accounts,
+  so a shared secret would make VAL's links work on PROD), and it is never
+  rotated without reason, because that invalidates every unsubscribe link
+  already sent. The `sed` below only fills an empty line, so running it again
+  cannot rotate it.
+
+  `EMAIL_ALLOWED_RECIPIENTS` is VAL's safety: VAL is seeded from PROD and holds
+  real people's addresses, so it emails only those listed (comma-separated, no
+  spaces). Put the owner's own address and nobody who has not agreed to it. An
+  empty list emails nobody.
+
+  ```bash
+  cd /opt/wishlist-val
+  sed -i "s/^NOTIFICATION_SECRET=$/NOTIFICATION_SECRET=$(openssl rand -hex 32)/" .env
+  read -rs BREVO_KEY                                 # paste <brevo-api-key>, then Enter: nothing is shown or kept in the history
+  sed -i "s|^BREVO_API_KEY=.*|BREVO_API_KEY=$BREVO_KEY|" .env
+  unset BREVO_KEY
+  sed -i 's|^EMAIL_SENDER_ADDRESS=.*|EMAIL_SENDER_ADDRESS=<sender-address>|' .env
+  sed -i 's|^EMAIL_ALLOWED_RECIPIENTS=.*|EMAIL_ALLOWED_RECIPIENTS=<owner-address>|' .env
+  grep -c -E '^(BREVO_API_KEY=.|NOTIFICATION_SECRET=[0-9a-f]{64}$)' .env   # 2
+  grep -E '^EMAIL_' .env                             # the sender, its name, the allow-list; no secret
+  ls -l .env                                         # -rw-------
+  docker compose up -d --wait --wait-timeout 300
+  ```
+
+  **[VPS]** Once VAL runs this release (`/api/version`), the line it logs at
+  start naming missing variables is gone:
+
+  ```bash
+  docker compose -f /opt/wishlist-val/docker-compose.yml logs app |
+      grep -E 'BREVO_API_KEY|EMAIL_SENDER_ADDRESS|NOTIFICATION_SECRET|PUBLIC_BASE_URL'   # nothing
+  ```
+
+  Any line printed names what is still missing.
+
+  **[dev]** A comment on VAL reaches the allowed address. On
+  `https://<val-host>`, sign in with the `<owner-address>` account, in an
+  occasion where it is a giver (the recipient of a "for me" list is never
+  notified), and press **Follow** on a gift. From another account of that
+  occasion, comment on the gift. Within about two minutes one email arrives at
+  `<owner-address>`, its links on `https://<val-host>`; the author of the
+  comment gets none. If nothing arrives, see why (counts only, no address):
+
+  ```bash
+  cd /opt/wishlist-val
+  docker compose exec -T -u postgres db sh -c \
+      'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select status, skip_reason, count(*) from email_digests group by 1, 2"'
+  ```
+
+  `not_configured` is a missing variable, `not_allowed` an address outside the
+  allow-list, `opted_out` an account with notifications off, and `failed` a
+  send Brevo refused: the app's logs have the reason.
+
+  **[VPS]** Then PROD, once VAL's check has passed: the same commands in
+  `/opt/wishlist`, without the `EMAIL_ALLOWED_RECIPIENTS` line, which PROD
+  does not have. **From then on every account with notifications on receives
+  its emails.** If PROD does not run this release yet, leave out `up -d` too:
+  `.\deploy.ps1 -Target Prod` recreates the app with the new `.env`. After it,
+  run the log check above on `/opt/wishlist/docker-compose.yml`, and check that
+  the two secrets differ:
+
+  ```bash
+  [ "$(sed -n 's/^NOTIFICATION_SECRET=//p' /opt/wishlist/.env)" != \
+    "$(sed -n 's/^NOTIFICATION_SECRET=//p' /opt/wishlist-val/.env)" ] && echo different   # different
+  ```
+
+  **[dev]** The addresses were not committed:
+
+  ```powershell
+  git grep -n -F -e <sender-address> -e <owner-address>     # nothing
+  ```
+
 ### Updating the files on the host
 
 `deploy.ps1` and the webhook only pull images. Changes to the compose files,
@@ -1264,6 +1391,30 @@ still the bad release until the fix is built.
 VAL follows the `validation` tag. To take it back, move the tag to an older
 commit; the same limits apply (D15, and an image without `app.migrate`), and
 [seeding](#seeding-val-from-prod) resets it anyway.
+
+**Rolling back across the hidden gifts and comments release.** The rollback is
+image-only, as above: the previous release runs on this schema and never shows
+a hidden gift. During the rollback:
+
+- received gifts show on their lists again; hidden and revealed gifts are
+  invisible to everyone, and comments and follows are unreachable;
+- no notification event is written and no email is sent; events already
+  waiting are processed when this release runs again;
+- deleting an occasion deletes its bought hidden gifts instead of revealing
+  them;
+- gifts deleted during the rollback leave their activity unreachable, and the
+  worker removes it when this release runs again.
+
+**The surprise is not fully kept across this rollback.** The previous release
+does not maintain `occasions.latest_date`, so a recipient who moves an
+occasion's date into the past during the rollback sees that occasion's bought
+hidden gifts early, once this release runs again. Keep the rollback short and,
+on the way forward, check the occasions whose date moved earlier during it.
+
+A client of this release fails the occasion page against a rolled-back server,
+because `/hidden-gifts` answers 404. The web client is served by the server and
+rolls back with it; the mobile release must revisit this before builds are
+installed.
 
 ## Postgres major upgrade
 

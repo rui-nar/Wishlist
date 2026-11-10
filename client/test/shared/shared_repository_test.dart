@@ -453,4 +453,210 @@ void main() {
       );
     });
   });
+
+  group('hidden gifts', () {
+    const hidden = {
+      'id': 'g1',
+      'title': 'Weekend',
+      'description': 'Near the sea',
+      'links': ['https://shop.example/w'],
+      'price_amount': '199.50',
+      'price_currency': 'EUR',
+      'image': {
+        'id': 'i1',
+        'width': 800,
+        'height': 600,
+        'url': '/api/occasions/o1/images/i1/full',
+        'thumb_url': '/api/occasions/o1/images/i1/thumb',
+      },
+      'author': 'Ana',
+      'mine': false,
+    };
+    const draft = GiftDraft(title: 'Weekend');
+
+    Matcher refused(HiddenGiftRefusal refusal) => throwsA(
+          isA<HiddenGiftRefused>().having((e) => e.refusal, 'refusal', refusal),
+        );
+
+    test('hiddenGifts reads them, with author, mine and occasion paths',
+        () async {
+      answer = [
+        hidden,
+        {...hidden, 'id': 'g2', 'author': null, 'mine': true},
+      ];
+
+      final gifts = await repository().hiddenGifts('o 1');
+
+      expect(sent(0), 'GET /api/occasions/o%201/hidden-gifts');
+      expect(gifts.first.title, 'Weekend');
+      expect(gifts.first.description, 'Near the sea');
+      expect(gifts.first.links, ['https://shop.example/w']);
+      expect(gifts.first.priceAmount, '199.50');
+      expect(gifts.first.image!.url, '/api/occasions/o1/images/i1/full');
+      expect(gifts.first.author, 'Ana');
+      expect(gifts.first.mine, isFalse);
+      expect(gifts.last.author, isNull);
+      expect(gifts.last.mine, isTrue);
+    });
+
+    test('addHiddenGift posts the gift', () async {
+      answer = hidden;
+      code = 201;
+
+      final gift = await repository().addHiddenGift('o1', draft);
+
+      expect(sent(0), 'POST /api/occasions/o1/hidden-gifts');
+      expect(jsonDecode(seen[0].body), draft.toJson());
+      expect(gift.id, 'g1');
+    });
+
+    test('updateHiddenGift patches the gift', () async {
+      answer = hidden;
+
+      await repository().updateHiddenGift('o1', 'g1', draft);
+
+      expect(sent(0), 'PATCH /api/occasions/o1/hidden-gifts/g1');
+      expect(jsonDecode(seen[0].body), draft.toJson());
+    });
+
+    test('deleteHiddenGift deletes it', () async {
+      code = 204;
+
+      await repository().deleteHiddenGift('o1', 'g1');
+
+      expect(sent(0), 'DELETE /api/occasions/o1/hidden-gifts/g1');
+    });
+
+    test('a 403 and a 409 surface their code', () async {
+      code = 403;
+      answer = {'detail': 'Refused', 'code': 'not_author'};
+      await expectLater(
+        repository().updateHiddenGift('o1', 'g1', draft),
+        refused(HiddenGiftRefusal.notAuthor),
+      );
+      code = 409;
+      answer = {'detail': 'Refused', 'code': 'bought'};
+      await expectLater(
+        repository().deleteHiddenGift('o1', 'g1'),
+        refused(HiddenGiftRefusal.bought),
+      );
+      answer = {'detail': 'Refused', 'code': 'passed'};
+      await expectLater(
+        repository().addHiddenGift('o1', draft),
+        refused(HiddenGiftRefusal.passed),
+      );
+    });
+
+    test('any other refusal stays an ApiException', () async {
+      code = 404;
+      answer = {'detail': 'Not found'};
+      await expectLater(
+        repository().deleteHiddenGift('o1', 'g1'),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 404)),
+      );
+      // A code the hidden routes do not answer is not a refusal of theirs.
+      code = 409;
+      answer = {'detail': 'Refused', 'code': 'taken'};
+      await expectLater(
+        repository().deleteHiddenGift('o1', 'g1'),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 409)),
+      );
+    });
+  });
+
+  group('comments', () {
+    const comment = {
+      'id': 'c1',
+      'author_name': 'Carol',
+      'mine': false,
+      'body': 'I will take the blue one',
+      'created_at': '2026-11-09T10:30:00Z',
+      'edited': true,
+    };
+
+    test('thread reads the follow state and the comments', () async {
+      answer = {
+        'following': true,
+        'comments': [
+          comment,
+          {...comment, 'id': 'c2', 'author_name': null, 'mine': true, 'edited': false},
+        ],
+      };
+
+      final thread = await repository().thread('o1', 'g1');
+
+      expect(sent(0), 'GET /api/occasions/o1/gifts/g1/comments');
+      expect(thread.following, isTrue);
+      final [first, second] = thread.comments;
+      expect(first.id, 'c1');
+      expect(first.authorName, 'Carol');
+      expect(first.mine, isFalse);
+      expect(first.body, 'I will take the blue one');
+      expect(first.createdAt, DateTime.utc(2026, 11, 9, 10, 30));
+      expect(first.edited, isTrue);
+      expect(second.authorName, isNull);
+      expect(second.mine, isTrue);
+      expect(second.edited, isFalse);
+    });
+
+    test('comment posts the body', () async {
+      answer = comment;
+      code = 201;
+
+      final posted = await repository().comment('o1', 'g1', 'Hello');
+
+      expect(sent(0), 'POST /api/occasions/o1/gifts/g1/comments');
+      expect(jsonDecode(seen[0].body), {'body': 'Hello'});
+      expect(posted.id, 'c1');
+    });
+
+    test('editComment patches that comment', () async {
+      answer = comment;
+
+      await repository().editComment('o1', 'g1', 'c1', 'Changed');
+
+      expect(sent(0), 'PATCH /api/occasions/o1/gifts/g1/comments/c1');
+      expect(jsonDecode(seen[0].body), {'body': 'Changed'});
+    });
+
+    test('deleteComment deletes that comment', () async {
+      code = 204;
+
+      await repository().deleteComment('o1', 'g1', 'c1');
+
+      expect(sent(0), 'DELETE /api/occasions/o1/gifts/g1/comments/c1');
+    });
+
+    test('follow and unfollow take a 204 with no body', () async {
+      code = 204;
+
+      await repository().follow('o1', 'g1');
+      await repository().unfollow('o1', 'g1');
+
+      expect(sent(0), 'PUT /api/occasions/o1/gifts/g1/follow');
+      expect(seen[0].body, isEmpty);
+      expect(sent(1), 'DELETE /api/occasions/o1/gifts/g1/follow');
+    });
+
+    test('ids from the location cannot add to the path', () async {
+      code = 204;
+
+      await repository().deleteComment('o/1', 'g?1', 'c/1');
+
+      expect(
+        seen.single.url.toString(),
+        endsWith('/api/occasions/o%2F1/gifts/g%3F1/comments/c%2F1'),
+      );
+    });
+
+    test('a refusal stays an ApiException', () async {
+      code = 404;
+      answer = {'detail': 'Not Found'};
+
+      await expectLater(
+        repository().thread('o1', 'g1'),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 404)),
+      );
+    });
+  });
 }

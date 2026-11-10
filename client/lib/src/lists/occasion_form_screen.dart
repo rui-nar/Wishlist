@@ -34,9 +34,18 @@ class _OccasionFormScreenState extends State<OccasionFormScreen> {
 
   /// Editing: the occasion as it is, read from its list (owners only).
   Future<Occasion>? _occasion;
+
+  /// Editing: the occasion's date as saved.
+  DateTime? _savedDate;
   bool _saving = false;
 
   bool get _creating => widget.occasionId == null;
+
+  /// The date is moved earlier: hidden gifts are still revealed after the
+  /// later one (HIDDEN_GIFTS_PLAN D3, D13). Said on every occasion alike,
+  /// from the two dates alone, whatever happened in it.
+  bool get _movedEarlier =>
+      _savedDate != null && _date != null && _date!.isBefore(_savedDate!);
 
   @override
   void initState() {
@@ -65,6 +74,7 @@ class _OccasionFormScreenState extends State<OccasionFormScreen> {
     occasion.then((occasion) {
       _name.text = occasion.name;
       _date = occasion.date;
+      _savedDate = occasion.date;
     }, onError: (_) {});
   }
 
@@ -192,6 +202,10 @@ class _OccasionFormScreenState extends State<OccasionFormScreen> {
                         decoration: InputDecoration(
                           labelText: l10n.occasionDateLabel,
                           errorText: field.errorText,
+                          helperText: _movedEarlier
+                              ? l10n.occasionDateEarlierWarning
+                              : null,
+                          helperMaxLines: 3,
                           suffixIcon: const Icon(Icons.calendar_today_outlined),
                         ),
                         isEmpty: _date == null,

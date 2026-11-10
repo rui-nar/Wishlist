@@ -72,6 +72,34 @@ void main() {
       );
     });
 
+    test('the unsubscribe page passes, signed out and in (D18)', () {
+      for (final status in [
+        AuthStatus.signedOut,
+        AuthStatus.failed,
+        AuthStatus.signingIn,
+        AuthStatus.signedIn,
+      ]) {
+        expect(redirect(status, '/unsubscribe'), isNull, reason: '$status');
+        expect(redirect(status, '/unsubscribe#v1.a.b'), isNull,
+            reason: '$status');
+      }
+    });
+
+    test('signed out: a gift link keeps its gift through sign-in (D20)', () {
+      final target = redirect(AuthStatus.signedOut, '/shared/o1?gift=g1');
+      expect(
+        Uri.parse(target!).queryParameters['from'],
+        '/shared/o1?gift=g1',
+      );
+      expect(
+        redirect(
+          AuthStatus.signedIn,
+          '/sign-in?from=${Uri.encodeComponent('/shared/o1?gift=g1')}',
+        ),
+        '/shared/o1?gift=g1',
+      );
+    });
+
     test('signed in: the welcome page goes home (D6)', () {
       expect(redirect(AuthStatus.signedIn, '/welcome'), '/');
       expect(redirect(AuthStatus.signedIn, '/about'), isNull);

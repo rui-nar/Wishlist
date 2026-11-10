@@ -4,10 +4,12 @@ One scenario: a "for me" list and a "for someone else" list, each with its
 owner, a gift with an image, a second gift the invitee of the first occasion
 reserved and bought there, a third that is a group gift of the second
 occasion, and two occasions dated in the future and shared by link, an
-invitee who joined the first occasion and another who joined the second;
-someone who joined the first occasion of both lists and was removed from
-them; and a stranger who has nothing to do with either. Every endpoint is
-called by every actor on every list, and checked for:
+invitee who joined the first occasion and another who joined the second; a
+hidden gift of the first occasion, with an image, added by its invitee;
+a comment by the first occasion's invitee on the first gift, and their
+follow of the second; someone who joined the first occasion of both lists
+and was removed from them; and a stranger who has nothing to do with either.
+Every endpoint is called by every actor on every list, and checked for:
 
 - access: what each relation to the list and its first occasion gets
   (`expected`); the owner of the "for me" list, its recipient, gets 404 from
@@ -106,8 +108,11 @@ class Scenario:
     # Per list: the ids of what it holds, by name ("list_id", "gift_id",
     # "image_id", the gift's image, "claimed_gift_id", the gift bought in the
     # first occasion, "group_gift_id", the group gift of the second occasion,
-    # "occasion_id", "other_occasion_id", "user_id", the invitee of the first
-    # occasion, and "removed_id", the person removed from it).
+    # "hidden_gift_id" and "hidden_image_id", the first occasion's hidden gift
+    # and its image, "comment_id", the invitee's comment on the first gift in
+    # the first occasion, "occasion_id", "other_occasion_id", "user_id", the
+    # invitee of the first occasion, and "removed_id", the person removed from
+    # it).
     lists: dict[str, dict[str, str]]
     # Per list: each occasion's join token, by the name of its id.
     tokens: dict[str, dict[str, str]]
@@ -137,7 +142,10 @@ class Scenario:
         through that occasion, which names no user by id; not the list's id,
         its other occasion or any token. A removed person sees nothing of the
         list. Nobody sees another user's id unless they own a list that user
-        joined.
+        joined. The hidden gift and its image are seen by the givers of its
+        occasion only: its invitee and the owner of a list for someone else,
+        never the owner of a list for them (hidden gifts plan D7). The
+        comment's id, the same, is seen by the givers of its occasion only.
         """
         everything = {account.id for account in self.accounts.values()}
         visible = set()
@@ -151,6 +159,12 @@ class Scenario:
                 visible |= {
                     self.accounts[invitee].id for invitee in INVITEES[list_key].values()
                 }
+                if list_key == FOR_ME:
+                    visible -= {
+                        ids["hidden_gift_id"],
+                        ids["hidden_image_id"],
+                        ids["comment_id"],
+                    }
             elif relation in (INVITEE, INVITEE_ELSEWHERE):
                 occasion = FIRST if relation == INVITEE else SECOND
                 visible |= {
@@ -160,6 +174,12 @@ class Scenario:
                     ids["claimed_gift_id"],
                     ids["group_gift_id"],
                 }
+                if relation == INVITEE:
+                    visible |= {
+                        ids["hidden_gift_id"],
+                        ids["hidden_image_id"],
+                        ids["comment_id"],
+                    }
         return everything - visible
 
     def joined(self, actor: str) -> set[str]:
@@ -249,6 +269,36 @@ def scenario(client, make_account) -> Scenario:
                 headers=accounts[pledger].headers,
             )
             assert pledged.status_code == 200, pledged.text
+        # A hidden gift of the first occasion, with an image, added by its
+        # invitee; on the list for someone else, its owner reserves it
+        # (hidden gifts plan D7).
+        hidden_image = client.post("/api/images", content=png(), headers=giver).json()
+        hidden = client.post(
+            f"/api/occasions/{ids[FIRST]}/hidden-gifts",
+            json={"title": "Drone", "image_id": hidden_image["id"]},
+            headers=giver,
+        )
+        assert hidden.status_code == 201, hidden.text
+        ids["hidden_gift_id"] = hidden.json()["id"]
+        ids["hidden_image_id"] = hidden_image["id"]
+        if list_key == FOR_SOMEONE:
+            reserved = client.post(
+                f"/api/occasions/{ids[FIRST]}/gifts/{ids['hidden_gift_id']}/reservation",
+                headers=headers,
+            )
+            assert reserved.status_code == 200, reserved.text
+        # A comment on the first gift and a follow of the second, in the
+        # first occasion (comments plan D5).
+        gift_path = f"/api/occasions/{ids[FIRST]}/gifts"
+        commented = client.post(
+            f"{gift_path}/{gift['id']}/comments",
+            json={"body": "I'll take the blue one"},
+            headers=giver,
+        )
+        assert commented.status_code == 201, commented.text
+        ids["comment_id"] = commented.json()["id"]
+        followed = client.put(f"{gift_path}/{claimed['id']}/follow", headers=giver)
+        assert followed.status_code == 204, followed.text
         removed = accounts[REMOVED_INVITEE]
         client.post(
             "/api/join",
@@ -293,6 +343,12 @@ ENDPOINTS = [
     Endpoint("POST", "/api/lists/{list_id}/gifts", {"title": "Scarf"}, 201),
     Endpoint("PATCH", "/api/gifts/{gift_id}", {"title": "Renamed"}, 200),
     Endpoint("DELETE", "/api/gifts/{gift_id}", None, 204),
+    # Received and put back, on any gift its owners see; keep, only on a
+    # revealed one: the scenario's gift is on the list (hidden gifts plan D5,
+    # D6).
+    Endpoint("POST", "/api/gifts/{gift_id}/received", None, 204),
+    Endpoint("DELETE", "/api/gifts/{gift_id}/received", None, 204),
+    Endpoint("POST", "/api/gifts/{gift_id}/keep", None, 409),
     Endpoint(
         "POST",
         "/api/lists/{list_id}/occasions",
@@ -378,6 +434,145 @@ ENDPOINTS = [
         204,
         recipient=404,
     ),
+    # The hidden gifts of the occasion, its invitee the author of the
+    # scenario's: its givers read and add, only the author changes it; the
+    # recipient gets what a stranger gets (hidden gifts plan D7, D8).
+    Endpoint(
+        "GET",
+        "/api/occasions/{occasion_id}/hidden-gifts",
+        None,
+        200,
+        200,
+        recipient=404,
+    ),
+    Endpoint(
+        "POST",
+        "/api/occasions/{occasion_id}/hidden-gifts",
+        {"title": "Lamp"},
+        201,
+        201,
+        recipient=404,
+    ),
+    Endpoint(
+        "PATCH",
+        "/api/occasions/{occasion_id}/hidden-gifts/{hidden_gift_id}",
+        {"title": "Renamed"},
+        403,
+        200,
+        recipient=404,
+        route="/api/occasions/{occasion_id}/hidden-gifts/{gift_id}",
+    ),
+    Endpoint(
+        "DELETE",
+        "/api/occasions/{occasion_id}/hidden-gifts/{hidden_gift_id}",
+        None,
+        403,
+        204,
+        recipient=404,
+        route="/api/occasions/{occasion_id}/hidden-gifts/{gift_id}",
+    ),
+    # Its image: only through the occasion, for its givers.
+    Endpoint(
+        "GET",
+        "/api/images/{hidden_image_id}/full",
+        None,
+        404,
+        route="/api/images/{image_id}/{variant}",
+    ),
+    Endpoint(
+        "GET",
+        "/api/occasions/{occasion_id}/images/{hidden_image_id}/thumb",
+        None,
+        200,
+        200,
+        recipient=404,
+        route="/api/occasions/{occasion_id}/images/{image_id}/{variant}",
+    ),
+    # The thread of a gift in the occasion: its givers read, post and follow,
+    # only the author changes a comment; the recipient gets what a stranger
+    # gets, and so does the giver who is not its author (comments plan D5).
+    Endpoint(
+        "GET",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/comments",
+        None,
+        200,
+        200,
+        recipient=404,
+    ),
+    Endpoint(
+        "POST",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/comments",
+        {"body": "Hello"},
+        201,
+        201,
+        recipient=404,
+    ),
+    Endpoint(
+        "PATCH",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/comments/{comment_id}",
+        {"body": "Edited"},
+        404,
+        200,
+        recipient=404,
+    ),
+    Endpoint(
+        "DELETE",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/comments/{comment_id}",
+        None,
+        404,
+        204,
+        recipient=404,
+    ),
+    Endpoint(
+        "PUT",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/follow",
+        None,
+        204,
+        204,
+        recipient=404,
+    ),
+    Endpoint(
+        "DELETE",
+        "/api/occasions/{occasion_id}/gifts/{gift_id}/follow",
+        None,
+        204,
+        204,
+        recipient=404,
+    ),
+    # The hidden gift's id on the owner routes: the random id's 404 for every
+    # owner, the givers among them reaching it as givers (hidden gifts plan
+    # D4).
+    Endpoint(
+        "PATCH",
+        "/api/gifts/{hidden_gift_id}",
+        {"title": "Renamed"},
+        404,
+        route="/api/gifts/{gift_id}",
+    ),
+    Endpoint(
+        "DELETE", "/api/gifts/{hidden_gift_id}", None, 404, route="/api/gifts/{gift_id}"
+    ),
+    Endpoint(
+        "POST",
+        "/api/gifts/{hidden_gift_id}/received",
+        None,
+        404,
+        route="/api/gifts/{gift_id}/received",
+    ),
+    Endpoint(
+        "DELETE",
+        "/api/gifts/{hidden_gift_id}/received",
+        None,
+        404,
+        route="/api/gifts/{gift_id}/received",
+    ),
+    Endpoint(
+        "POST",
+        "/api/gifts/{hidden_gift_id}/keep",
+        None,
+        404,
+        route="/api/gifts/{gift_id}/keep",
+    ),
 ]
 
 # What only a giver may read (reserving plan D6): never a key of a response
@@ -390,6 +585,12 @@ ACTIVITY_KEYS = {
     "bought",
     "expired",
     "passed",
+    "author",
+    "mine",
+    "comments",
+    "following",
+    "author_name",
+    "edited",
 }
 
 # The API paths whose routes must all appear in this module.
@@ -487,7 +688,9 @@ def test_an_activity_key_is_caught_for_the_recipient_only():
 def owners_view(client, scenario: Scenario) -> dict[str, Any]:
     """Both lists as their owners see them: their gifts, their occasions with
     links and member counts, and who joined or was removed from the first;
-    and each occasion's activity, as its invitee sees it."""
+    each occasion's activity, as its invitee sees it, with its hidden gifts;
+    and the first gift's thread in the first occasion, as that invitee sees
+    it."""
     view = {}
     for list_key, ids in scenario.lists.items():
         headers = scenario.headers(LISTS[list_key][0])
@@ -502,6 +705,14 @@ def owners_view(client, scenario: Scenario) -> dict[str, Any]:
                 f"/api/occasions/{ids[occasion]}/claims",
                 headers=scenario.headers(INVITEES[list_key][occasion]),
             ).json()
+            view[list_key, occasion, "hidden gifts"] = client.get(
+                f"/api/occasions/{ids[occasion]}/hidden-gifts",
+                headers=scenario.headers(INVITEES[list_key][occasion]),
+            ).json()
+        view[list_key, FIRST, "thread"] = client.get(
+            f"/api/occasions/{ids[FIRST]}/gifts/{ids['gift_id']}/comments",
+            headers=scenario.headers(INVITEES[list_key][FIRST]),
+        ).json()
     return view
 
 
@@ -529,8 +740,21 @@ def test_endpoint_by_role(client, scenario, endpoint, list_key, actor):
     # Refused: nothing changed, and the answer is the one for ids that exist
     # nowhere, so a real id cannot be told from a random one.
     assert owners_view(client, scenario) == before
+    if status == 403:
+        # A refusal about a gift they can see as a giver: never to the
+        # recipient (hidden gifts plan D7).
+        assert (relation, list_key) == (OWNER, FOR_SOMEONE)
+        assert response.json()["code"] == "not_author"
+        return
     random_ids = {name: str(uuid.uuid4()) for name in scenario.lists[list_key]}
     probe = call(client, scenario, actor, endpoint, random_ids)
+    if status == 409:
+        # A conflict on a gift its owner sees, not a refusal: an id that
+        # exists nowhere gets the 404 every refusal gets (hidden gifts plan
+        # D5, D6).
+        assert relation == OWNER
+        assert (probe.status_code, probe.json()) == (404, {"detail": "Not found"})
+        return
     assert (probe.status_code, probe.json()) == (response.status_code, response.json())
 
 

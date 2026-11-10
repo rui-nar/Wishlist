@@ -6,6 +6,8 @@ import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
+import '../shared/gift_sheet.dart';
+import '../shared/shared_repository.dart';
 import 'common.dart';
 import 'currencies.dart';
 import 'gift_image_section.dart';
@@ -19,14 +21,40 @@ const kGiftDescriptionMaxLength = 2000;
 const kMaxLinks = 10;
 const kLinkMaxLength = 2048;
 
+/// A gift being edited: what the form starts from.
+typedef _Editing = ({GiftDraft fields, GiftImage? image});
+
 /// Adds a gift to the list [listId], or edits its gift [giftId]: image,
 /// title, description, shop links and an indicative price. Editing also
-/// deletes the gift, after confirmation. Goes back to the list once saved or
-/// deleted.
+/// marks the gift received, or deletes it after confirmation. Goes back to
+/// the list once saved, received or deleted.
+///
+/// [GiftFormScreen.hidden] does the same for a giver's hidden gift of an
+/// occasion, through its routes, with nothing to mark received
+/// (HIDDEN_GIFTS_PLAN D14).
 class GiftFormScreen extends StatefulWidget {
-  const GiftFormScreen({super.key, required this.listId, this.giftId});
+  const GiftFormScreen({
+    super.key,
+    required String this.listId,
+    this.giftId,
+  })  : occasionId = null,
+        occasionLocation = null;
 
-  final String listId;
+  const GiftFormScreen.hidden({
+    super.key,
+    required String this.occasionId,
+    required String this.occasionLocation,
+    this.giftId,
+  }) : listId = null;
+
+  /// The list of a list gift; null for a hidden gift.
+  final String? listId;
+
+  /// The occasion of a hidden gift; null for a list gift.
+  final String? occasionId;
+
+  /// Where to go back to when a hidden gift is gone: the occasion's page.
+  final String? occasionLocation;
 
   /// The gift to edit; null to add one.
   final String? giftId;
@@ -37,6 +65,7 @@ class GiftFormScreen extends StatefulWidget {
 
 class _GiftFormScreenState extends State<GiftFormScreen> {
   late final _repository = ListsRepository.of(context);
+  late final _shared = SharedRepository.of(context);
   final _form = GlobalKey<FormState>();
   final _title = TextEditingController();
   final _description = TextEditingController();
@@ -45,7 +74,7 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
   final _links = <TextEditingController>[];
 
   /// Editing: the gift as it is, read first.
-  Future<Gift>? _gift;
+  Future<_Editing>? _gift;
   bool _busy = false;
 
   /// What saving does to the image, and whether one is being sent.
@@ -53,6 +82,7 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
   bool _imageBusy = false;
 
   bool get _adding => widget.giftId == null;
+  bool get _hidden => widget.occasionId != null;
 
   @override
   void initState() {
@@ -80,30 +110,52 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
 
   /// There is no endpoint for one gift: it is read with its list, and a gift
   /// missing from it is gone (404).
-  void _load() {
-    final gift = _repository.list(widget.listId).then((list) {
-      for (final gift in list.gifts) {
-        if (gift.id == widget.giftId) return gift;
-      }
+  Future<_Editing> _readListGift() async {
+    final list = await _repository.list(widget.listId!);
+    for (final gift in list.gifts) {
+      if (gift.id == widget.giftId) return (fields: gift, image: gift.image);
+    }
+    throw const ApiException(404);
+  }
+
+  /// A hidden gift is read with its occasion's. The occasion is asked first:
+  /// a recipient, on a location they typed, never reaches the hidden gifts
+  /// (HIDDEN_GIFTS_PLAN D14). A gift that is not the user's is theirs to
+  /// edit no more than a missing one (D8).
+  Future<_Editing> _readHiddenGift() async {
+    final occasionId = widget.occasionId!;
+    final view = await _shared.occasion(occasionId);
+    if (view is OwnedOccasion && !view.givesHere) {
       throw const ApiException(404);
-    });
+    }
+    for (final gift in await _shared.hiddenGifts(occasionId)) {
+      if (gift.id == widget.giftId && gift.mine) {
+        return (fields: gift, image: gift.image);
+      }
+    }
+    throw const ApiException(404);
+  }
+
+  void _load() {
+    final gift = _hidden ? _readHiddenGift() : _readListGift();
     setState(() {
       _gift = gift;
     });
     gift.then((gift) {
-      _title.text = gift.title;
-      _description.text = gift.description;
+      final fields = gift.fields;
+      _title.text = fields.title;
+      _description.text = fields.description;
       for (final controller in _links) {
         controller.dispose();
       }
       _links
         ..clear()
         ..addAll([
-          for (final link in gift.links) TextEditingController(text: link),
+          for (final link in fields.links) TextEditingController(text: link),
         ]);
       if (_links.isEmpty) _links.add(TextEditingController());
-      _amount.text = gift.priceAmount ?? '';
-      _currency.text = gift.priceCurrency ?? kDefaultCurrency;
+      _amount.text = fields.priceAmount ?? '';
+      _currency.text = fields.priceCurrency ?? kDefaultCurrency;
     }, onError: (_) {});
   }
 
@@ -138,12 +190,22 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
-      if (_adding) {
-        await _repository.addGift(widget.listId, _draft());
+      final occasionId = widget.occasionId;
+      final giftId = widget.giftId;
+      if (occasionId != null) {
+        if (giftId == null) {
+          await _shared.addHiddenGift(occasionId, _draft());
+        } else {
+          await _shared.updateHiddenGift(occasionId, giftId, _draft());
+        }
+      } else if (giftId == null) {
+        await _repository.addGift(widget.listId!, _draft());
       } else {
-        await _repository.updateGift(widget.giftId!, _draft());
+        await _repository.updateGift(giftId, _draft());
       }
       if (mounted) context.pop();
+    } on HiddenGiftRefused catch (refused) {
+      _sayRefusedAndLeave(messenger, l10n, refused);
     } catch (error) {
       messenger.showSnackBar(SnackBar(
         content: Text(
@@ -156,21 +218,64 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
     }
   }
 
-  String _goneMessage(AppLocalizations l10n) =>
-      _adding ? l10n.listNotFound : l10n.giftNotFound;
+  String _goneMessage(AppLocalizations l10n) => !_adding
+      ? l10n.giftNotFound
+      : _hidden
+          ? l10n.occasionNoLongerShared
+          : l10n.listNotFound;
+
+  /// The hidden gift can no longer be changed (bought, the occasion passed,
+  /// HIDDEN_GIFTS_PLAN D8): says so and goes back to the occasion, which
+  /// shows it as it now is. Staying would only be refused again.
+  void _sayRefusedAndLeave(
+    ScaffoldMessengerState messenger,
+    AppLocalizations l10n,
+    HiddenGiftRefused refused,
+  ) {
+    messenger.showSnackBar(SnackBar(
+      content: Text(hiddenGiftRefusalMessage(l10n, refused.refusal)),
+    ));
+    if (mounted) context.pop();
+  }
+
+  /// Offered on every gift alike, so it says nothing about which ones were
+  /// bought (HIDDEN_GIFTS_PLAN D5). Reversible from the list: no
+  /// confirmation.
+  Future<void> _markReceived() async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      await _repository.markReceived(widget.giftId!);
+      if (mounted) context.pop();
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(isNotFound(error) ? l10n.giftNotFound : l10n.saveFailed),
+      ));
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   Future<void> _delete() async {
     final l10n = AppLocalizations.of(context);
     final confirmed = await confirmDelete(
       context,
       title: l10n.deleteGiftTitle,
-      body: l10n.deleteGiftBody,
+      body: _hidden ? l10n.hiddenGiftDeleteBody : l10n.deleteGiftBody,
     );
     if (!confirmed || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
-      await _repository.deleteGift(widget.giftId!);
+      final occasionId = widget.occasionId;
+      if (occasionId != null) {
+        await _shared.deleteHiddenGift(occasionId, widget.giftId!);
+      } else {
+        await _repository.deleteGift(widget.giftId!);
+      }
+    } on HiddenGiftRefused catch (refused) {
+      _sayRefusedAndLeave(messenger, l10n, refused);
+      return;
     } catch (error) {
       // Already gone is what the user asked for.
       if (!isNotFound(error)) {
@@ -185,13 +290,14 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final addLabel = _hidden ? l10n.addHiddenGift : l10n.addGift;
     return Scaffold(
-      appBar: AppBar(title: Text(_adding ? l10n.addGift : l10n.editGift)),
+      appBar: AppBar(title: Text(_adding ? addLabel : l10n.editGift)),
       body: PageFrame(
         child: SafeArea(
           child: _adding
-              ? _buildForm(context, null)
-              : FutureBuilder<Gift>(
+              ? _buildForm(context, null, addLabel)
+              : FutureBuilder<_Editing>(
                   future: _gift,
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
@@ -200,12 +306,18 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
                         onRetry: _load,
                         maxWidth: ContentWidths.form,
                         notFound: l10n.giftNotFound,
+                        backLocation: widget.occasionLocation ?? '/',
+                        backLabel: _hidden ? l10n.backToOccasion : null,
                       );
                     }
                     if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    return _buildForm(context, snapshot.data);
+                    return _buildForm(
+                      context,
+                      snapshot.data!.image,
+                      addLabel,
+                    );
                   },
                 ),
         ),
@@ -213,8 +325,13 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
     );
   }
 
-  /// [gift] is the gift as it is, when editing.
-  Widget _buildForm(BuildContext context, Gift? gift) {
+  /// [image] is the gift's as it is, when editing; [addLabel] what adding is
+  /// called.
+  Widget _buildForm(
+    BuildContext context,
+    GiftImage? image,
+    String addLabel,
+  ) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Form(
@@ -229,7 +346,7 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   GiftImageSection(
-                    initial: gift?.image,
+                    initial: image,
                     enabled: !_busy,
                     onChanged: (change) => _imageChange = change,
                     onBusyChanged: (busy) => setState(() => _imageBusy = busy),
@@ -361,8 +478,16 @@ class _GiftFormScreenState extends State<GiftFormScreen> {
                   const SizedBox(height: Spacing.s24),
                   FilledButton(
                     onPressed: _busy || _imageBusy ? null : _save,
-                    child: Text(_adding ? l10n.addGift : l10n.save),
+                    child: Text(_adding ? addLabel : l10n.save),
                   ),
+                  if (!_adding && !_hidden) ...[
+                    const SizedBox(height: Spacing.s12),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _markReceived,
+                      icon: const Icon(Icons.inventory_2_outlined),
+                      label: Text(l10n.markReceived),
+                    ),
+                  ],
                   if (!_adding) ...[
                     const SizedBox(height: Spacing.s12),
                     TextButton.icon(

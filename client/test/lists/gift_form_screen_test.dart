@@ -290,6 +290,85 @@ void main() {
     });
   });
 
+  group('mark as received (HIDDEN_GIFTS_PLAN D5)', () {
+    /// Opens the gift [title] from the list and taps Mark as received.
+    Future<void> markReceived(WidgetTester tester, String title) async {
+      await startApp(tester, server, '/lists/$listId');
+      await tester.tap(find.text(title));
+      await tester.pumpAndSettle();
+      final button = find.widgetWithText(OutlinedButton, 'Mark as received');
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the same button and call on every gift, then back to the '
+        'list, where it is under Received', (tester) async {
+      final plain = server.addGift(listId, 'Book');
+      final full = server.addGift(
+        listId,
+        'Headphones',
+        links: ['https://shop.example/h'],
+        priceAmount: '149.00',
+        priceCurrency: 'EUR',
+        image: true,
+      );
+
+      await markReceived(tester, 'Book');
+      expect(find.byType(ListDetailScreen), findsOneWidget);
+      expect(find.text('Received (1)'), findsOneWidget);
+
+      await tester.tap(find.text('Headphones'));
+      await tester.pumpAndSettle();
+      final button = find.widgetWithText(OutlinedButton, 'Mark as received');
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      final marks = server.calls.where((call) => call.endsWith('/received'));
+      expect(marks, [
+        'POST /api/gifts/$plain/received',
+        'POST /api/gifts/$full/received',
+      ]);
+      expect(server.bodies.keys.where((call) => call.endsWith('/received')),
+          isEmpty);
+      expect(find.byType(ListDetailScreen), findsOneWidget);
+      expect(find.text('Received (2)'), findsOneWidget);
+      expect(find.text('No gifts yet. Add the first one.'), findsOneWidget);
+    });
+
+    testWidgets('not offered when adding', (tester) async {
+      await startApp(tester, server, '/lists/$listId/gifts/new');
+
+      expect(find.text('Mark as received'), findsNothing);
+    });
+
+    testWidgets('a failure says so and stays on the form', (tester) async {
+      final giftId = server.addGift(listId, 'Book');
+      server.status['POST /api/gifts/$giftId/received'] = 500;
+
+      await markReceived(tester, 'Book');
+
+      expect(
+        find.text('Your changes could not be saved. Try again.'),
+        findsOneWidget,
+      );
+      expect(find.byType(GiftFormScreen), findsOneWidget);
+    });
+
+    testWidgets('a gift that is gone says so', (tester) async {
+      final giftId = server.addGift(listId, 'Book');
+      server.status['POST /api/gifts/$giftId/received'] = 404;
+
+      await markReceived(tester, 'Book');
+
+      expect(find.text('This gift no longer exists.'), findsOneWidget);
+      expect(find.byType(GiftFormScreen), findsOneWidget);
+    });
+  });
+
   testWidgets('in French', (tester) async {
     tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
     addTearDown(tester.platformDispatcher.clearLocalesTestValue);
