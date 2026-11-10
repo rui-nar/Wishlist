@@ -97,7 +97,7 @@ def test_the_url_and_d12s_parameters(client, fake, account, engine):
         "line_items": [{"price": "price_placeholder", "quantity": 1}],
         "customer": customer_id,
         "client_reference_id": user_id,
-        "subscription_data": {"metadata": {"user_id": user_id}},
+        "subscription_data": {"metadata": {"user_id": user_id, "app": "wishlist"}},
         "metadata": {"terms_version": "test-placeholder"},
         "locale": "en",
         "consent_collection": {"terms_of_service": "required"},

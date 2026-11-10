@@ -273,7 +273,11 @@ def _handle_event(request: Request, db: Session, event: dict[str, Any]) -> Respo
 def _cancel_orphan(
     gateway: StripeGateway, subscription: dict[str, Any], external_id: str
 ) -> Response:
-    """The purchase outlived its account (D15): no charge may follow."""
+    """The purchase outlived its account (D15): no charge may follow. Only
+    one proven ours is ever cancelled: a Stripe account can be shared."""
+    if not stripe_events.is_ours(subscription):
+        _log.warning("stripe: subscription %s of no known user", external_id)
+        return _no_content()
     if stripe_events.is_finished(subscription):
         return _no_content()
     _log.warning("stripe: cancelling subscription %s of a gone account", external_id)

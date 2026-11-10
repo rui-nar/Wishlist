@@ -81,7 +81,7 @@ def test_a_webhook_during_an_account_deletion_waits_then_finds_the_user_gone(
     client, fake, engine, make_account
 ):
     ada = make_account()
-    fake.add_subscription("sub_1", ada.id)
+    fake.add_subscription("sub_1", ada.id)["metadata"]["app"] = "wishlist"
     with engine.connect() as deleting:
         deleting.execute(
             text("SELECT id FROM users WHERE id = :id FOR UPDATE"), {"id": ada.id}

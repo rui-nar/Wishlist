@@ -14,7 +14,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from app.billing.stripe_events import FINISHED
+from app.billing.stripe_events import APP_MARKER, FINISHED
 
 _log = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def checkout_params(order: CheckoutOrder) -> dict[str, Any]:
         "line_items": [{"price": order.price_id, "quantity": 1}],
         "customer": order.customer_id,
         "client_reference_id": user_id,
-        "subscription_data": {"metadata": {"user_id": user_id}},
+        "subscription_data": {"metadata": {"user_id": user_id, "app": APP_MARKER}},
         "metadata": {"terms_version": order.terms_version},
         "locale": order.locale,
         "consent_collection": {"terms_of_service": "required"},
@@ -150,7 +150,11 @@ class StripeGateway:
         call answer the same one (D12)."""
         with self._translated("customer"):
             customer = self._client.v1.customers.create(
-                {"email": email, "name": name, "metadata": {"user_id": str(user_id)}},
+                {
+                    "email": email,
+                    "name": name,
+                    "metadata": {"user_id": str(user_id), "app": APP_MARKER},
+                },
                 {"idempotency_key": f"wishlist-customer-{user_id}"},
             )
         return customer.id

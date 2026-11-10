@@ -10,6 +10,7 @@ from app.billing.stripe_events import (
     customer_id,
     facts,
     is_finished,
+    is_ours,
     metadata_user_id,
     pointer,
     price_id,
@@ -117,6 +118,12 @@ def test_finished_is_only_stripes_final_states():
     assert is_finished(subscription(status="incomplete_expired"))
     assert not is_finished(subscription(status="unpaid"))
     assert not is_finished(subscription(status="active"))
+
+
+def test_only_our_marker_proves_a_subscription_ours():
+    assert is_ours(subscription(metadata={"app": "wishlist"}))
+    for metadata in (None, {}, {"app": "other"}, {"app": 1}, "wishlist"):
+        assert not is_ours(subscription(metadata=metadata))
 
 
 def test_the_metadata_user_id_is_a_valid_uuid_only():

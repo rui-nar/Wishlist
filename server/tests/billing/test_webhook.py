@@ -237,19 +237,48 @@ def gone_user(engine, account):
         connection.execute(text("DELETE FROM users WHERE id = :id"), {"id": account.id})
 
 
+def add_ours(fake, account, **fields):
+    """A subscription with the marker Wishlist's checkout writes."""
+    fake.add_subscription("sub_1", account.id, **fields)["metadata"]["app"] = "wishlist"
+
+
 def test_a_gone_users_running_subscription_is_cancelled(client, fake, account, engine):
-    fake.add_subscription("sub_1", account.id)
+    add_ours(fake, account)
     gone_user(engine, account)
     assert fake.deliver(client, UPDATED, {"id": "sub_1"}).status_code == 204
     assert fake.called("cancel") == [("sub_1",)]
     assert rows(engine) == []
 
 
+def test_without_the_marker_a_uuid_with_no_user_is_never_cancelled(
+    client, fake, account, engine, caplog
+):
+    fake.add_subscription("sub_1", account.id)
+    gone_user(engine, account)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert fake.deliver(client, UPDATED, {"id": "sub_1"}).status_code == 204
+    assert fake.called("cancel") == []
+    assert rows(engine) == []
+    assert "no known user" in caplog.text
+
+
+def test_a_traxjourney_shaped_subscription_is_never_cancelled(
+    client, fake, engine, caplog
+):
+    subscription = fake.add_subscription("sub_1", None, customer="cus_trax")
+    subscription["metadata"] = {"user_info_id": "42", "plan": "tier_1"}
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert fake.deliver(client, UPDATED, {"id": "sub_1"}).status_code == 204
+    assert fake.called("cancel") == []
+    assert rows(engine) == []
+    assert "no known user" in caplog.text
+
+
 @pytest.mark.parametrize("status", ["canceled", "incomplete_expired"])
 def test_a_gone_users_finished_subscription_is_left(
     client, fake, account, engine, status
 ):
-    fake.add_subscription("sub_1", account.id, status=status)
+    add_ours(fake, account, status=status)
     gone_user(engine, account)
     assert fake.deliver(client, UPDATED, {"id": "sub_1"}).status_code == 204
     assert fake.called("cancel") == []
@@ -259,14 +288,14 @@ def test_a_gone_users_unpaid_subscription_is_cancelled_all_the_same(
     client, fake, account, engine
 ):
     # `ended` for premium, but Stripe can still resume it.
-    fake.add_subscription("sub_1", account.id, status="unpaid")
+    add_ours(fake, account, status="unpaid")
     gone_user(engine, account)
     assert fake.deliver(client, UPDATED, {"id": "sub_1"}).status_code == 204
     assert fake.called("cancel") == [("sub_1",)]
 
 
 def test_a_failed_cancellation_of_a_gone_user_is_retried(client, fake, account, engine):
-    fake.add_subscription("sub_1", account.id)
+    add_ours(fake, account)
     gone_user(engine, account)
     fake.failures["cancel"] = GatewayUnavailable()
     assert fake.deliver(client, UPDATED, {"id": "sub_1"}).status_code == 502

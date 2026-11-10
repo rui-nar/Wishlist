@@ -114,7 +114,7 @@ def test_checkout_parameters_are_exactly_d12s():
         "line_items": [{"price": "price_1", "quantity": 1}],
         "customer": "cus_1",
         "client_reference_id": user_id,
-        "subscription_data": {"metadata": {"user_id": user_id}},
+        "subscription_data": {"metadata": {"user_id": user_id, "app": "wishlist"}},
         "metadata": {"terms_version": "v2"},
         "locale": "fr",
         "consent_collection": {"terms_of_service": "required"},
@@ -239,6 +239,29 @@ def test_a_refusal_blaming_the_terms_url_is_named(gateway):
 
     with pytest.raises(TermsUrlMissing):
         gateway.checkout(order())
+
+
+def test_the_customer_carries_the_marker_and_the_idempotency_key(gateway):
+    created = []
+
+    def create(params, options):
+        created.append((params, options))
+        return stripe.Customer.construct_from({"id": "cus_1"}, "key")
+
+    gateway._client = client_with(customers=SimpleNamespace(create=create))
+    user_id = uuid.UUID(int=7)
+
+    assert gateway.ensure_customer(user_id, "a@example.com", "Ada") == "cus_1"
+    assert created == [
+        (
+            {
+                "email": "a@example.com",
+                "name": "Ada",
+                "metadata": {"user_id": str(user_id), "app": "wishlist"},
+            },
+            {"idempotency_key": f"wishlist-customer-{user_id}"},
+        )
+    ]
 
 
 def test_a_checkout_answer_without_a_url_is_unavailable(gateway):
