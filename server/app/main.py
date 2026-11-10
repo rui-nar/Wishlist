@@ -1,6 +1,7 @@
 """The FastAPI application: `uvicorn app.main:app`, run from server/."""
 
 import contextlib
+import logging
 import os
 import tempfile
 from collections.abc import AsyncIterator
@@ -19,6 +20,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.accounts import sessions
 from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
+from app.billing.router import router as billing_router
+from app.billing.stripe_gateway import StripeGateway
 from app.comments.router import router as comments_router
 from app.db import create_db_engine, create_session_factory
 from app.hidden_gifts.router import router as hidden_gifts_router
@@ -32,6 +35,8 @@ from app.notifications.worker import NotificationWorker
 from app.reserving.router import router as reserving_router
 from app.safe_fetch import SafeFetcher
 from app.settings import Settings
+
+_log = logging.getLogger(__name__)
 
 # The Flutter web build. The image puts it in /app/web, next to /app/server;
 # locally the directory does not exist and the app serves the API only.
@@ -116,6 +121,15 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
             settings.email_sender_name,
         )
     )
+    # None until its secrets are set; replaced by tests (premium plan D10).
+    app.state.stripe_gateway = (
+        StripeGateway(
+            settings.stripe_secret_key.strip(), settings.stripe_webhook_secret.strip()
+        )
+        if settings.billing_gateway_configured
+        else None
+    )
+    _log_billing_gaps(settings)
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.
@@ -165,6 +179,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.include_router(hidden_gifts_router)
     app.include_router(comments_router)
     app.include_router(notifications_router)
+    app.include_router(billing_router)
     app.add_exception_handler(RequestValidationError, _validation_error)
 
     # Registered last, so every /api route above takes precedence.
@@ -172,6 +187,24 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         _serve_web_client(app, web_dir)
 
     return app
+
+
+def _log_billing_gaps(settings: Settings) -> None:
+    """Names what keeps the app from selling, once, when billing is asked for
+    (premium plan D16). With nothing asked for, none of this is a gap."""
+    asked = settings.billing_enforce_limits or any(
+        value.strip()
+        for value in (
+            settings.stripe_secret_key,
+            settings.stripe_webhook_secret,
+            settings.stripe_price_id,
+        )
+    )
+    if asked and settings.missing_selling_settings:
+        _log.warning(
+            "billing is not selling; missing or invalid: %s",
+            ", ".join(settings.missing_selling_settings),
+        )
 
 
 def _serve_web_client(app: FastAPI, web_dir: Path) -> None:
