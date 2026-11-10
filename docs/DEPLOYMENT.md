@@ -1864,8 +1864,9 @@ No live key goes into PROD before all of this:
   `LEGAL_PRIVACY_URL` and `LEGAL_WITHDRAWAL_URL`. A live key is required
   there too: a test key is refused.
 - The dashboard settings of [Stripe test on VAL](#stripe-test-on-val), steps 1
-  to 6, in live mode, with `https://<prod-host>` in the terms URL and the
-  webhook endpoint. The endpoint has its own secret.
+  to 6, in live mode, with `https://<prod-host>` in the webhook endpoint, and
+  the address of `LEGAL_TERMS_URL` as the terms URL: the app's own
+  `/legal/terms` is only ever a placeholder. The endpoint has its own secret.
 
 **[VPS]** Set them in `/opt/wishlist/.env` as on VAL, with the texts in an
 editor (`nano .env`): each on one line, not quoted, never with ` #` inside,
