@@ -90,9 +90,11 @@ env placeholders, and the choices made here are recorded in `docs/NEEDS.md`.
   - none: creates the user, the identity and the credential, with the savepoint
     of `_user_for` for two concurrent first uses. `display_name` is required
     for `create` links and defaults to the part before the `@` otherwise.
-  - exists: replaces the password, **deletes every session of the account**,
-    and marks the address's other links consumed.
-  Answers `SignedIn`. The holder of the link has proven the mailbox, so a stale
+  - exists: replaces the password and **deletes every session of the account**.
+
+  On both branches, the address's other links are marked consumed (review
+  R1-4), so a second email cannot reset a password just chosen. Answers
+  `SignedIn`. The holder of the link has proven the mailbox, so a stale
   `purpose` needs no refusal.
 - **D10 — `POST /api/auth/email/sign-in`** `{email, password}`: `SignedIn`, or
   401 with one fixed body for every failure. An unknown address verifies
@@ -110,7 +112,8 @@ env placeholders, and the choices made here are recorded in `docs/NEEDS.md`.
   transaction** from `app.state.session_factory`, since a refused request rolls
   the request's own transaction back. Over a limit: 429 `too_many_attempts`.
   On start, an address over its limit still answers 202 and adds no row, so
-  the limit does not reveal or spam anything. An address alone is never
+  the limit does not reveal or spam anything; it logs the fixed label
+  `email_start_address_limited`, without the address (review R1-1). An address alone is never
   limited at sign-in, so an attacker cannot lock someone out. The worker sweeps
   old rows.
 - **D13 — `display_name` is now typed by anyone**, unlike Google's. Trimmed,
@@ -148,7 +151,9 @@ env placeholders, and the choices made here are recorded in `docs/NEEDS.md`.
   null), `apple_redirect_uri` (`<PUBLIC_BASE_URL>/api/auth/apple/callback`, or
   null), and `email_sign_in` (bool: mailer set and `NOTIFICATION_SECRET`
   present). The sign-in screen offers what is configured, and says "not
-  configured" only when nothing is.
+  configured" only when nothing is. The app logs a warning at start when email
+  sign-in is configured and `NOTIFICATIONS_WORKER` is off, since links would
+  expire unsent (review R1-5).
 - **D19 — The email link and a pending share link.** The mail may open another
   tab, which cannot see `sessionStorage`. On `start`, the client copies a pending
   join token to `localStorage` with a 1-hour expiry, and reads it back once
@@ -267,7 +272,7 @@ simply not offered.
   5. `throttle.py`: D12, an atomic upsert in its own committed transaction.
   6. `email_links.py`: `normalise`, `make_token`, `read_token` (D4, D7).
   7. Empty routers included in `main.py`, `app.state.apple_verifier = None`,
-     and D18's fields.
+     and D18's fields and its warning at start.
 - **Acceptance:** new tests `test_passwords.py`, `test_throttle.py` (a limit
   holds across two concurrent callers, and survives a rollback of the caller's
   transaction), `test_email_links.py` (a token for another row, or with the
@@ -303,7 +308,8 @@ simply not offered.
   known and unknown addresses on start and sign-in; a link is single-use under
   two concurrent uses; two concurrent first uses for one address make one
   account; reset ends every session; a pending link does not create an account;
-  an expired link is 410; limits give 429 and start stays 202; hostile names
+  an expired link is 410; a second pending link is dead once the first created
+  the account; limits give 429 and start stays 202; hostile names
   refused and escaped in the email HTML. New `test_email_link_worker.py`:
   the allowlist, retry, expiry, two workers send once; the existing
   `test_worker.py` passes. `ruff check`.
@@ -313,12 +319,15 @@ simply not offered.
   be reused.
 - **Depends on:** U1.
 
+### Wave 3
+
 #### U3 — Server: Apple
 
 - **Goal:** A valid Apple token signs in or creates an account, on every
   platform.
 - **Scope:** `server/app/accounts/apple.py` (new), `server/app/accounts/apple_router.py`,
-  `server/tests/accounts/test_apple*.py` (new), `server/app/main.py` (the verifier
+  `server/tests/accounts/test_apple*.py` (new), `server/tests/lists/test_surprise.py`
+  (the public-route list, review R1-3), `server/app/main.py` (the verifier
   line only). `schemas.py` is U2's, so the bodies stay in `apple_router.py`.
 - **Context:** this plan D1, D14–D17. Example: `accounts/google.py` and
   `tests/accounts/test_sign_in.py`.
@@ -335,8 +344,6 @@ simply not offered.
 - **Latitude:** local design.
 - **Escalate if:** a file outside Scope is needed.
 - **Depends on:** U1.
-
-### Wave 3
 
 #### U4 — Client: email sign-in
 
