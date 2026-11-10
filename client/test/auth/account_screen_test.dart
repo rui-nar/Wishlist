@@ -3,7 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wishlist/src/auth/account_screen.dart';
 import 'package:wishlist/src/auth/auth_controller.dart';
 import 'package:wishlist/src/auth/sign_in_screen.dart';
+import 'package:wishlist/src/billing/billing_repository.dart';
+import 'package:wishlist/src/billing/plan_screen.dart';
 
+import '../billing/support.dart';
 import '../support/fakes.dart';
 
 void main() {
@@ -180,6 +183,237 @@ void main() {
       await pumpAccount(tester);
 
       expect(find.text('Notifications par e-mail'), findsOneWidget);
+    });
+  });
+
+  group('plan (PREMIUM D18)', () {
+    const failed = 'That did not work. Try again in a moment.';
+    const renews = 'Renews on March 12, 2027';
+
+    Map<String, Object?> premium({
+      String status = 'active',
+      String? renewsAt = '2027-03-12T12:00:00Z',
+      String? endsAt,
+      bool canManage = true,
+    }) =>
+        billingStatus(
+          plan: 'premium',
+          status: status,
+          renewsAt: renewsAt,
+          endsAt: endsAt,
+          limits: const {'max_lists': null, 'max_gifts_per_list': null},
+          canManage: canManage,
+        );
+
+    setUp(() {
+      debugOnTheWeb = true;
+      addTearDown(() => debugOnTheWeb = null);
+    });
+
+    testWidgets('free, no offer, not enforced: nothing', (tester) async {
+      await pumpAccount(tester);
+
+      expect(server.calls, contains('GET /api/billing'));
+      expect(find.text('Your plan'), findsNothing);
+      expect(find.text('Free plan'), findsNothing);
+      expect(find.text('Terms of service'), findsNothing);
+    });
+
+    testWidgets('free, no offer, not enforced: nothing either on mobile',
+        (tester) async {
+      debugOnTheWeb = false;
+      await pumpAccount(tester);
+
+      expect(find.text('Your plan'), findsNothing);
+    });
+
+    testWidgets('a failed read leaves the screen as it is, with no error',
+        (tester) async {
+      server.status['GET /api/billing'] = 500;
+      await pumpAccount(tester);
+
+      expect(find.text('Your plan'), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.text('Could not load your plan.'), findsNothing);
+      expect(find.text('Alice Martin'), findsOneWidget);
+    });
+
+    testWidgets('free with an offer: the way to Premium and the legal links',
+        (tester) async {
+      server.billing = billingStatus(offer: kBillingOffer);
+      await pumpAccount(tester);
+
+      expect(find.text('Your plan'), findsOneWidget);
+      expect(find.text('Free plan'), findsOneWidget);
+      expect(find.text('See Premium'), findsOneWidget);
+      expect(find.text('Manage subscription'), findsNothing);
+      expect(find.text('Terms of service'), findsOneWidget);
+      expect(find.text('Privacy'), findsOneWidget);
+      expect(find.text('Right of withdrawal'), findsOneWidget);
+    });
+
+    testWidgets('free and enforced with no offer: the plan alone',
+        (tester) async {
+      server.billing = billingStatus(enforced: true);
+      await pumpAccount(tester);
+
+      expect(find.text('Free plan'), findsOneWidget);
+      expect(find.text('See Premium'), findsNothing);
+    });
+
+    testWidgets('See Premium goes to the plan page, and back reads again',
+        (tester) async {
+      server.billing = billingStatus(offer: kBillingOffer);
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('See Premium'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PlanScreen), findsOneWidget);
+
+      server.billing = premium();
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AccountScreen), findsOneWidget);
+      expect(find.text('Premium'), findsOneWidget);
+      expect(find.text('See Premium'), findsNothing);
+    });
+
+    testWidgets('premium, active: the renewal date and Manage', (tester) async {
+      server.billing = premium();
+      await pumpAccount(tester);
+
+      expect(find.text('Premium'), findsOneWidget);
+      expect(find.text(renews), findsOneWidget);
+      expect(find.text('Manage subscription'), findsOneWidget);
+      expect(find.text('See Premium'), findsNothing);
+    });
+
+    testWidgets('premium, canceling: the end date', (tester) async {
+      server.billing = premium(
+        status: 'canceling',
+        renewsAt: null,
+        endsAt: '2027-03-12T12:00:00Z',
+      );
+      await pumpAccount(tester);
+
+      expect(find.text('Premium'), findsOneWidget);
+      expect(find.text('Ends on March 12, 2027'), findsOneWidget);
+      expect(find.text(renews), findsNothing);
+      expect(find.text('Manage subscription'), findsOneWidget);
+    });
+
+    testWidgets('premium, past due: the failed-payment line, not a renewal',
+        (tester) async {
+      server.billing = premium(status: 'past_due');
+      await pumpAccount(tester);
+
+      expect(find.text('Premium'), findsOneWidget);
+      expect(
+        find.text(
+          'Your last payment failed. Update your card to keep Premium.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(renews), findsNothing);
+      expect(find.text('Manage subscription'), findsOneWidget);
+    });
+
+    testWidgets('premium that cannot be managed has no Manage', (tester) async {
+      server.billing = premium(canManage: false);
+      await pumpAccount(tester);
+
+      expect(find.text('Premium'), findsOneWidget);
+      expect(find.text('Manage subscription'), findsNothing);
+    });
+
+    testWidgets('Manage opens the portal in the same tab', (tester) async {
+      final launcher = installRecordingUrlLauncher();
+      server.billing = premium();
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('Manage subscription'));
+      await tester.pumpAndSettle();
+
+      expect(launcher.launched.single.url, server.portalUrl);
+      expect(launcher.launched.single.options.webOnlyWindowName, '_self');
+    });
+
+    testWidgets('Manage refused: says so and the status is read again',
+        (tester) async {
+      server.billing = premium();
+      await pumpAccount(tester);
+      server.status['POST /api/billing/portal'] = 409;
+      server.billing = premium(canManage: false);
+
+      await tester.tap(find.text('Manage subscription'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(failed), findsOneWidget);
+      expect(find.text('Manage subscription'), findsNothing);
+    });
+
+    testWidgets('Manage failing at Stripe says so', (tester) async {
+      server.billing = premium();
+      await pumpAccount(tester);
+      server.status['POST /api/billing/portal'] = 502;
+
+      await tester.tap(find.text('Manage subscription'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(failed), findsOneWidget);
+    });
+
+    testWidgets('on mobile: the plan and its limits, nothing to buy or open',
+        (tester) async {
+      debugOnTheWeb = false;
+      server.billing = billingStatus(offer: kBillingOffer, canManage: true);
+      await pumpAccount(tester);
+
+      expect(find.text('Free plan'), findsOneWidget);
+      expect(find.text('Free: 1 list, up to 20 gifts per list'), findsOneWidget);
+      expect(find.text('See Premium'), findsNothing);
+      expect(find.text('Manage subscription'), findsNothing);
+      expect(find.text('Terms of service'), findsNothing);
+      expect(find.textContaining('49'), findsNothing);
+    });
+
+    testWidgets('on mobile, a past-due subscriber still sees the line',
+        (tester) async {
+      debugOnTheWeb = false;
+      server.billing = premium(status: 'past_due');
+      await pumpAccount(tester);
+
+      expect(find.text('Premium'), findsOneWidget);
+      expect(
+        find.text(
+          'Your last payment failed. Update your card to keep Premium.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Manage subscription'), findsNothing);
+    });
+
+    testWidgets('in French on a French device', (tester) async {
+      tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+      addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+      server.billing = billingStatus(offer: kBillingOffer);
+      await pumpAccount(tester);
+
+      expect(find.text('Votre formule'), findsOneWidget);
+      expect(find.text('Formule gratuite'), findsOneWidget);
+      expect(find.text('Découvrir Premium'), findsOneWidget);
+      expect(find.text('Droit de rétractation'), findsOneWidget);
+    });
+
+    testWidgets('the renewal date is in French on a French device',
+        (tester) async {
+      tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+      addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+      server.billing = premium();
+      await pumpAccount(tester);
+
+      expect(find.text('Renouvellement le 12 mars 2027'), findsOneWidget);
     });
   });
 

@@ -8,6 +8,8 @@ import 'api/api_client.dart';
 import 'auth/account_screen.dart';
 import 'auth/auth_controller.dart';
 import 'auth/sign_in_screen.dart';
+import 'billing/billing_repository.dart';
+import 'billing/plan_screen.dart';
 import 'home/home_screen.dart';
 import 'lists/common.dart';
 import 'lists/gift_form_screen.dart';
@@ -256,6 +258,11 @@ GoRouter buildRouter({
       GoRoute(
         path: '/account',
         builder: (context, state) => const AccountScreen(),
+      ),
+      GoRoute(
+        path: kPlanPath,
+        builder: (context, state) =>
+            PlanScreen(checkout: state.uri.queryParameters['checkout']),
       ),
       GoRoute(
         path: kAboutPath,
