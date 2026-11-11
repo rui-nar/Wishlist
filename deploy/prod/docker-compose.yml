@@ -1,19 +1,19 @@
-# Wishlist PROD on the VPS (plan D2, D3, D8, D9, D14, D18).
+# Shush Gift PROD on the VPS (plan D2, D3, D8, D9, D14, D18).
 #
-# Installed as /opt/wishlist/docker-compose.yml, next to its .env (copied from
+# Installed as /opt/shushgift/docker-compose.yml, next to its .env (copied from
 # .env.example and filled in, never committed) and backup/ (the two scripts of
 # deploy/backup/). docs/DEPLOYMENT.md creates the directories it mounts:
 #
-#   /opt/wishlist/backups        999:10001, mode 750  (the backup service's dumps;
+#   /opt/shushgift/backups       999:10001, mode 750  (the backup service's dumps;
 #                                the app lists them, cannot read them)
-#   /opt/wishlist-media/prod     10001:10001        (the app's uploaded files)
+#   /opt/shushgift-media/prod    10001:10001        (the app's uploaded files)
 #
 # `docker compose restart` does not pick up .env changes: the container has to
 # be recreated with `docker compose up -d`.
 
-# A fixed project name: the volume is `wishlist-prod_pgdata` whatever the
+# A fixed project name: the volume is `shushgift-prod_pgdata` whatever the
 # directory is called, and never collides with TraxJourney's projects.
-name: wishlist-prod
+name: shushgift-prod
 
 # Docker's default json-file driver keeps every log line forever. The 40 GB
 # disk is shared with TraxJourney, so each container keeps at most 3 × 10 MB.
@@ -26,7 +26,7 @@ x-logging: &logging
 services:
   app:
     # Only `v*` releases are tagged `latest` (plan D6).
-    image: ghcr.io/rui-nar/wishlist:latest
+    image: ghcr.io/rui-nar/shushgift:latest
     restart: unless-stopped
     # DATABASE_URL, APP_ENV, FRONTEND_ORIGIN and FORWARDED_ALLOW_IPS (plan D10).
     env_file: .env
@@ -42,11 +42,11 @@ services:
     volumes:
       # The image sets MEDIA_DIR=/app/media and no .env overrides it (D18), so
       # uploads always land here and survive the container.
-      - /opt/wishlist-media/prod:/app/media
+      - /opt/shushgift-media/prod:/app/media
       # Read-only, and the directory is 999:10001 mode 750 with each dump 600:
       # the app (uid and gid 10001) lists the dumps and reads their dates, never
       # their content (gift images plan D10).
-      - /opt/wishlist/backups:/app/backups:ro
+      - /opt/shushgift/backups:/app/backups:ro
     depends_on:
       # The entrypoint runs `alembic upgrade head` first, which needs the
       # database accepting TCP connections.
@@ -102,7 +102,7 @@ services:
     logging: *logging
 
   # Nightly pg_dump (plan D9): once on start, then every day at 02:00 UTC, into
-  # /opt/wishlist/backups, the 30 newest kept. A sidecar on the same pinned
+  # /opt/shushgift/backups, the 30 newest kept. A sidecar on the same pinned
   # image, because the dump needs Postgres's own client tools.
   backup:
     image: postgres:18.6
@@ -115,7 +115,7 @@ services:
     env_file: .env
     volumes:
       - ./backup:/backup:ro
-      - /opt/wishlist/backups:/backups
+      - /opt/shushgift/backups:/backups
     depends_on:
       db:
         condition: service_healthy

@@ -1,18 +1,18 @@
-# Wishlist VAL on the VPS (plan D2, D3, D8, D18): PROD's stack with its own
+# Shush Gift VAL on the VPS (plan D2, D3, D8, D18): PROD's stack with its own
 # image tag, port, database, credentials and media, and no backup.
 #
-# Installed as /opt/wishlist-val/docker-compose.yml, next to its .env (copied
+# Installed as /opt/shushgift-val/docker-compose.yml, next to its .env (copied
 # from .env.example and filled in, never committed) and seed-from-prod.sh.
 # docs/DEPLOYMENT.md creates the directory it mounts:
 #
-#   /opt/wishlist-media/val      10001:10001        (the app's uploaded files)
+#   /opt/shushgift-media/val     10001:10001        (the app's uploaded files)
 #
 # `docker compose restart` does not pick up .env changes: the container has to
 # be recreated with `docker compose up -d`.
 
-# A fixed project name: the volume is `wishlist-val_pgdata` whatever the
+# A fixed project name: the volume is `shushgift-val_pgdata` whatever the
 # directory is called, and never collides with PROD's or TraxJourney's.
-name: wishlist-val
+name: shushgift-val
 
 # Docker's default json-file driver keeps every log line forever. The 40 GB
 # disk is shared with TraxJourney, so each container keeps at most 3 × 10 MB.
@@ -25,7 +25,7 @@ x-logging: &logging
 services:
   app:
     # Moved by pushing the `validation` git tag (plan D6); the webhook pulls it.
-    image: ghcr.io/rui-nar/wishlist:validation
+    image: ghcr.io/rui-nar/shushgift:validation
     restart: unless-stopped
     # DATABASE_URL, APP_ENV, FRONTEND_ORIGIN and FORWARDED_ALLOW_IPS (plan D10).
     env_file: .env
@@ -36,7 +36,7 @@ services:
     volumes:
       # The image sets MEDIA_DIR=/app/media and no .env overrides it (D18), so
       # uploads always land here and survive the container.
-      - /opt/wishlist-media/val:/app/media
+      - /opt/shushgift-media/val:/app/media
     depends_on:
       # The entrypoint runs `alembic upgrade head` first, which needs the
       # database accepting TCP connections.

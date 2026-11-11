@@ -48,9 +48,9 @@ FROM python:3.14-slim
 
 # The source label is what links a package pushed to ghcr.io back to its
 # repository.
-LABEL org.opencontainers.image.source="https://github.com/rui-nar/Wishlist" \
-      org.opencontainers.image.title="Wishlist" \
-      org.opencontainers.image.description="Wishlist server: the API and the web client"
+LABEL org.opencontainers.image.source="https://github.com/rui-nar/shushgift" \
+      org.opencontainers.image.title="Shush Gift" \
+      org.opencontainers.image.description="Shush Gift server: the API and the web client"
 
 # Python dependencies come from uv.lock. --locked fails the build if the lock
 # does not match pyproject.toml instead of resolving afresh, and
@@ -80,8 +80,8 @@ COPY --from=web /client/build/web/ /app/web/
 # (plan D18). The code and the venv stay root-owned, read-only to the app.
 # /app/media is where the VPS mounts the environment's media directory; the
 # directory created here is what a run without a mount writes to.
-RUN groupadd --gid 10001 wishlist \
- && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin wishlist \
+RUN groupadd --gid 10001 shushgift \
+ && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin shushgift \
  && mkdir /app/media \
  && chown 10001:10001 /app/media
 # Set here, and by no deploy .env, so the app always writes where the mount is
