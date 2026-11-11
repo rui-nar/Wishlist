@@ -48,6 +48,7 @@ below; replace them as you run the commands.
 | `<android-application-id>` | the Android applicationId of the build that signs in with Apple ([step 12](#12-apple-sign-in)). Never committed |
 | `<account-address>` | the email address of an account, when it has to be looked up. Never committed |
 | `<user-id>` | an account's id, printed by the query that looked it up |
+| `<admin-user-id>` | the id of the account that is admin, found in [Admin](#admin). Never committed |
 | `<entitlement-id>` | the row id in a log line `entitlement past its grace` |
 | `<subscription-id>`, `<customer-id>`, `<event-id>`, `<webhook-endpoint-id>`, `<test-clock-id>`, `<good-card-id>`, `<failing-card-id>` | Stripe's ids, shown in its dashboard or printed by the command that creates them. Never committed |
 
@@ -946,6 +947,67 @@ Sign-in by email and password follows the email turn-on steps of
 and email notifications) and needs nothing more. `NOTIFICATIONS_WORKER` must
 stay on: the links it mails expire in an hour.
 
+## Admin
+
+One account sees the admin panel: the users with their plan, lists, photo
+space and gift counts, a manual Premium, and the deletion of an account
+(admin panel plan, `plans/ADMIN_PANEL_PLAN.md`). Which account is set by
+`ADMIN_USER_IDS` in the environment's `.env`, an account id and never an
+address. Empty, nobody is admin and `/api/admin` answers 404 to everyone.
+VAL first, then PROD: each has its own ids, since VAL's accounts are copied
+from PROD only by a seed.
+
+1. Sign in to the app once, on the environment, with the account that should
+   be admin.
+2. **[VPS]** Find its id, with the `pg` function of
+   [Billing with Stripe](#billing-with-stripe), in the directory of the
+   environment:
+
+   ```bash
+   pg <<'SQL'
+   select id, created_at from users where email = '<owner-address>' order by created_at;
+   SQL
+   ```
+
+   Several rows are possible, one per way of signing in (Google, Apple,
+   email). Pick the account you use, which is the one you sign in with:
+   the address alone does not say which.
+3. **[VPS]** Put the id in `.env` as `ADMIN_USER_IDS=<admin-user-id>`, then
+   start the app again with the new value (`restart` would not read it):
+
+   ```bash
+   docker compose up -d --wait --wait-timeout 300
+   ```
+
+4. Check. **[VPS]** This prints nothing (a line would name the positions of
+   entries that are not ids, and ignore them):
+
+   ```bash
+   docker compose logs app | grep ADMIN_USER_IDS
+   ```
+
+   In the browser, signed in as that account, the account screen shows
+   "Admin", and the response of `GET /api/me` (network tab) says
+   `"is_admin": true`.
+5. **The 12-hour rule.** Changing a plan or deleting an account needs a
+   sign-in less than 12 hours old: past that the panel asks to sign in again,
+   and the change is made after it.
+6. **What the panel shows, and never shows.** Counts only: lists owned, gifts
+   per list, the number of owners, photos and their space. Never a gift, a
+   reservation, a pledge, a comment or an occasion's members. Photos count
+   only on gifts the recipient can see, so a giver's preparation of a surprise
+   moves nothing; hidden gifts count for no one.
+7. **The record.** Every change is kept. **[VPS]**
+
+   ```bash
+   pg <<'SQL'
+   select created_at, action, target_user_id, detail from admin_actions order by created_at desc limit 50;
+   SQL
+   ```
+
+8. **Removing the admin.** Empty the variable (`ADMIN_USER_IDS=`) and run
+   `docker compose up -d --wait --wait-timeout 300` again.
+
 ## Daily check
 
 **[VPS]** (or over `ssh <deploy-user>@<vps-host>` from the dev machine):
@@ -1460,6 +1522,33 @@ Run these on the host **before** deploying the release named, once.
   ```
 
   Nothing needs `docker compose up -d` yet: both are empty.
+
+- **The release with the admin panel** (the first with `ADMIN_USER_IDS` in the
+  `.env.example` files).
+
+  Its migration runs on deploy, by itself. It adds `images.bytes` and the
+  `admin_actions` table, and allows the `manual` source on purchases. The
+  previous release ignores the column and the table, so a rollback stays
+  image-only. The photo sizes of older photos are measured by the media thread
+  after the deploy, a few hundred per run: the panel says "measuring" until
+  then.
+
+  **[VPS]** Each `.env` gets the new line, from the examples at the release
+  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  adding it twice.
+
+  ```bash
+  cd /opt/wishlist-val
+  grep -q '^ADMIN_USER_IDS=' .env || \
+      grep -E '^ADMIN_USER_IDS=' "$SRC/deploy/val/.env.example" >> .env
+  cd /opt/wishlist
+  grep -q '^ADMIN_USER_IDS=' .env || \
+      grep -E '^ADMIN_USER_IDS=' "$SRC/deploy/prod/.env.example" >> .env
+  grep -c -E '^ADMIN_USER_IDS=' /opt/wishlist-val/.env /opt/wishlist/.env   # :1 for both
+  ```
+
+  Nothing needs `docker compose up -d` yet: it is empty, and no one is admin
+  until [Admin](#admin) is followed.
 
 ### Updating the files on the host
 
