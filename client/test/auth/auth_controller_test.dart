@@ -401,6 +401,33 @@ void main() {
       expect(auth.isAdmin, isFalse);
     });
 
+    test('an unreachable read signs in all the same, not as the admin (R4-3)',
+        () async {
+      server.isAdmin = true;
+      final auth = AuthController(
+        api: ApiClient(
+          MockClient((request) async {
+            if (request.method == 'GET' && request.url.path == '/api/me') {
+              throw http.ClientException('refused', request.url);
+            }
+            final copy = http.Request(request.method, request.url)
+              ..headers.addAll(request.headers)
+              ..bodyBytes = request.bodyBytes;
+            return http.Response.fromStream(await server.client.send(copy));
+          }),
+          baseUrl: kApiBase,
+        ),
+        store: MemoryTokenStore(),
+      );
+      await auth.restore();
+
+      await auth.signInWithEmail('alice@example.com', kEmailPassword);
+
+      expect(auth.status, AuthStatus.signedIn);
+      expect(auth.user!.email, 'alice@example.com');
+      expect(auth.isAdmin, isFalse);
+    });
+
     test('a 401 to that read leaves the user signed out', () async {
       server.status['GET /api/me'] = 401;
       final store = MemoryTokenStore();

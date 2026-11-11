@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
 
@@ -282,7 +283,10 @@ class AuthController extends ChangeNotifier {
   Future<bool> _readIsAdmin() async {
     try {
       return (await _api.getJson('/api/me'))['is_admin'] == true;
-    } catch (_) {
+    } catch (error) {
+      // Logged so a missing admin entry is not read as a configuration error
+      // (review R4-3). The typed errors' text is their type only.
+      log('is_admin read failed after sign-in', name: 'auth', error: error);
       return false;
     }
   }

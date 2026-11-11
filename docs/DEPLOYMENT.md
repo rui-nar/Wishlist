@@ -988,7 +988,9 @@ from PROD only by a seed.
 
    In the browser, signed in as that account, the account screen shows
    "Admin", and the response of `GET /api/me` (network tab) says
-   `"is_admin": true`.
+   `"is_admin": true`. If no "Admin" appears, reload the page once and look
+   at the answer of `GET /api/me` in the network tab before changing
+   `ADMIN_USER_IDS`: a failed read at sign-in hides the entry too.
 5. **The 12-hour rule.** Changing a plan or deleting an account needs a
    sign-in less than 12 hours old: past that the panel asks to sign in again,
    and the change is made after it.
