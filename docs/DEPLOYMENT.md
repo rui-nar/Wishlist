@@ -771,7 +771,7 @@ has to be enabled. Details of rows 6 and 7 follow below.
 | 8 | Branding → App domain | Home page `https://<prod-host>/welcome`, privacy policy the address of `LEGAL_PRIVACY_URL`, terms of service the address of `LEGAL_TERMS_URL` | Before row 9 |
 | 9 | Audience → **Publish app** | Status **In production**: open to any Google account | Before PROD serves the public |
 | 10 | Verification Centre | Only for showing the name `Wishlist` or a logo on Google's screen. It needs the ownership of `<top-private-domain>` proven in Google Search Console | Optional |
-| 11 | Google Auth Platform → Clients | The iOS client ([step 13](#google-ios-oauth-client)) | Once the bundle id is chosen |
+| 11 | Google Auth Platform → Clients | Two iOS clients, one per iOS app's bundle id ([step 13](#google-ios-oauth-client)) | Once the bundle ids are chosen |
 
 - **Row 8:** Google requires the home page to be public, to describe the app
   and to link the same privacy policy. The welcome page does not link a privacy
@@ -1155,7 +1155,8 @@ do: set them all in one sitting, before any tag is pushed.
 | `IOS_BUNDLE_ID_VAL` | variable | `<ios-bundle-id-val>`; the workflow refuses it equal to `IOS_BUNDLE_ID` |
 | `API_BASE_URL_VAL` | secret | `https://<val-host>`, no trailing slash. A secret so the hostname stays out of the logs |
 | `API_BASE_URL_PROD` | secret | `https://<prod-host>`, the same way |
-| `GOOGLE_IOS_CLIENT_ID` | variable | `<google-ios-client-id>` ([below](#google-ios-oauth-client)). Unset: the app offers Apple and email only |
+| `GOOGLE_IOS_CLIENT_ID` | variable | `<google-ios-client-id>`, the PROD app's iOS client ([below](#google-ios-oauth-client)). Unset: the PROD app offers Apple and email only |
+| `GOOGLE_IOS_CLIENT_ID_VAL` | variable | `<google-ios-client-id-val>`, the VAL app's iOS client, the same way; the workflow refuses it equal to `GOOGLE_IOS_CLIENT_ID` |
 
 **[dev]** With the GitHub CLI, in the checkout. The key file is piped, never
 pasted:
@@ -1170,8 +1171,9 @@ gh variable set IOS_BUNDLE_ID_VAL --body <ios-bundle-id-val>
 gh secret set API_BASE_URL_VAL --body https://<val-host>
 gh secret set API_BASE_URL_PROD --body https://<prod-host>
 gh variable set GOOGLE_IOS_CLIENT_ID --body <google-ios-client-id>
+gh variable set GOOGLE_IOS_CLIENT_ID_VAL --body <google-ios-client-id-val>
 gh secret list                           # ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, API_BASE_URL_VAL, API_BASE_URL_PROD, among the others
-gh variable list                         # APPLE_TEAM_ID, IOS_BUNDLE_ID, IOS_BUNDLE_ID_VAL, GOOGLE_IOS_CLIENT_ID
+gh variable list                         # APPLE_TEAM_ID, IOS_BUNDLE_ID, IOS_BUNDLE_ID_VAL, GOOGLE_IOS_CLIENT_ID, GOOGLE_IOS_CLIENT_ID_VAL
 ```
 
 Then delete `AuthKey_<asc-key-id>.p8` and `AuthKey_<apple-key-id>.p8` from
@@ -1180,32 +1182,28 @@ Downloads once both are in the password manager.
 ### Google iOS OAuth client
 
 Google sign-in on iOS needs an **iOS** OAuth client, in the same project as
-the web client of [step 11](#11-google-sign-in). The app passes the web
-client's ID from `/api/config` as its server client ID, so the ID token is
-still issued for the web client and `GOOGLE_CLIENT_IDS` needs nothing more
-(plan D3). The iOS client's ID goes into the build, and its reversed form
-becomes the app's URL scheme.
+the web client of [step 11](#11-google-sign-in). Google registers an iOS
+client with one bundle id, so each app has its own: two clients. The app
+passes the web client's ID from `/api/config` as its server client ID, so the
+ID token is still issued for the web client and `GOOGLE_CLIENT_IDS` needs
+nothing more (plan D3). The iOS client's ID goes into the build, and its
+reversed form becomes the app's URL scheme.
 
-**[Google Cloud]** Google Auth Platform → Clients → Create client:
+**[Google Cloud]** Google Auth Platform → Clients → Create client, once per
+app:
 
-| Field | Value |
-|---|---|
-| Application type | **iOS** |
-| Name | `Wishlist iOS` |
-| Bundle ID | `<ios-bundle-id>` |
-| App Store ID, Team ID | empty |
+| Field | PROD | VAL |
+|---|---|---|
+| Application type | **iOS** | **iOS** |
+| Name | `Wishlist iOS` | `Wishlist iOS VAL` |
+| Bundle ID | `<ios-bundle-id>` | `<ios-bundle-id-val>` |
+| App Store ID, Team ID | empty | empty |
 
-The client's ID is `<google-ios-client-id>`: set it as the
-`GOOGLE_IOS_CLIENT_ID` variable above. No client secret is involved.
-
-Both apps use this one client, since the workflow has one variable. Google's
-sign-in on iOS is not expected to check the calling app's bundle id against
-the client's, so the VAL app should sign in with it too; the [first
-build](#first-build-from-the-validation-tag) checks it. If the VAL app's
-Google button fails with an error naming the client while the web works, the
-VAL app needs its own iOS client, which the workflow's one variable cannot
-give it yet: report it as a finding, and leave the VAL app on Apple and
-email meanwhile.
+The PROD client's ID is `<google-ios-client-id>`, set as the
+`GOOGLE_IOS_CLIENT_ID` variable above; the VAL client's is
+`<google-ios-client-id-val>`, set as `GOOGLE_IOS_CLIENT_ID_VAL`. No client
+secret is involved. An app whose variable is unset is built without Google
+sign-in.
 
 ### TestFlight testers
 

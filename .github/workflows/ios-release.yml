@@ -58,6 +58,7 @@ jobs:
           API_BASE_URL_PROD: ${{ secrets.API_BASE_URL_PROD }}
           API_BASE_URL_VAL: ${{ secrets.API_BASE_URL_VAL }}
           GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_IOS_CLIENT_ID_VAL: ${{ vars.GOOGLE_IOS_CLIENT_ID_VAL }}
         run: |
           missing=""
           for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
@@ -90,6 +91,7 @@ jobs:
             bundle_id="$IOS_BUNDLE_ID"
             api="$API_BASE_URL_PROD"
             display_name="Wishlist"
+            google_var="GOOGLE_IOS_CLIENT_ID"
             # The PROD app's version is the release's: App Store Connect
             # refuses a new build of a version it has already approved.
             if [ "$REF_TYPE" != "tag" ] || ! [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -101,7 +103,9 @@ jobs:
             bundle_id="$IOS_BUNDLE_ID_VAL"
             api="$API_BASE_URL_VAL"
             display_name="Wishlist VAL"
+            google_var="GOOGLE_IOS_CLIENT_ID_VAL"
           fi
+          google_client_id="${!google_var}"
 
           # The placeholder would make automatic signing register it with
           # Apple. The format check also keeps the value safe to write into
@@ -125,17 +129,24 @@ jobs:
             echo "::error::The $app app's server address is empty or not https: set the API_BASE_URL_VAL or API_BASE_URL_PROD secret"
             exit 1
           fi
-          # Google on iOS (D3): unset means no Google sign-in. Set, the app
-          # gets the client id and the Info.plist its reversed form as a URL
-          # scheme, both from this one value: Google's SDK stops the app at
-          # sign-in when it has the id without the scheme.
+          # Google on iOS (D3): one iOS client per app, since Google registers
+          # an iOS client with one bundle id. Unset means no Google sign-in
+          # for that app. Set, the app gets the client id and the Info.plist
+          # its reversed form as a URL scheme, both from this one value:
+          # Google's SDK stops the app at sign-in when it has the id without
+          # the scheme.
           google_reversed=""
-          if [ -n "$GOOGLE_IOS_CLIENT_ID" ]; then
-            if ! [[ "$GOOGLE_IOS_CLIENT_ID" =~ ^[A-Za-z0-9-]+\.apps\.googleusercontent\.com$ ]]; then
-              echo "::error::GOOGLE_IOS_CLIENT_ID is not <id>.apps.googleusercontent.com"
+          if [ -n "$google_client_id" ]; then
+            if ! [[ "$google_client_id" =~ ^[A-Za-z0-9-]+\.apps\.googleusercontent\.com$ ]]; then
+              echo "::error::$google_var is not <id>.apps.googleusercontent.com"
               exit 1
             fi
-            google_reversed="com.googleusercontent.apps.${GOOGLE_IOS_CLIENT_ID%.apps.googleusercontent.com}"
+            google_reversed="com.googleusercontent.apps.${google_client_id%.apps.googleusercontent.com}"
+          fi
+          # One client cannot carry both bundle ids.
+          if [ -n "$GOOGLE_IOS_CLIENT_ID" ] && [ "$GOOGLE_IOS_CLIENT_ID" = "$GOOGLE_IOS_CLIENT_ID_VAL" ]; then
+            echo "::error::GOOGLE_IOS_CLIENT_ID and GOOGLE_IOS_CLIENT_ID_VAL must differ"
+            exit 1
           fi
 
           {
@@ -144,7 +155,7 @@ jobs:
             echo "bundle_id=$bundle_id"
             echo "display_name=$display_name"
             echo "build_name=$build_name"
-            echo "google_client_id=$GOOGLE_IOS_CLIENT_ID"
+            echo "google_client_id=$google_client_id"
             echo "google_reversed_client_id=$google_reversed"
           } >> "$GITHUB_OUTPUT"
 
