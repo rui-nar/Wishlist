@@ -44,7 +44,12 @@ below; replace them as you run the commands.
 | `<stripe-price-id>` | the id of Wishlist's yearly price, `price_…`, which belongs to one Stripe account and mode. Never committed |
 | `<price-amount>` | that price's amount in major units, as it is in Stripe: digits, a dot, two decimals. Never committed |
 | `<apple-services-id>` | the identifier of Wishlist's Services ID in Apple Developer, in reverse-domain form ([step 12](#12-apple-sign-in)). Public, not a secret, but never committed |
-| `<ios-bundle-id>` | the bundle ID of the iOS app, registered as an App ID ([step 12](#12-apple-sign-in)). Never committed |
+| `<ios-bundle-id>` | the bundle ID of the PROD iOS app, registered as an App ID ([step 12](#12-apple-sign-in)), and Android's PROD application id too ([step 13](#the-bundle-id)). Never committed |
+| `<ios-bundle-id-val>` | the bundle ID of the VAL iOS app, `<ios-bundle-id>.val` ([step 13](#the-bundle-id)). Never committed |
+| `<apple-team-id>` | the 10-character Team ID of the Apple Developer membership ([step 13](#the-sign-in-with-apple-key)). Not a secret, but never committed |
+| `<apple-key-id>` | the 10-character ID of the Sign in with Apple key; its file is `AuthKey_<apple-key-id>.p8`, a secret ([step 13](#the-sign-in-with-apple-key)). Never committed |
+| `<asc-key-id>`, `<asc-issuer-id>` | the ID and the issuer ID of the App Store Connect API key; its file is `AuthKey_<asc-key-id>.p8`, a secret ([step 13](#the-app-store-connect-api-key)). Never committed |
+| `<google-ios-client-id>` | the ID of Wishlist's iOS OAuth client, ending in `.apps.googleusercontent.com` ([step 13](#google-ios-oauth-client)). Public, not a secret, but never committed |
 | `<android-application-id>` | the Android applicationId of the build that signs in with Apple ([step 12](#12-apple-sign-in)). Never committed |
 | `<account-address>` | the email address of an account, when it has to be looked up. Never committed |
 | `<user-id>` | an account's id, printed by the query that looked it up |
@@ -65,7 +70,8 @@ the Brevo account that sends the emails), **[Stripe]** (the dashboard of the
 Stripe account selling Wishlist: a sandbox for VAL, live mode for PROD),
 **[Google Cloud]** (the Google Cloud console, in Wishlist's project) or
 **[Apple]** (the Apple Developer account, at
-<https://developer.apple.com/account/resources>).
+<https://developer.apple.com/account/resources>, or App Store Connect, at
+<https://appstoreconnect.apple.com>, as the step says).
 
 ## What Wishlist adds to the VPS
 
@@ -765,6 +771,7 @@ has to be enabled. Details of rows 6 and 7 follow below.
 | 8 | Branding → App domain | Home page `https://<prod-host>/welcome`, privacy policy the address of `LEGAL_PRIVACY_URL`, terms of service the address of `LEGAL_TERMS_URL` | Before row 9 |
 | 9 | Audience → **Publish app** | Status **In production**: open to any Google account | Before PROD serves the public |
 | 10 | Verification Centre | Only for showing the name `Wishlist` or a logo on Google's screen. It needs the ownership of `<top-private-domain>` proven in Google Search Console | Optional |
+| 11 | Google Auth Platform → Clients | The iOS client ([step 13](#google-ios-oauth-client)) | Once the bundle id is chosen |
 
 - **Row 8:** Google requires the home page to be public, to describe the app
   and to link the same privacy policy. The welcome page does not link a privacy
@@ -936,9 +943,9 @@ curl.exe -s https://<val-host>/api/config    # "apple_client_id":"<apple-service
 The sign-in page shows the Apple button. A first sign-in creates an account, a
 second one finds it.
 
-A later iOS release adds its bundle ID to the comma-separated
-`APPLE_CLIENT_IDS`. The first entry must stay the Services ID, since
-`/api/config` hands it to the web and Android.
+The iOS app adds its bundle ID to the comma-separated `APPLE_CLIENT_IDS`
+([step 13](#apple-sign-in-for-the-app)). The first entry must stay the
+Services ID, since `/api/config` hands it to the web and Android.
 
 ### Email sign-in
 
@@ -946,6 +953,360 @@ Sign-in by email and password follows the email turn-on steps of
 [Release-specific steps](#release-specific-steps) (the release with comments
 and email notifications) and needs nothing more. `NOTIFICATIONS_WORKER` must
 stay on: the links it mails expire in an hour.
+
+## 13. iOS app
+
+The iOS app is built and signed on GitHub's macOS runners and delivered by
+TestFlight (iOS app plan, D1 to D7). There are **two apps**: the VAL app,
+"Wishlist VAL", built from the `validation` tag and talking to VAL, which
+testers use; and the PROD app, built from a release tag and talking to PROD.
+Until the secrets of [GitHub secrets and
+variables](#github-secrets-and-variables) exist, the `iOS release` workflow
+ends with a notice and builds nothing.
+
+This step needs [step 12](#12-apple-sign-in) done first, at least on VAL: its
+membership, its App ID and its Services ID.
+
+### Enrolment
+
+**[Apple]** The Apple Developer Program membership of [step
+12](#12-apple-sign-in), point 1. Everything below stays in that **same
+team**: Apple's account ids, the keys and the apps all belong to it. An
+individual membership shows the owner's legal name as the seller on the App
+Store; an organisation needs a D-U-N-S number. Nothing below can start before
+Apple has accepted the enrolment.
+
+### The bundle id
+
+`<ios-bundle-id>` is the PROD app's identity, and **cannot change** once an
+App Store Connect app uses it. Android uses the same value as its PROD
+application id (`ANDROID_RELEASE_PLAN.md` D1), which cannot change once the
+app is on Google Play either, so one choice serves both:
+
+- reverse-domain, on a domain the owner controls for good, such as
+  `<top-private-domain>` reversed, then `.wishlist`. Never the placeholder
+  `com.example.wishlist`, which the release workflow refuses;
+- lowercase letters, digits and dots only, each part starting with a letter:
+  Apple forbids `_`, Android forbids `-`, and only this set is valid on both.
+
+`<ios-bundle-id-val>` is `<ios-bundle-id>.val`, as Android's VAL app adds
+`.val` to its application id.
+
+### App IDs
+
+**[Apple]** Certificates, Identifiers & Profiles → Identifiers. Register both
+before the first run: Xcode's automatic signing would otherwise register a
+missing one itself, with only the capabilities of the app's entitlements.
+
+| | PROD | VAL |
+|---|---|---|
+| Identifier | `<ios-bundle-id>`, from [step 12](#12-apple-sign-in), point 2 | **+** → App IDs → App: `<ios-bundle-id-val>`, explicit |
+| Description | `Wishlist` | `Wishlist VAL` |
+| Sign in with Apple | ticked, **Enable as a primary App ID** | ticked, then Edit: **Group with an existing primary App ID**, the PROD one |
+| In-App Purchase | ticked (Apple ticks it by default: check it) | ticked |
+
+Nothing else: no push notifications, no associated domains (plan D8).
+
+VAL is grouped with PROD because one Sign in with Apple key signs for its
+primary App ID's group only, and VAL's server exchanges the codes of both the
+Services ID (in PROD's group since step 12) and the VAL app. VAL and PROD
+already share the Services ID, so the group adds nothing they did not share:
+a person signs in to both with one Apple consent.
+
+### Apple sign-in for the app
+
+The native sheet's ID token is issued for the bundle id, not the Services ID,
+so each server accepts its own app's bundle id. The server also exchanges
+Apple's one-time code for the token it revokes when the account is deleted
+(plan D5), which needs a key.
+
+#### The Sign in with Apple key
+
+**[Apple]** Certificates, Identifiers & Profiles:
+
+1. Membership details (top right): the **Team ID**, `<apple-team-id>`.
+2. Keys → **+**: name `Wishlist Sign in with Apple`, tick **Sign in with
+   Apple** → Configure → Primary App ID: `<ios-bundle-id>`. Register.
+3. Note the **Key ID**, `<apple-key-id>`, and **Download**
+   `AuthKey_<apple-key-id>.p8`. Apple offers the file once only. Keep it in
+   the password manager, never in the checkout.
+
+One key serves both environments: both `.env` files are on the same host and
+read by the same user, so a second key would separate nothing. If it leaks,
+revoke it there (Keys → the key → Revoke), create another, and replace the
+three values in both `.env`.
+
+**[dev]** The key on one line, with each line break written `\n`, as the
+`.env` takes it, copied to the clipboard (`'\n'` in single quotes is the two
+characters, not a line break):
+
+```powershell
+(Get-Content $HOME\Downloads\AuthKey_<apple-key-id>.p8) -join '\n' | Set-Clipboard
+```
+
+#### The server's values
+
+**[VPS]** Fill in VAL. `APPLE_CLIENT_IDS` gets the VAL app's bundle id after
+the Services ID, which stays first. `APPLE_PRIVATE_KEY` is written with
+`printf`, not `sed`: `sed` would turn its `\n` into line breaks.
+
+```bash
+cd /opt/wishlist-val
+grep -n '^APPLE_' .env                   # APPLE_CLIENT_IDS=<apple-services-id>, APPLE_ANDROID_PACKAGE=…, then APPLE_TEAM_ID=, APPLE_KEY_ID=, APPLE_PRIVATE_KEY= (empty)
+sed -i 's/^APPLE_CLIENT_IDS=.*/APPLE_CLIENT_IDS=<apple-services-id>,<ios-bundle-id-val>/' .env
+sed -i 's/^APPLE_TEAM_ID=.*/APPLE_TEAM_ID=<apple-team-id>/' .env
+sed -i 's/^APPLE_KEY_ID=.*/APPLE_KEY_ID=<apple-key-id>/' .env
+read -rs APPLE_KEY                       # paste the key's one line, then Enter: nothing is shown or kept in the history
+sed -i '/^APPLE_PRIVATE_KEY=/d' .env
+printf 'APPLE_PRIVATE_KEY=%s\n' "$APPLE_KEY" >> .env
+unset APPLE_KEY
+grep -c '^APPLE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\\n.*\\n-----END PRIVATE KEY-----$' .env   # 1
+grep -E '^APPLE_(CLIENT_IDS|TEAM_ID|KEY_ID)=' .env                                              # the three, no secret
+ls -l .env                               # -rw-------
+docker compose up -d --wait --wait-timeout 300
+docker compose logs app | grep 'Apple token revocation is off'                                  # nothing
+```
+
+A line printed by the last `grep` names what is missing or does not load as
+a key. If the first `grep` shows no `APPLE_TEAM_ID`, the `.env` predates the
+setting: add the three lines from `.env.example` first ([Release-specific
+steps](#release-specific-steps)). The PEM form, with its real line breaks, also
+works, but a `.env` value cannot hold it unquoted.
+
+**[VPS]** PROD the same, before the first PROD build, in `/opt/wishlist` with
+`<ios-bundle-id>`:
+
+```bash
+sed -i 's/^APPLE_CLIENT_IDS=.*/APPLE_CLIENT_IDS=<apple-services-id>,<ios-bundle-id>/' .env
+```
+
+**[dev]** `/api/config` still hands out the Services ID:
+
+```powershell
+curl.exe -s https://<val-host>/api/config    # "apple_client_id":"<apple-services-id>"
+```
+
+**[dev]** None of it was committed:
+
+```powershell
+git grep -n -F -e <ios-bundle-id> -e <apple-team-id> -e <apple-key-id>   # nothing
+```
+
+### App Store Connect
+
+**[Apple]** At <https://appstoreconnect.apple.com>, Apps → **+** → New App,
+once per app:
+
+| Field | PROD | VAL |
+|---|---|---|
+| Platforms | iOS | iOS |
+| Name | `Wishlist` | `Wishlist VAL` |
+| Primary language | English | English |
+| Bundle ID | `<ios-bundle-id>` | `<ios-bundle-id-val>` |
+| SKU | `wishlist-prod` | `wishlist-val` |
+| User Access | Full Access | Full Access |
+
+An App Store name is unique across the store, even for an app never
+released: if one is taken, add a word; the name under the icon comes from the
+build, not from here. The VAL app is never submitted for review: it lives in
+TestFlight only.
+
+Create the PROD app before the first release tag after the secrets below: a
+release tag then builds the PROD app, and its upload fails without it.
+
+#### The App Store Connect API key
+
+The workflow signs with **automatic signing and cloud-managed certificates**:
+Xcode asks Apple for the certificate and the profile with this key at each
+run, and no certificate is kept anywhere. Apple lets a team API key use
+cloud-managed distribution certificates only with the **Admin** role: with
+App Manager or Developer, the run fails with a cloud signing permission
+error. If Apple's page on cloud-managed certificates names another role when
+you read it, follow Apple's page.
+
+**[Apple]** Users and Access → Integrations → App Store Connect API → Team
+Keys. The first time, **Request Access**, which the Account Holder accepts.
+Then **+**:
+
+1. Name `GitHub iOS release`, Access **Admin**. Generate.
+2. Note the **Issuer ID** above the list, `<asc-issuer-id>`, and the key's
+   **Key ID**, `<asc-key-id>`.
+3. **Download** `AuthKey_<asc-key-id>.p8`, offered once only. It goes into
+   GitHub below, then into the password manager, never into the checkout.
+
+An Admin key can do nearly anything in App Store Connect. It lives in the
+repository's secrets only, which no pull request's workflow reads. If it
+leaks, revoke it on this page and create another.
+
+### GitHub secrets and variables
+
+The release workflow reads these from the repository (Settings → Secrets and
+variables → Actions), not from an environment. It starts when the first four
+of the table exist, and fails, naming what is missing, when only some of them
+do: set them all in one sitting, before any tag is pushed.
+
+| Name | Kind | Value |
+|---|---|---|
+| `ASC_KEY_ID` | secret | `<asc-key-id>` |
+| `ASC_ISSUER_ID` | secret | `<asc-issuer-id>` |
+| `ASC_KEY_P8` | secret | the whole content of `AuthKey_<asc-key-id>.p8`, its line breaks included |
+| `APPLE_TEAM_ID` | variable | `<apple-team-id>` |
+| `IOS_BUNDLE_ID` | variable | `<ios-bundle-id>` |
+| `IOS_BUNDLE_ID_VAL` | variable | `<ios-bundle-id-val>`; the workflow refuses it equal to `IOS_BUNDLE_ID` |
+| `API_BASE_URL_VAL` | secret | `https://<val-host>`, no trailing slash. A secret so the hostname stays out of the logs |
+| `API_BASE_URL_PROD` | secret | `https://<prod-host>`, the same way |
+| `GOOGLE_IOS_CLIENT_ID` | variable | `<google-ios-client-id>` ([below](#google-ios-oauth-client)). Unset: the app offers Apple and email only |
+
+**[dev]** With the GitHub CLI, in the checkout. The key file is piped, never
+pasted:
+
+```powershell
+gh secret set ASC_KEY_ID --body <asc-key-id>
+gh secret set ASC_ISSUER_ID --body <asc-issuer-id>
+Get-Content -Raw $HOME\Downloads\AuthKey_<asc-key-id>.p8 | gh secret set ASC_KEY_P8
+gh variable set APPLE_TEAM_ID --body <apple-team-id>
+gh variable set IOS_BUNDLE_ID --body <ios-bundle-id>
+gh variable set IOS_BUNDLE_ID_VAL --body <ios-bundle-id-val>
+gh secret set API_BASE_URL_VAL --body https://<val-host>
+gh secret set API_BASE_URL_PROD --body https://<prod-host>
+gh variable set GOOGLE_IOS_CLIENT_ID --body <google-ios-client-id>
+gh secret list                           # ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, API_BASE_URL_VAL, API_BASE_URL_PROD, among the others
+gh variable list                         # APPLE_TEAM_ID, IOS_BUNDLE_ID, IOS_BUNDLE_ID_VAL, GOOGLE_IOS_CLIENT_ID
+```
+
+Then delete `AuthKey_<asc-key-id>.p8` and `AuthKey_<apple-key-id>.p8` from
+Downloads once both are in the password manager.
+
+### Google iOS OAuth client
+
+Google sign-in on iOS needs an **iOS** OAuth client, in the same project as
+the web client of [step 11](#11-google-sign-in). The app passes the web
+client's ID from `/api/config` as its server client ID, so the ID token is
+still issued for the web client and `GOOGLE_CLIENT_IDS` needs nothing more
+(plan D3). The iOS client's ID goes into the build, and its reversed form
+becomes the app's URL scheme.
+
+**[Google Cloud]** Google Auth Platform → Clients → Create client:
+
+| Field | Value |
+|---|---|
+| Application type | **iOS** |
+| Name | `Wishlist iOS` |
+| Bundle ID | `<ios-bundle-id>` |
+| App Store ID, Team ID | empty |
+
+The client's ID is `<google-ios-client-id>`: set it as the
+`GOOGLE_IOS_CLIENT_ID` variable above. No client secret is involved.
+
+Both apps use this one client, since the workflow has one variable. Google's
+sign-in on iOS is not expected to check the calling app's bundle id against
+the client's, so the VAL app should sign in with it too; the [first
+build](#first-build-from-the-validation-tag) checks it. If the VAL app's
+Google button fails with an error naming the client while the web works, the
+VAL app needs its own iOS client, which the workflow's one variable cannot
+give it yet: report it as a finding, and leave the VAL app on Apple and
+email meanwhile.
+
+### TestFlight testers
+
+Internal testers get every VAL build without Apple's review. Each one is a
+member of the team in App Store Connect (up to 100).
+
+**[Apple]** In App Store Connect:
+
+1. Users and Access → **+**: the tester's name and Apple Account address,
+   role **Developer**, without access to Certificates, Identifiers &
+   Profiles, and Apps: **Wishlist VAL** only. TestFlight takes internal
+   testers with the Admin, App Manager, Developer or Marketing role only.
+   They accept the email invitation.
+2. Apps → Wishlist VAL → TestFlight → Internal Testing → **+**: a group named
+   `Testers`, with **Enable automatic distribution** ticked. Add the testers.
+3. On their iPhone, testers install Apple's **TestFlight** app and accept the
+   invitation it shows.
+
+Testers use the VAL app, never the PROD one (plan D1): VAL is seeded from PROD
+and what they do there is lost at the next seed ([Seeding VAL from
+PROD](#seeding-val-from-prod)).
+
+### Privacy labels
+
+**[Apple]** Apps → Wishlist → App Privacy. Apple requires this before the PROD
+app goes to review; the VAL app does not need it. Privacy Policy URL: the
+address of `LEGAL_PRIVACY_URL`. Then Get Started → **Yes, we collect data**:
+
+| Data type | Purpose | Linked to the user | Used for tracking |
+|---|---|---|---|
+| Contact Info → Email Address | App Functionality | Yes | No |
+| Contact Info → Name | App Functionality | Yes | No |
+| Identifiers → User ID (the account's id) | App Functionality | Yes | No |
+| User Content → Photos or Videos (gift images) | App Functionality | Yes | No |
+| User Content → Other User Content (lists, gifts, comments) | App Functionality | Yes | No |
+
+Nothing else: no analytics, no advertising, no location, no tracking. Publish.
+When in-app purchase ships (`APPLE_IAP_PLAN.md`), Purchases → Purchase
+History joins the table.
+
+### First build from the validation tag
+
+Before it: VAL runs the release with Apple's token revocation (its migration
+adds `apple_tokens`), and its `.env` is filled in as [above](#the-servers-values).
+
+**[dev]** Push the `validation` tag as in [step 8](#8-first-val-deploy). It
+deploys VAL, as always, and starts the iOS release of the VAL app.
+
+**[GitHub]** Actions → "iOS release" for `validation`: the `gate` job, then
+`release` on macOS, about 20 minutes. Its notice says `validation-<short sha>,
+build <n>`. The run's log shows no hostname: the secrets are masked.
+
+**[Apple]** Apps → Wishlist VAL → TestFlight: the build appears as
+Processing, then becomes available to the `Testers` group, usually within half
+an hour. No export compliance question: the app declares it uses no
+encryption beyond HTTPS (plan D6).
+
+**[dev]** On an iPhone, in the VAL app installed from TestFlight:
+
+1. The name under the icon is "Wishlist VAL", and the app shows the version
+   `validation-<short sha>`.
+2. Sign in with Apple, with Google, then with email: each one signs in.
+3. A gift's photo can be taken with the camera and picked from the library,
+   each after the system's permission prompt.
+
+#### An Apple sign-in leaves a token
+
+The check of review R1-4: nothing else shows whether Apple's code exchange
+works. **[VPS]** After the Apple sign-in on the iPhone:
+
+```bash
+cd /opt/wishlist-val
+docker compose exec -T -u postgres db sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select client_id, updated_at from apple_tokens order by updated_at desc limit 5"'
+# a row for <ios-bundle-id-val>, updated at the sign-in. Never select refresh_token: it is a secret
+docker compose logs app | grep 'apple: code not exchanged'   # nothing
+```
+
+No row, or a `code not exchanged` line, meets R1-4's "Revisit when": record it
+in `docs/reviews/IOS_APP_PLAN.md` and take it through the adversarial review,
+since the deletions of these accounts then revoke nothing. The `reason=` of
+the log line says which part failed.
+
+An Apple sign-in on `https://<val-host>` in a browser leaves a row for
+`<apple-services-id>` the same way.
+
+### Certificates after the first two runs
+
+The check of review R1-6: automatic signing on a fresh runner may create a
+new certificate at each run, and Apple limits how many a team has.
+
+**[Apple]** Certificates, Identifiers & Profiles → Certificates. Note the
+count and the types before the first run, after it, and after the second (the
+second `validation` push, or a manual run of "iOS release" for `val`).
+
+- The second run added nothing: done.
+- Each run added one (an Apple Development or Apple Distribution certificate
+  created that day): R1-6's "Revisit when" is met. Record it in
+  `docs/reviews/IOS_APP_PLAN.md` and take it through the adversarial review.
+  Do not revoke certificates by hand to make room: that is for the triage to
+  decide.
 
 ## Admin
 

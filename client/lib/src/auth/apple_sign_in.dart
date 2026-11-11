@@ -13,6 +13,7 @@ class AppleAuthorisation {
     required this.idToken,
     required this.nonce,
     this.name,
+    this.authorizationCode,
   });
 
   final String idToken;
@@ -22,6 +23,10 @@ class AppleAuthorisation {
 
   /// Sent by Apple at the first authorisation only.
   final String? name;
+
+  /// Apple's one-time code, which the server exchanges for the token it
+  /// revokes when the account is deleted (IOS_APP_PLAN D5).
+  final String? authorizationCode;
 }
 
 // Longest display name the server accepts, in characters (D13).
@@ -33,6 +38,10 @@ bool _isUnprintable(int c) =>
     (c >= 0x7f && c <= 0x9f) ||
     (c >= 0x2028 && c <= 0x202e) ||
     (c >= 0x2066 && c <= 0x2069);
+
+// What the server accepts as Apple's code (`_CODE_PATTERN`, IOS_APP_PLAN
+// D5): 1 to 512 printable ASCII characters.
+final _authorizationCodePattern = RegExp(r'^[!-~]{1,512}$');
 
 // Apple's error codes for the user leaving the popup, or starting again:
 // https://developer.apple.com/documentation/signinwithapplejs/signinerrori
@@ -76,6 +85,7 @@ Future<AppleAuthorisation?> authoriseWithApple({
       idToken: idToken,
       nonce: nonce,
       name: appleDisplayName(credential.givenName, credential.familyName),
+      authorizationCode: appleAuthorizationCode(credential.authorizationCode),
     );
   } catch (error) {
     if (_isCancellation(error)) return null;
@@ -98,6 +108,12 @@ String? appleDisplayName(String? givenName, String? familyName) {
   }
   return name;
 }
+
+/// The code to send the server, or null when Apple gave none, or one the
+/// server would refuse: that must not cost the user their sign-in, which then
+/// only leaves no token to revoke (IOS_APP_PLAN D5).
+String? appleAuthorizationCode(String code) =>
+    _authorizationCodePattern.hasMatch(code) ? code : null;
 
 bool _isCancellation(Object error) => switch (error) {
       SignInWithAppleAuthorizationException(:final code) =>

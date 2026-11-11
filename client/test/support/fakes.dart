@@ -25,6 +25,9 @@ const kValidIdToken = 'valid-google-id-token';
 /// The Apple ID token [FakeServer] accepts.
 const kValidAppleIdToken = 'valid-apple-id-token';
 
+/// The one-time code [FakeAppleSignIn] answers with, shaped like Apple's.
+const kAppleAuthorizationCode = 'c0ffee.0.abcd.ZmFrZS1jb2Rl';
+
 /// What a server with Apple configured gives in `/api/config`.
 const kAppleClientId = 'test.apple.service';
 const kAppleRedirectUri = 'https://app.test/api/auth/apple/callback';
@@ -191,6 +194,12 @@ class FakeServer {
       case 'POST /api/auth/apple':
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         appleBodies.add(body);
+        // The server refuses a code outside its rule (IOS_APP_PLAN D5).
+        final code = body['authorization_code'];
+        if (code != null &&
+            (code is! String || !RegExp(r'^[!-~]{1,512}$').hasMatch(code))) {
+          return http.Response('', 422);
+        }
         if (body['id_token'] != kValidAppleIdToken) return unauthorized;
         return json({'token': addSession(), 'user': kAlice});
       case 'POST /api/auth/email/start':
@@ -370,12 +379,13 @@ class FakeAppleSignIn extends SignInWithApplePlatform {
     String? identityToken = kValidAppleIdToken,
     String? givenName,
     String? familyName,
+    String authorizationCode = kAppleAuthorizationCode,
   }) =>
       AuthorizationCredentialAppleID(
         userIdentifier: null,
         givenName: givenName,
         familyName: familyName,
-        authorizationCode: 'code',
+        authorizationCode: authorizationCode,
         email: null,
         identityToken: identityToken,
         state: null,

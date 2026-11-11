@@ -122,6 +122,38 @@ void main() {
       expect(store.token, isNull);
     });
 
+    test("Apple sign-in sends Apple's code (IOS_APP_PLAN D5)", () async {
+      final store = MemoryTokenStore();
+      final auth = controller(store);
+      await auth.restore();
+
+      await auth.signInWithApple(
+        idToken: kValidAppleIdToken,
+        nonce: 'raw-nonce',
+        authorizationCode: kAppleAuthorizationCode,
+      );
+
+      expect(server.appleBodies.single, {
+        'id_token': kValidAppleIdToken,
+        'nonce': 'raw-nonce',
+        'authorization_code': kAppleAuthorizationCode,
+      });
+      expect(auth.status, AuthStatus.signedIn);
+      expect(store.token, isNotNull);
+    });
+
+    test('Apple sign-in without a code sends none, as older clients do',
+        () async {
+      final auth = controller(MemoryTokenStore());
+      await auth.restore();
+
+      await auth.signInWithApple(idToken: kValidAppleIdToken, nonce: 'n');
+
+      expect(server.appleBodies.single.containsKey('authorization_code'),
+          isFalse);
+      expect(auth.status, AuthStatus.signedIn);
+    });
+
     test('email sign-in: the session, stored', () async {
       final store = MemoryTokenStore();
       final auth = controller(store);

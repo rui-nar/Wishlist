@@ -254,6 +254,52 @@ void main() {
     });
   });
 
+  // IOS_APP_PLAN D5: the server exchanges it for the token it revokes.
+  group("Apple's code", () {
+    testWidgets('reaches the server, on every platform', (tester) async {
+      await pumpSignIn(tester);
+
+      await tapApple(tester);
+
+      expect(server.appleBodies.single['authorization_code'],
+          kAppleAuthorizationCode);
+      expect(auth.status, AuthStatus.signedIn);
+    }, variant: TargetPlatformVariant.all());
+
+    final refusedByServer = <String, String>{
+      'none': '',
+      'longer than 512 characters': 'a' * 513,
+      'not printable ASCII': 'code with spaces',
+    };
+    for (final MapEntry(key: name, value: code) in refusedByServer.entries) {
+      testWidgets('$name: not sent, and the sign-in goes on', (tester) async {
+        apple.credential =
+            FakeAppleSignIn.appleCredential(authorizationCode: code);
+        await pumpSignIn(tester);
+
+        await tapApple(tester);
+
+        expect(server.appleBodies.single.containsKey('authorization_code'),
+            isFalse);
+        expect(auth.status, AuthStatus.signedIn);
+      });
+    }
+
+    test('what the server accepts is sent as it is', () {
+      expect(appleAuthorizationCode('a' * 512), 'a' * 512);
+      expect(appleAuthorizationCode('!~'), '!~');
+      expect(appleAuthorizationCode(kAppleAuthorizationCode),
+          kAppleAuthorizationCode);
+    });
+
+    test('what the server refuses is dropped', () {
+      expect(appleAuthorizationCode(''), isNull);
+      expect(appleAuthorizationCode('a' * 513), isNull);
+      expect(appleAuthorizationCode('a\tb'), isNull);
+      expect(appleAuthorizationCode('café'), isNull);
+    });
+  });
+
   group('cancelling is not a failure', () {
     final cancellations = <String, Object>{
       'Android or a native sheet': const SignInWithAppleAuthorizationException(
