@@ -8,7 +8,8 @@ import uuid
 from collections import defaultdict
 from datetime import datetime
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import and_, case, func, select, tuple_
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session, aliased
 
 from app.accounts.models import User, UserIdentity
@@ -16,10 +17,12 @@ from app.admin.schemas import (
     AdminList,
     AdminPhotos,
     AdminPlan,
+    AdminSubscription,
     AdminUserRow,
+    ManualGrant,
 )
-from app.billing.entitlements import summary
-from app.billing.models import ACTIVE, MANUAL, Entitlement
+from app.billing.entitlements import GRACE, summary
+from app.billing.models import ACTIVE, ENDED, MANUAL, PAST_DUE, STRIPE, Entitlement
 from app.lists import visibility
 from app.lists.models import Gift, List, ListOwner
 from app.media.models import Image
@@ -87,6 +90,8 @@ def user_rows(db: Session, users: list[User], now: datetime) -> list[AdminUserRo
         ).all()
     )
     photos = _photos(db, ids, now)
+    subscriptions = _subscriptions(db, ids, now)
+    grants = _manual_grants(db, ids)
     return [
         AdminUserRow(
             id=user.id,
@@ -95,6 +100,8 @@ def user_rows(db: Session, users: list[User], now: datetime) -> list[AdminUserRo
             created_at=user.created_at,
             sign_in=sign_in[user.id],
             plan=plan(db, user.id, now),
+            subscription=subscriptions.get(user.id),
+            manual_grant=grants.get(user.id),
             lists_owned=lists_owned.get(user.id, 0),
             photos=photos.get(user.id, AdminPhotos(count=0, bytes=0, measuring=False)),
         )
@@ -110,6 +117,75 @@ def plan(db: Session, user_id: uuid.UUID, now: datetime) -> AdminPlan:
         source=state.source,
         until=state.renews_at or state.ends_at,
     )
+
+
+def _subscriptions(
+    db: Session, ids: list[uuid.UUID], now: datetime
+) -> dict[uuid.UUID, AdminSubscription]:
+    """By user, their Stripe subscription, apart from any grant (owner,
+    2026-11-11): the one in force, the longest first as `summary` picks it,
+    else the latest started. One query for the page."""
+    # `entitlements._in_force`, which is private to billing.
+    in_force = and_(
+        Entitlement.status.in_((ACTIVE, PAST_DUE)),
+        Entitlement.period_end > now - GRACE,
+    )
+    rows = db.execute(
+        select(
+            Entitlement.user_id,
+            Entitlement.status,
+            Entitlement.cancel_at_period_end,
+            Entitlement.started_at,
+            Entitlement.period_end,
+            in_force.label("in_force"),
+        )
+        .where(Entitlement.user_id.in_(ids), Entitlement.source == STRIPE)
+        .ext(distinct_on(Entitlement.user_id))
+        .order_by(
+            Entitlement.user_id,
+            # Null without a `period_end`, which Postgres sorts first.
+            in_force.desc().nulls_last(),
+            case((in_force, Entitlement.period_end)).desc().nulls_last(),
+            Entitlement.started_at.desc().nulls_last(),
+            Entitlement.created_at.desc(),
+            Entitlement.id,
+        )
+    )
+    return {
+        user_id: AdminSubscription(
+            status=_subscription_status(status, cancel, granting),
+            started_at=started_at,
+            period_end=period_end,
+        )
+        for user_id, status, cancel, started_at, period_end, granting in rows
+    }
+
+
+def _subscription_status(status: str, cancel: bool, in_force: bool) -> str:
+    """The words of `summary`: a cancellation outweighs a failing card. A
+    granting status past its grace grants nothing, so it reads `ended`."""
+    if status not in (ACTIVE, PAST_DUE):
+        return status
+    if not in_force:
+        return ENDED
+    return "canceling" if cancel else status
+
+
+def _manual_grants(db: Session, ids: list[uuid.UUID]) -> dict[uuid.UUID, ManualGrant]:
+    """By user, the admin's grant not yet ended, as `active_manual_grant`
+    finds it (D8). One query for the page."""
+    rows = db.execute(
+        select(Entitlement.user_id, Entitlement.period_end)
+        .where(
+            Entitlement.user_id.in_(ids),
+            Entitlement.source == MANUAL,
+            Entitlement.status == ACTIVE,
+            Entitlement.period_end.is_not(None),
+        )
+        .ext(distinct_on(Entitlement.user_id))
+        .order_by(Entitlement.user_id, Entitlement.period_end.desc(), Entitlement.id)
+    )
+    return {user_id: ManualGrant(period_end=period_end) for user_id, period_end in rows}
 
 
 def _photos(

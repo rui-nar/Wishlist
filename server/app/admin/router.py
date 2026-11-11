@@ -30,7 +30,6 @@ from app.admin.schemas import (
     AdminRefusal,
     AdminUserDetail,
     AdminUsersPage,
-    ManualGrant,
     PremiumGrant,
 )
 from app.billing.models import ACTIVE, ENDED, MANUAL, Entitlement
@@ -241,16 +240,7 @@ def unknown(_: AdminUser) -> None:
 
 def _detail(db: Session, user: User, now: datetime) -> AdminUserDetail:
     [row] = queries.user_rows(db, [user], now)
-    grant = queries.active_manual_grant(db, user.id)
-    return AdminUserDetail(
-        **row.model_dump(),
-        lists=queries.lists_of(db, user.id),
-        manual_grant=(
-            None
-            if grant is None or grant.period_end is None
-            else ManualGrant(period_end=grant.period_end)
-        ),
-    )
+    return AdminUserDetail(**row.model_dump(), lists=queries.lists_of(db, user.id))
 
 
 def _lock_target(db: Session, user_id: uuid.UUID) -> User:
