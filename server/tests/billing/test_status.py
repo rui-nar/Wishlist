@@ -57,6 +57,8 @@ def test_free_with_an_offer_and_limits(client, make_account):
         "limits": FREE_LIMITS,
         "enforced": True,
         "offer": {"amount": "10.00", "currency": "EUR", "interval": "year"},
+        "apple_offer": None,
+        "apple_renewing": False,
         "can_manage": False,
         "legal": {"terms_url": None, "privacy_url": None, "withdrawal_url": None},
     }
@@ -164,3 +166,94 @@ def test_no_start_log_when_nothing_is_asked_for(make_client, caplog):
     with caplog.at_level(logging.WARNING, logger="app.main"):
         make_client()
     assert "billing" not in caplog.text
+
+
+# Selling on iPhone (Apple IAP plan D7, D9).
+
+
+def test_apple_offer_apart_from_stripes(make_apple_client, make_account):
+    client = make_apple_client()
+    client.app.state.clock = lambda: NOW
+    body = status_of(client, make_account())
+    assert body["apple_offer"] == {"product_id": "example.premium.yearly"}
+    # Stripe sells nothing here, and its offer keeps its shape.
+    assert body["offer"] is None
+
+
+def test_both_offers(make_apple_client, billing_on, make_account):
+    body = status_of(make_apple_client(**billing_on), make_account())
+    assert body["offer"] == {"amount": "10.00", "currency": "EUR", "interval": "year"}
+    assert body["apple_offer"] == {"product_id": "example.premium.yearly"}
+
+
+def test_apple_selling_alone_enforces_no_limit(make_apple_client, make_account):
+    """Limits apply only while Stripe sells (D7): nobody on the web or Android
+    is blocked with no way to pay."""
+    client = make_apple_client(billing_enforce_limits=True)
+    assert client.app.state.settings.limits_enforced is False
+    assert status_of(client, make_account())["enforced"] is False
+
+
+def test_an_apple_key_that_does_not_load_offers_nothing(
+    make_client, apple_on, make_account, caplog
+):
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        client = make_client(**apple_on | {"apple_iap_private_key": "secret-text"})
+    assert status_of(client, make_account())["apple_offer"] is None
+    assert "APPLE_IAP_PRIVATE_KEY" in caplog.text
+    assert "secret-text" not in caplog.text
+
+
+def test_the_start_log_names_what_apple_misses(make_client, caplog):
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        make_client(apple_product_id="example.premium.yearly")
+    assert "selling on iPhone is off" in caplog.text
+    assert "APPLE_BUNDLE_ID" in caplog.text
+    assert "example.premium.yearly" not in caplog.text
+
+
+def test_no_apple_start_log_when_nothing_is_asked_for(make_client, caplog):
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        make_client()
+    assert "iPhone" not in caplog.text
+
+
+# Apple's status -> (cancel_at_period_end) -> renewing, whatever `summary`
+# shows (D9, review R1-3).
+RENEWING = {
+    "active, auto-renew on": ("active", False, True),
+    "active, auto-renew off": ("active", True, False),
+    "grace period": ("past_due", False, True),
+    "billing retry": ("ended", False, True),
+    "expired": ("ended", True, False),
+}
+
+
+@pytest.mark.parametrize("case", RENEWING)
+def test_apple_renewing(client, make_account, engine, case):
+    status, cancel, renewing = RENEWING[case]
+    ada = make_account()
+    add_entitlement(
+        engine,
+        ada.id,
+        source="apple",
+        external_id="2000000001",
+        status=status,
+        cancel_at_period_end=cancel,
+    )
+    assert status_of(client, ada)["apple_renewing"] is renewing
+
+
+def test_apple_renewing_behind_a_longer_stripe_row(client, make_account, engine):
+    """`summary` shows Stripe's, which lasts longer; the warning still knows."""
+    ada = make_account()
+    add_entitlement(engine, ada.id, period_end=NOW + timedelta(days=900))
+    add_entitlement(engine, ada.id, source="apple", external_id="2000000001")
+    body = status_of(client, ada)
+    assert (body["source"], body["apple_renewing"]) == ("stripe", True)
+
+
+def test_stripe_rows_are_not_apple_renewing(client, make_account, engine):
+    ada = make_account()
+    add_entitlement(engine, ada.id)
+    assert status_of(client, ada)["apple_renewing"] is False

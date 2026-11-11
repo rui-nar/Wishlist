@@ -94,6 +94,22 @@ class Settings(BaseSettings):
     legal_terms_url: str = ""
     legal_privacy_url: str = ""
     legal_withdrawal_url: str = ""
+    # Premium bought on iPhone (Apple IAP plan D3, D7): the subscription sold,
+    # the app it is sold in, and the In-App Purchase key that reads it from the
+    # App Store Server API. The key is a secret. Any of them empty: no purchase
+    # is offered on iPhone and none is recorded.
+    apple_product_id: str = ""
+    apple_bundle_id: str = ""
+    apple_iap_issuer_id: str = ""
+    apple_iap_key_id: str = ""
+    apple_iap_private_key: str = ""
+    # The app's Apple ID in App Store Connect, digits: Apple's library needs it
+    # to check a production notification. Production only.
+    apple_app_apple_id: str = ""
+    # Comma-separated account ids whose Sandbox purchases production accepts
+    # (D6): the demo account given to Apple's review. Ignored elsewhere, where
+    # only Sandbox purchases are accepted.
+    apple_sandbox_account_ids: str = ""
     # Comma-separated account ids of the admins (admin panel plan D1), never
     # addresses. Empty: no admin, and /api/admin answers 404 to everyone.
     admin_user_ids: str = ""
@@ -122,6 +138,36 @@ class Settings(BaseSettings):
             except ValueError:
                 positions.append(position)
         return positions
+
+    @property
+    def apple_sandbox_ids(self) -> frozenset[uuid.UUID]:
+        # As ADMIN_USER_IDS: an entry that is not an id names no one.
+        ids = set()
+        for entry in self.apple_sandbox_account_ids.split(","):
+            with contextlib.suppress(ValueError):
+                ids.add(uuid.UUID(entry.strip()))
+        return frozenset(ids)
+
+    @property
+    def missing_apple_settings(self) -> list[str]:
+        """The variables that keep the app from selling on iPhone (Apple IAP
+        plan D7). Whether the key loads is known only by loading it: the
+        gateway's construction says so."""
+        values = {
+            "APPLE_PRODUCT_ID": self.apple_product_id,
+            "APPLE_BUNDLE_ID": self.apple_bundle_id,
+            "APPLE_IAP_ISSUER_ID": self.apple_iap_issuer_id,
+            "APPLE_IAP_KEY_ID": self.apple_iap_key_id,
+            "APPLE_IAP_PRIVATE_KEY": self.apple_iap_private_key,
+        }
+        if self.app_env == "production":
+            app_apple_id = self.apple_app_apple_id.strip()
+            values["APPLE_APP_APPLE_ID"] = (
+                app_apple_id
+                if app_apple_id.isascii() and app_apple_id.isdigit()
+                else ""
+            )
+        return [name for name, value in values.items() if not value.strip()]
 
     @property
     def billing_price(self) -> Decimal | None:
