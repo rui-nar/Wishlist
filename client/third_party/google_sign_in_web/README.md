@@ -3,7 +3,7 @@
 A copy of [`google_sign_in_web` 1.1.3](https://pub.dev/packages/google_sign_in_web/versions/1.1.3)
 (BSD-3-Clause, see `LICENSE`), wired in through `dependency_overrides` in
 `client/pubspec.yaml`. It comes from TraxJourney, which wrote the patch
-(TraxJourney #611); Wishlist takes it as it is (`docs/plans/ACCOUNTS_PLAN.md`
+(TraxJourney #611); Shush Gift takes it as it is (`docs/plans/ACCOUNTS_PLAN.md`
 D11).
 
 ## The patch
@@ -21,7 +21,7 @@ say "TraxJourney patch": that is where it was written.
 
 In TraxJourney's history the patch is the second commit that touched this
 folder, after the verbatim upstream copy. Here the first commit is a verbatim
-copy of TraxJourney's patched folder; the later ones change only Wishlist
+copy of TraxJourney's patched folder; the later ones change only Shush Gift
 files: this README, `analysis_options.yaml` (the client's lints do not apply
 to upstream's code) and `.gitignore` (what a test run writes here). To see the
 patch itself, diff this folder against upstream 1.1.3.

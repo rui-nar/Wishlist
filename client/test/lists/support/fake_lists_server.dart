@@ -1117,6 +1117,8 @@ Future<({ApiClient api, AuthController auth})> startApp(
   bool signedIn = true,
   bool settle = true,
   PendingJoin? pendingJoin,
+  // As on Android and iOS, where [location] may be a whole link.
+  bool openAppLinks = false,
 }) async {
   tester.platformDispatcher.defaultRouteNameTestValue = location;
   addTearDown(tester.platformDispatcher.clearDefaultRouteNameTestValue);
@@ -1127,7 +1129,12 @@ Future<({ApiClient api, AuthController auth})> startApp(
     store: MemoryTokenStore(signedIn ? server.accounts.addSession() : null),
   );
   await tester.pumpWidget(
-    ShushGiftApp(api: api, auth: auth, pendingJoin: pendingJoin),
+    ShushGiftApp(
+      api: api,
+      auth: auth,
+      pendingJoin: pendingJoin,
+      openAppLinks: openAppLinks,
+    ),
   );
   await auth.restore();
   if (settle) {

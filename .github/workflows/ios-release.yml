@@ -285,6 +285,11 @@ jobs:
             echo "SHUSHGIFT_BUNDLE_ID = $BUNDLE_ID"
             echo "SHUSHGIFT_DISPLAY_NAME = $DISPLAY_NAME"
             echo "SHUSHGIFT_APP_LINK_HOST = $app_link_host"
+            # The entitlements with applinks:$(SHUSHGIFT_APP_LINK_HOST); the
+            # gate refuses a build without a host, so there always is one.
+            if [ -n "$app_link_host" ]; then
+              echo "CODE_SIGN_ENTITLEMENTS = Runner/RunnerAppLinks.entitlements"
+            fi
             if [ -n "$GOOGLE_REVERSED_CLIENT_ID" ]; then
               echo "GOOGLE_IOS_REVERSED_CLIENT_ID = $GOOGLE_REVERSED_CLIENT_ID"
             fi

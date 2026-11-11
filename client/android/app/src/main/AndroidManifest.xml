@@ -25,6 +25,14 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- A link that opens the app reaches its router, whole, fragment
+                 included (Shush Gift plan D7). The links it opens are claimed
+                 by an intent filter build.gradle.kts adds when the build sets
+                 shushgiftAppLinkHost. -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="true"
+              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
