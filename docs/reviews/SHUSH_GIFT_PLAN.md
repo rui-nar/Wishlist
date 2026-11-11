@@ -153,7 +153,7 @@ enforced. No envelope question.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (fc30a41)
 
 ### R4-2 — The PROD release tag is pushed before API_BASE_URL_PROD names the new host
 - Trigger: owner follows part 6 in order and pushes the release tag → both release workflows build the PROD apps for the old host, which part 7 removes
@@ -162,7 +162,7 @@ enforced. No envelope question.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (fc30a41)
 
 ### R4-3 — Cut-over step 7's horizon check prints nothing for ten minutes
 - Trigger: owner runs the purge-log check right after `up -d --wait` → empty output, none of the documented cases
@@ -171,7 +171,7 @@ enforced. No envelope question.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (fc30a41)
 
 ### R4-4 — Part 3 reuses step 6's Caddy guard, which expects 0 but prints 2 or more during the move
 - Trigger: owner appends the snippet "as in step 6" → the guard counts the old hosts' blocks → reads as already appended, the append is skipped
@@ -180,4 +180,26 @@ enforced. No envelope question.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (fc30a41)
+
+## Delivery
+
+Delivered under the standing instruction of 2026-11-11: the split stop was
+skipped. The harness refused its own worktrees (the `e:`/`E:` drive-letter
+case), so each unit ran in a worktree made by hand from the integrated head of
+its wave. U2's first attempt was cut short by a session restart and finished
+by a second implementer from the uncommitted work (counted as one attempt).
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Client rename | Opus | S4 | 1 | — | yes | — |
+| U2 | Server rename and app-link files | Opus | S5 | 1 | — | yes | — |
+| U3 | Infrastructure rename, `www` redirect | Opus | S5 | 1 | — | yes | — |
+| U4 | Client app links | Opus | S5 | 2 | Scope: second iOS entitlements file, `ios-release.yml` line | yes | — |
+| U5 | Release workflows | Opus | S5 | 2 | — | no (IPv4 hosts accepted) | — |
+| U6 | Runbook and docs | Sonnet | — | 2 | — | no (missing ways back, VAL `LEGAL_*`) | R4-1, R4-2, R4-3, R4-4 |
+
+Integration fixes outside the units: the conftest example names
+`shushgift_test`; the `APP_LINKS_ANDROID_SHA256` and webhook comments match the
+code and the private repository; the smoke test asks the user-info case over
+HTTP/1.1 (CI's curl reset it over HTTP/2).
