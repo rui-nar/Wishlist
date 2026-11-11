@@ -21,12 +21,13 @@ from app.admin.schemas import (
     AdminUserRow,
     ManualGrant,
 )
-from app.billing import apple_events
+from app.billing import apple_events, google_events
 from app.billing.entitlements import GRACE, summary
 from app.billing.models import (
     ACTIVE,
     APPLE,
     ENDED,
+    GOOGLE,
     INCOMPLETE,
     MANUAL,
     PAST_DUE,
@@ -103,6 +104,8 @@ def user_rows(db: Session, users: list[User], now: datetime) -> list[AdminUserRo
     subscriptions = _subscriptions(db, ids, now, STRIPE)
     apple_subscriptions = _subscriptions(db, ids, now, APPLE)
     apple_renewing = apple_events.renewing_accounts(db, ids)
+    google_subscriptions = _subscriptions(db, ids, now, GOOGLE)
+    google_renewing = google_events.renewing_accounts(db, ids)
     grants = _manual_grants(db, ids)
     return [
         AdminUserRow(
@@ -115,6 +118,8 @@ def user_rows(db: Session, users: list[User], now: datetime) -> list[AdminUserRo
             subscription=subscriptions.get(user.id),
             apple_subscription=apple_subscriptions.get(user.id),
             apple_renewing=user.id in apple_renewing,
+            google_subscription=google_subscriptions.get(user.id),
+            google_renewing=user.id in google_renewing,
             manual_grant=grants.get(user.id),
             lists_owned=lists_owned.get(user.id, 0),
             photos=photos.get(user.id, AdminPhotos(count=0, bytes=0, measuring=False)),
@@ -136,9 +141,10 @@ def plan(db: Session, user_id: uuid.UUID, now: datetime) -> AdminPlan:
 def _subscriptions(
     db: Session, ids: list[uuid.UUID], now: datetime, source: str
 ) -> dict[uuid.UUID, AdminSubscription]:
-    """By user, their subscription from `source` (Stripe or Apple), apart from
-    any grant (owner, 2026-11-11): the one in force, the longest first as
-    `summary` picks it, else the latest started. One query for the page."""
+    """By user, their subscription from `source` (Stripe, Apple or Google),
+    apart from any grant (owner, 2026-11-11): the one in force, the longest
+    first as `summary` picks it, else the latest started. One query for the
+    page."""
     # `entitlements._in_force`, which is private to billing.
     in_force = and_(
         Entitlement.status.in_((ACTIVE, PAST_DUE)),
@@ -184,8 +190,9 @@ def _subscription_status(status: str, cancel: bool, in_force: bool, source: str)
     it: its events were lost, so it reads `no_news` since its stored date
     (review R5-2). An Apple subscription ended yet set to renew is in billing
     retry (`apple_events.facts`): Apple may still charge it, as `past_due`
-    says (Apple IAP plan D9)."""
-    if source == APPLE and status == ENDED and not cancel:
+    says (Apple IAP plan D9). So may a Google one on hold or paused
+    (`google_events.facts`)."""
+    if source in (APPLE, GOOGLE) and status == ENDED and not cancel:
         return PAST_DUE
     if status not in (ACTIVE, PAST_DUE):
         return status
