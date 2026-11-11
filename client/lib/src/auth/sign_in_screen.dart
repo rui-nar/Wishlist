@@ -100,7 +100,7 @@ class _SignInScreenState extends State<SignInScreen> {
     _config.then((config) {
       if (_offersApple(config)) loadAppleScript();
       final clientId = config.googleClientId;
-      if (clientId == null) return;
+      if (clientId == null || !_offersGoogle(config)) return;
       ensureGoogleSignInInitialized(clientId).then((_) {
         if (mounted) setState(() => _googleReady = true);
       }, onError: (Object _) {
@@ -150,7 +150,13 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
-  /// Apple needs both: the Services ID, and where it sends its answer.
+  /// The server's web client ID, and on iOS the build's own client.
+  bool _offersGoogle(ClientConfig config) =>
+      canOfferGoogleSignIn(config.googleClientId);
+
+  /// Apple needs both: the Services ID, and where it sends its answer. iOS's
+  /// sheet uses neither, but asks for them too, so that one server offers
+  /// Apple on every platform or on none.
   bool _offersApple(ClientConfig config) =>
       config.appleClientId != null && config.appleRedirectUri != null;
 
@@ -182,7 +188,7 @@ class _SignInScreenState extends State<SignInScreen> {
   String _prompt(AppLocalizations l10n, ClientConfig? config) {
     if (!widget.register) return l10n.signInPrompt;
     final onlyGoogle = config != null &&
-        config.googleClientId != null &&
+        _offersGoogle(config) &&
         !config.emailSignIn &&
         !_offersApple(config);
     return onlyGoogle ? l10n.registerPrompt : l10n.registerPromptChoose;
@@ -232,7 +238,7 @@ class _SignInScreenState extends State<SignInScreen> {
                           }
                           final config = snapshot.data;
                           if (config == null) return const _Progress();
-                          if (config.googleClientId == null &&
+                          if (!_offersGoogle(config) &&
                               !config.emailSignIn &&
                               !_offersApple(config)) {
                             return Text(
@@ -286,7 +292,7 @@ class _SignInScreenState extends State<SignInScreen> {
             SignInFailure.serverError => l10n.serverError,
           };
     final busy = auth.status == AuthStatus.signingIn;
-    final hasGoogle = config.googleClientId != null;
+    final hasGoogle = _offersGoogle(config);
     final hasApple = _offersApple(config);
     final toSignUp = Uri(
       path: kEmailSignUpPath,

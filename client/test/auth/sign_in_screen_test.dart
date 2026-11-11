@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:wishlist/src/api/api_client.dart';
 import 'package:wishlist/src/auth/auth_controller.dart';
 import 'package:wishlist/src/auth/email_sign_up_screen.dart';
+import 'package:wishlist/src/auth/google_sign_in_init.dart';
 import 'package:wishlist/src/auth/sign_in_screen.dart';
 
 import '../support/fakes.dart';
@@ -262,6 +263,64 @@ void main() {
     expect(find.text('Continue with Google'), findsNothing);
     expect(find.text('Google sign-in did not complete. Try again.'),
         findsOneWidget);
+  });
+
+  group('on iOS (IOS_APP_PLAN D3)', () {
+    final iOS = TargetPlatformVariant.only(TargetPlatform.iOS);
+    const email = 'Email address';
+
+    testWidgets('with its own client: that client, and the web one for the '
+        'server', (tester) async {
+      setGoogleIosClientIdForTesting('ios-client-id');
+
+      await pumpSignIn(tester);
+
+      expect(google.initCalls, hasLength(1));
+      expect(google.initCalls.single.clientId, 'ios-client-id');
+      // The ID token's audience stays the web client the server knows.
+      expect(google.initCalls.single.serverClientId, 'test-client-id');
+
+      await tester.tap(find.text('Continue with Google'));
+      await tester.pumpAndSettle();
+
+      expect(google.authenticateCalls, 1);
+      expect(auth.status, AuthStatus.signedIn);
+    }, variant: iOS);
+
+    testWidgets('built without one: no Google, and nothing sent to Google',
+        (tester) async {
+      server.emailSignIn = true;
+
+      await pumpSignIn(tester);
+
+      expect(find.text('Continue with Google'), findsNothing);
+      expect(google.initCalls, isEmpty);
+      expect(find.widgetWithText(TextFormField, email), findsOneWidget);
+      // No Google button for D21's line to point at.
+      expect(
+        find.text('If you usually sign in with Google or Apple, use that button.'),
+        findsNothing,
+      );
+    }, variant: iOS);
+
+    testWidgets('built without one, against a server with Google only: '
+        '"not available"', (tester) async {
+      await pumpSignIn(tester);
+
+      expect(find.text('Sign-in is not available on this server yet.'),
+          findsOneWidget);
+      expect(find.text('Continue with Google'), findsNothing);
+      expect(google.initCalls, isEmpty);
+    }, variant: iOS);
+
+    testWidgets('Android ignores the iOS client', (tester) async {
+      setGoogleIosClientIdForTesting('ios-client-id');
+
+      await pumpSignIn(tester);
+
+      expect(google.initCalls.single.clientId, isNull);
+      expect(google.initCalls.single.serverClientId, 'test-client-id');
+    });
   });
 
   testWidgets('a server error reading the configuration can be retried', (tester) async {

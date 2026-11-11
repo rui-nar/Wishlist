@@ -1,0 +1,26 @@
+// The app's identity (IOS_APP_PLAN D1, D3): the base configuration of the
+// Runner project, so both targets and every configuration read it.
+//
+// The committed values are placeholders. A build for VAL or PROD writes
+// Identity.local.xcconfig next to this file (not committed), whose values
+// replace these.
+
+// The bundle id. PROD's is IOS_BUNDLE_ID, VAL's IOS_BUNDLE_ID_VAL: two apps,
+// so a VAL build never replaces a PROD one. The tests' target appends
+// ".RunnerTests".
+WISHLIST_BUNDLE_ID = com.example.wishlist
+
+// The name under the icon: "Wishlist VAL" for VAL.
+WISHLIST_DISPLAY_NAME = Wishlist
+
+// Google's iOS client ID reversed, which Google sign-in needs as a URL scheme:
+// com.googleusercontent.apps.<id> for the client <id>.apps.googleusercontent.com.
+// The app gets the client ID itself from --dart-define=GOOGLE_IOS_CLIENT_ID
+// (client/lib/src/config.dart); a build that sets one must set both, or
+// Google's SDK stops the app at sign-in. Without them the app offers no
+// Google sign-in, and this placeholder registers a scheme nothing uses.
+GOOGLE_IOS_REVERSED_CLIENT_ID = com.googleusercontent.apps.unset
+
+PRODUCT_BUNDLE_IDENTIFIER = $(WISHLIST_BUNDLE_ID)
+
+#include? "Identity.local.xcconfig"
