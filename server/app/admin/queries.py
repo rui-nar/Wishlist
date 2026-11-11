@@ -22,7 +22,15 @@ from app.admin.schemas import (
     ManualGrant,
 )
 from app.billing.entitlements import GRACE, summary
-from app.billing.models import ACTIVE, ENDED, MANUAL, PAST_DUE, STRIPE, Entitlement
+from app.billing.models import (
+    ACTIVE,
+    ENDED,
+    INCOMPLETE,
+    MANUAL,
+    PAST_DUE,
+    STRIPE,
+    Entitlement,
+)
 from app.lists import visibility
 from app.lists.models import Gift, List, ListOwner
 from app.media.models import Image
@@ -155,7 +163,9 @@ def _subscriptions(
         user_id: AdminSubscription(
             status=_subscription_status(status, cancel, granting),
             started_at=started_at,
-            period_end=period_end,
+            # Stripe's `current_period_end` is neither when it ended nor when
+            # an unpaid first invoice stops (review R5-1).
+            period_end=None if status in (ENDED, INCOMPLETE) else period_end,
         )
         for user_id, status, cancel, started_at, period_end, granting in rows
     }
@@ -163,11 +173,13 @@ def _subscriptions(
 
 def _subscription_status(status: str, cancel: bool, in_force: bool) -> str:
     """The words of `summary`: a cancellation outweighs a failing card. A
-    granting status past its grace grants nothing, so it reads `ended`."""
+    granting status past its grace grants nothing, yet Stripe may still bill
+    it: its events were lost, so it reads `no_news` since its stored date
+    (review R5-2)."""
     if status not in (ACTIVE, PAST_DUE):
         return status
     if not in_force:
-        return ENDED
+        return "no_news"
     return "canceling" if cancel else status
 
 

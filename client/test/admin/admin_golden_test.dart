@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishlist/main.dart';
+import 'package:wishlist/src/admin/admin_format.dart';
 
 import '../support/fakes.dart';
 import 'support/fake_admin.dart';
@@ -63,9 +64,15 @@ void main() {
           addTearDown(() => WidgetsApp.debugAllowBannerOverride = true);
           installFakeGoogleSignIn();
 
+          // The panel's today, so Carol's grant stays expired.
+          adminClock = () => DateTime(2026, 11, 11, 10);
+          addTearDown(() => adminClock = DateTime.now);
           final server = FakeServer();
-          // Bob's Stripe subscription with a grant beside it.
-          FakeAdmin(server).grants[kBobId] = '2027-06-01T12:00:00Z';
+          // Bob's Stripe subscription with a grant beside it; Carol's grant
+          // whose day has passed.
+          FakeAdmin(server).grants
+            ..[kBobId] = '2027-06-01T12:00:00Z'
+            ..[kCarolId] = '2026-10-01T12:00:00Z';
           final app = buildApp(
             server,
             store: MemoryTokenStore(server.addSession()),

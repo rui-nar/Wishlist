@@ -76,13 +76,16 @@ class _AdminUserScreenState extends State<AdminUserScreen> {
   void _leave() => context.canPop() ? context.pop() : context.go(kAdminPath);
 
   Future<void> _grant(AdminUserDetail detail) async {
-    final today = DateUtils.dateOnly(DateTime.now());
+    final today = adminToday();
+    final end = detail.user.manualGrantEnd;
     final until = await showDialog<DateTime>(
       context: context,
       builder: (context) => _GrantDialog(
         email: detail.user.email,
-        initial: detail.user.manualGrantEnd?.toLocal() ??
-            _yearsAfter(today, _kDefaultGrantYears),
+        // A grant whose day has passed is granted anew, a year ahead.
+        initial: end != null && !grantExpired(end)
+            ? end.toLocal()
+            : _yearsAfter(today, _kDefaultGrantYears),
         first: today.add(const Duration(days: 1)),
         last: _yearsAfter(today, _kMaxGrantYears),
       ),
@@ -413,7 +416,8 @@ class _Block extends StatelessWidget {
 }
 
 /// The Stripe subscription: its status, since when, when it renews or ends,
-/// and a failed payment Stripe is retrying.
+/// a failed payment Stripe is retrying, and where to look when Stripe was not
+/// heard of.
 class _Subscription extends StatelessWidget {
   const _Subscription({required this.subscription});
 
@@ -430,20 +434,26 @@ class _Subscription extends StatelessWidget {
     );
     final started = subscription.startedAt;
     final end = subscriptionEndLine(context, subscription);
+    final warning = switch (subscription.status) {
+      'past_due' => l10n.adminSubscriptionRetrying,
+      // Its events were lost: Stripe may still be billing it (review R5-2).
+      'no_news' => l10n.adminSubscriptionCheckStripe,
+      _ => null,
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(subscriptionStatus(l10n, subscription.status)),
+        Text(subscriptionStatus(context, subscription)),
         if (started != null)
           Text(
             l10n.adminSubscriptionStarted(formatDay(context, started)),
             style: small,
           ),
         if (end != null) Text(end, style: small),
-        if (subscription.status == 'past_due') ...[
+        if (warning case final warning?) ...[
           const SizedBox(height: Spacing.s4),
           Text(
-            l10n.adminSubscriptionRetrying,
+            warning,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.error,
             ),
@@ -454,7 +464,9 @@ class _Subscription extends StatelessWidget {
   }
 }
 
-/// The Premium granted here: until when, and its changes.
+/// The Premium granted here: until when, and its changes. Once its day has
+/// passed it grants nothing, so it is granted again rather than changed or
+/// ended.
 class _Grant extends StatelessWidget {
   const _Grant({
     required this.end,
@@ -472,13 +484,16 @@ class _Grant extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final end = this.end;
+    final running = end != null && !grantExpired(end);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           end == null
               ? l10n.adminGrantBlockNone
-              : l10n.adminGrantBlockUntil(formatDay(context, end)),
+              : running
+                  ? l10n.adminGrantBlockUntil(formatDay(context, end))
+                  : l10n.adminGrantBlockExpired(formatDay(context, end)),
         ),
         const SizedBox(height: Spacing.s12),
         Wrap(
@@ -488,10 +503,10 @@ class _Grant extends StatelessWidget {
             FilledButton.tonal(
               onPressed: busy ? null : onGrant,
               child: Text(
-                end == null ? l10n.adminGrantPremium : l10n.adminChangeGrant,
+                running ? l10n.adminChangeGrant : l10n.adminGrantPremium,
               ),
             ),
-            if (end != null)
+            if (running)
               OutlinedButton(
                 onPressed: busy ? null : onEnd,
                 child: Text(l10n.adminEndGrant),

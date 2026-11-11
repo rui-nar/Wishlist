@@ -284,7 +284,13 @@ class _UsersTable extends StatelessWidget {
                       DataCell(Text(
                         signInLine(l10n, user.signIn, compact: true),
                       )),
-                      DataCell(_PlanLines(user: user)),
+                      // Clear of the row's lines when it takes three.
+                      DataCell(Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: Spacing.s4,
+                        ),
+                        child: _PlanLines(user: user),
+                      )),
                       DataCell(Text('${user.listsOwned}')),
                       DataCell(Text(photosLine(context, user.photos))),
                     ],
@@ -298,8 +304,8 @@ class _UsersTable extends StatelessWidget {
   }
 }
 
-/// The plan, in the table and on a card: the Stripe subscription and the
-/// grant on lines of their own ([planLines]).
+/// The plan, in the table and on a card: the effective plan, then the Stripe
+/// subscription and the grant on lines of their own ([planLines]).
 class _PlanLines extends StatelessWidget {
   const _PlanLines({required this.user, this.style});
 

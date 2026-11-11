@@ -1852,6 +1852,16 @@
       }
     }
   },
+  "adminGrantedUntilExpired": "Granted here until {date} (expired)",
+  "@adminGrantedUntilExpired": {
+    "description": "The admin panel's users list: the Premium the admin granted ended on that day, a day already past.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "1 Oct 2026"
+      }
+    }
+  },
   "adminSubscriptionTitle": "Stripe subscription",
   "@adminSubscriptionTitle": {
     "description": "The admin panel's page of one account: the block about its Stripe subscription, apart from a grant."
@@ -1910,15 +1920,23 @@
       }
     }
   },
-  "adminSubscriptionEndedOn": "Ended on {date}",
-  "@adminSubscriptionEndedOn": {
-    "description": "The admin panel: the day a Stripe subscription ended.",
+  "adminSubscriptionNoNews": "No news from Stripe",
+  "@adminSubscriptionNoNews": {
+    "description": "The admin panel: a Stripe subscription that should have renewed and was not heard of since, with no date known. Its events were probably lost, and Stripe may still be billing it."
+  },
+  "adminSubscriptionNoNewsSince": "No news from Stripe since {date}",
+  "@adminSubscriptionNoNewsSince": {
+    "description": "The admin panel: a Stripe subscription that should have renewed on that day and was not heard of since. Its events were probably lost, and Stripe may still be billing it.",
     "placeholders": {
       "date": {
         "type": "String",
         "example": "12 Mar 2026"
       }
     }
+  },
+  "adminSubscriptionCheckStripe": "Check it in the Stripe dashboard, as the runbook's “After a webhook delivery gap” says.",
+  "@adminSubscriptionCheckStripe": {
+    "description": "The admin panel: under a Stripe subscription with no news, what to do. The quoted title is a section of the deployment runbook, in English, so it stays in English."
   },
   "adminSubscriptionRetrying": "Payment failed: Stripe is retrying",
   "@adminSubscriptionRetrying": {
@@ -1952,15 +1970,23 @@
   "@adminStripeIncomplete": {
     "description": "The admin panel's users list, after 'Stripe ·': the first payment did not go through."
   },
-  "adminStripeEnded": "ended {date}",
+  "adminStripeEnded": "ended",
   "@adminStripeEnded": {
-    "description": "The admin panel's users list, after 'Stripe ·': the subscription ended on that day.",
+    "description": "The admin panel's users list, after 'Stripe ·': the subscription is over."
+  },
+  "adminStripeNoNews": "no news since {date}",
+  "@adminStripeNoNews": {
+    "description": "The admin panel's users list, after 'Stripe ·': the subscription should have renewed on that day and was not heard of since.",
     "placeholders": {
       "date": {
         "type": "String",
         "example": "12 Mar 2026"
       }
     }
+  },
+  "adminStripeNoNewsUndated": "no news",
+  "@adminStripeNoNewsUndated": {
+    "description": "The admin panel's users list, after 'Stripe ·': the subscription grants nothing and was not heard of, with no date known."
   },
   "adminGrantBlockTitle": "Granted here",
   "@adminGrantBlockTitle": {
@@ -1973,6 +1999,16 @@
       "date": {
         "type": "String",
         "example": "1 Jun 2027"
+      }
+    }
+  },
+  "adminGrantBlockExpired": "Expired on {date}",
+  "@adminGrantBlockExpired": {
+    "description": "The admin panel: the Premium granted by hand ended on that day, a day already past.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "1 Oct 2026"
       }
     }
   },

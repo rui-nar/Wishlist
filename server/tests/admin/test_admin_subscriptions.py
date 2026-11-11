@@ -83,25 +83,33 @@ def test_never_subscribed_is_null_in_the_list_and_the_detail(client, admin, targ
         assert view["plan"] == {"plan": "free", "source": None, "until": None}
 
 
-# (stored status, cancel_at_period_end, days to period_end) -> what is shown.
+# (stored status, cancel_at_period_end, days to period_end) -> what is shown,
+# and whether the stored date is shown.
 CASES = {
-    "active renews": ("active", False, 30, "active", "premium"),
-    "canceling ends": ("active", True, 30, "canceling", "premium"),
-    "past_due renews": ("past_due", False, 30, "past_due", "premium"),
+    "active renews": ("active", False, 30, "active", True, "premium"),
+    "canceling ends": ("active", True, 30, "canceling", True, "premium"),
+    "past_due renews": ("past_due", False, 30, "past_due", True, "premium"),
     # A cancellation outweighs a failing card, as on `GET /api/billing`.
-    "past_due canceling": ("past_due", True, 30, "canceling", "premium"),
-    "incomplete": ("incomplete", False, 30, "incomplete", "free"),
-    "ended": ("ended", False, -30, "ended", "free"),
-    # Its events were lost: it grants nothing, so it reads as ended.
-    "active past its grace": ("active", False, -30, "ended", "free"),
+    "past_due canceling": ("past_due", True, 30, "canceling", True, "premium"),
+    # Stripe's period end is not when they end (review R5-1).
+    "incomplete": ("incomplete", False, 30, "incomplete", False, "free"),
+    "ended": ("ended", False, -30, "ended", False, "free"),
+    "ended early": ("ended", False, 300, "ended", False, "free"),
+    # Its events were lost: it grants nothing, but Stripe may still bill it,
+    # so it reads as no news since its stored date (review R5-2).
+    "active past its grace": ("active", False, -30, "no_news", True, "free"),
+    "past_due past its grace": ("past_due", False, -30, "no_news", True, "free"),
+    "canceling past its grace": ("active", True, -30, "no_news", True, "free"),
 }
 
 
 @pytest.mark.parametrize(
-    ("stored", "cancel", "days", "shown", "plan"), CASES.values(), ids=CASES.keys()
+    ("stored", "cancel", "days", "shown", "dated", "plan"),
+    CASES.values(),
+    ids=CASES.keys(),
 )
 def test_the_subscription_says_its_status_start_and_date(
-    client, admin, target, engine, now, stored, cancel, days, shown, plan
+    client, admin, target, engine, now, stored, cancel, days, shown, dated, plan
 ):
     started = now - timedelta(days=100)
     end = now + timedelta(days=days)
@@ -111,10 +119,20 @@ def test_the_subscription_says_its_status_start_and_date(
         assert view["subscription"] == {
             "status": shown,
             "started_at": iso(started),
-            "period_end": iso(end),
+            "period_end": iso(end) if dated else None,
         }
         assert view["manual_grant"] is None
         assert view["plan"]["plan"] == plan
+
+
+def test_a_granting_row_without_a_date_reads_no_news(
+    client, admin, target, engine, now
+):
+    add_stripe(engine, target.id, "active", None, now - timedelta(days=10))
+
+    for view in views(client, admin, target.id):
+        assert view["subscription"]["status"] == "no_news"
+        assert view["subscription"]["period_end"] is None
 
 
 def test_a_subscription_within_its_grace_is_still_shown_as_stored(

@@ -35,10 +35,13 @@ class AdminSubscription(BaseModel):
     no customer and no amount."""
 
     # `active`, `past_due`, `canceling` (set to stop at `period_end`),
-    # `incomplete` or `ended`.
+    # `incomplete`, `ended`, or `no_news`: `active` or `past_due` past its
+    # grace, so its events were lost while Stripe may still bill it.
     status: str
     started_at: datetime | None
-    # When it renews while `active` or `past_due`, when it ends otherwise.
+    # When it renews while `active` or `past_due`, when it ends while
+    # `canceling`, the last date Stripe gave while `no_news`; null when
+    # `incomplete` or `ended`, since Stripe's period end is not when it ended.
     period_end: datetime | None
 
 
