@@ -140,3 +140,19 @@ class AuthThrottle(Base):
     key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     count: Mapped[int]
+
+
+class AppleToken(Base):
+    """The refresh token Apple gave for an account's sign-in to one client ID,
+    revoked when the account is deleted (iOS app plan D5). A secret: never
+    logged, and emptied on VAL when it is seeded from PROD."""
+
+    __tablename__ = "apple_tokens"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    # The Services ID or a bundle ID: Apple revokes a token only for its own.
+    client_id: Mapped[str] = mapped_column(String, primary_key=True)
+    refresh_token: Mapped[str] = mapped_column(String)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

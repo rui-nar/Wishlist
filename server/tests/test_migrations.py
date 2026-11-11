@@ -502,3 +502,80 @@ def test_the_admin_panel_revision_upgrades_and_downgrades_with_a_manual_row(
     assert upgrade.returncode == 0, upgrade.stderr
     check = alembic(empty_database_url, "check")
     assert check.returncode == 0, check.stderr
+
+
+def _insert_an_apple_token(connection, user: uuid.UUID) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO apple_tokens (user_id, client_id, refresh_token, updated_at)"
+            " VALUES (:user, 'com.example.wishlist', :token, now())"
+        ),
+        {"user": user, "token": f"r{user.hex}"},
+    )
+
+
+def test_the_apple_tokens_revision_upgrades_and_downgrades_with_rows_present(
+    empty_database_url,
+):
+    """iOS app plan, Boundaries crossed: a new table only, so an account made
+    before the revision stays through it, and a downgrade loses only it."""
+    before = alembic(empty_database_url, "upgrade", "f3a9c1d7e2b4")
+    assert before.returncode == 0, before.stderr
+    user = uuid.uuid4()
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        _insert_user(connection, user)
+    engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.begin() as connection:
+            _insert_an_apple_token(connection, user)
+        # One per account and client.
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            _insert_an_apple_token(connection, user)
+    finally:
+        engine.dispose()
+
+    downgrade = alembic(empty_database_url, "downgrade", "f3a9c1d7e2b4")
+    assert downgrade.returncode == 0, downgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM users")) == 1
+            assert connection.scalar(text("SELECT to_regclass('apple_tokens')")) is None
+    finally:
+        engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+    check = alembic(empty_database_url, "check")
+    assert check.returncode == 0, check.stderr
+
+
+def test_deleting_an_account_deletes_its_apple_tokens_and_no_others(
+    empty_database_url,
+):
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+    deleted, kept = uuid.uuid4(), uuid.uuid4()
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.begin() as connection:
+            for user in (deleted, kept):
+                _insert_user(connection, user)
+                _insert_an_apple_token(connection, user)
+
+            connection.execute(
+                text("DELETE FROM users WHERE id = :id"), {"id": deleted}
+            )
+
+        with engine.connect() as connection:
+            owners = connection.scalars(text("SELECT user_id FROM apple_tokens"))
+            assert list(owners) == [kept]
+    finally:
+        engine.dispose()
