@@ -4,8 +4,8 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/api/api_image.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/api/api_image.dart';
 
 void main() {
   ApiClient answering(int status) => ApiClient(

@@ -3,11 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wishlist/src/auth/account_screen.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/home/home_screen.dart';
-import 'package:wishlist/src/intro/intro_screen.dart';
-import 'package:wishlist/src/intro/intro_seen.dart';
+import 'package:shushgift/src/auth/account_screen.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/home/home_screen.dart';
+import 'package:shushgift/src/intro/intro_screen.dart';
+import 'package:shushgift/src/intro/intro_seen.dart';
 
 import '../support/fakes.dart';
 

@@ -1,4 +1,4 @@
-# Wishlist client
+# Shush Gift client
 
 The Flutter client for web, Android and iOS. For now it is a single screen that
 shows its own version and the server's `GET /api/version` (version and env).
@@ -31,8 +31,8 @@ build never replaces a PROD install:
 
 | Flavour | Application id | Name |
 |---|---|---|
-| `prod` | the Gradle property `wishlistAppId` | Wishlist |
-| `val` | `wishlistAppId` + `.val` | Wishlist VAL |
+| `prod` | the Gradle property `shushgiftAppId` | Shush Gift |
+| `val` | `shushgiftAppId` + `.val` | Shush Gift VAL |
 
 Every Android command needs `--flavor`. Without one, Gradle builds both and
 Flutter stops with "Gradle build failed to produce an .apk file". There is no
@@ -41,12 +41,12 @@ which has no flavours. Use `val` on a device:
 
 ```
 flutter run -d <device> --flavor val --dart-define=API_BASE_URL=http://<host>:8000
-flutter build appbundle --flavor prod -P wishlistAppId=<application id>
+flutter build appbundle --flavor prod -P shushgiftAppId=<application id>
 ```
 
-`-P wishlistAppId=…` can also be given as the environment variable
-`ORG_GRADLE_PROJECT_wishlistAppId`. The code's namespace is `app.wishlist` for
-both, and is not the store id.
+`-P shushgiftAppId=…` can also be given as the environment variable
+`ORG_GRADLE_PROJECT_shushgiftAppId`. The code's namespace is `app.shushgift`
+for both, and is not the store id.
 
 **Signing (D3).** A release build is signed with the upload key when these
 environment variables are all set, and with the debug key when none is (so
@@ -60,7 +60,7 @@ fails the build.
 | `ANDROID_UPLOAD_KEY_ALIAS` | the key's alias |
 | `ANDROID_UPLOAD_KEY_PASSWORD` | the key's password |
 
-`-P wishlistRequireUploadKey=true` (set by the release workflow) makes a build
+`-P shushgiftRequireUploadKey=true` (set by the release workflow) makes a build
 without the upload key fail instead of signing with the debug key. No key or
 password goes in a file of the repository; `*.jks` and `*.keystore` are
 ignored.
@@ -85,11 +85,11 @@ is the level Google Play requires.
 ## Placeholder application id
 
 The project was created with the placeholder org `com.example`, so the Android
-application id (`wishlistAppId`'s default, `com.example.wishlist`, and
-`com.example.wishlist.val` for VAL) and the iOS bundle id
-(`ios/Flutter/Identity.xcconfig`) are currently `com.example.wishlist`.
-**This is not the real id.** The real one is an open decision in
-`docs/plans/DEVOPS_FOUNDATION_PLAN.md` and `docs/plans/ANDROID_RELEASE_PLAN.md`,
-and it cannot change after the first store upload: a build published to
-Google Play or the App Store must be given it (`-P wishlistAppId=…` on
-Android), and the release workflows refuse the placeholder.
+application id (`shushgiftAppId`'s default, `com.example.shushgift`, and
+`com.example.shushgift.val` for VAL) and the iOS bundle id
+(`ios/Flutter/Identity.xcconfig`) are currently `com.example.shushgift`.
+**This is not the real id.** The real ones are `com.shushgift.app` and
+`com.shushgift.app.val` (`docs/plans/SHUSH_GIFT_PLAN.md`), and they cannot
+change after the first store upload: a build published to Google Play or the
+App Store must be given them (`-P shushgiftAppId=…` on Android), and the
+release workflows refuse the placeholder.

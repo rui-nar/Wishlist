@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const _kTokenKey = 'wishlist.session_token';
+const _kTokenKey = 'shushgift.session_token';
 
 /// Reads, writes and forgets the one session token of this device.
 abstract class TokenStore {

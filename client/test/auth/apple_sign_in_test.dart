@@ -7,10 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/auth/apple_sign_in.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/auth/sign_in_screen.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/auth/apple_sign_in.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/auth/sign_in_screen.dart';
 
 import '../support/fakes.dart';
 

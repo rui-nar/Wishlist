@@ -5,12 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:provider/provider.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/api/api_image.dart';
-import 'package:wishlist/src/lists/gift_form_screen.dart';
-import 'package:wishlist/src/lists/gift_image_section.dart';
-import 'package:wishlist/src/lists/list_detail_screen.dart';
-import 'package:wishlist/src/lists/lists_repository.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/api/api_image.dart';
+import 'package:shushgift/src/lists/gift_form_screen.dart';
+import 'package:shushgift/src/lists/gift_image_section.dart';
+import 'package:shushgift/src/lists/list_detail_screen.dart';
+import 'package:shushgift/src/lists/lists_repository.dart';
 
 import '../support/fakes.dart';
 import 'support/fake_lists_server.dart';

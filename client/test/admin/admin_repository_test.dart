@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/admin/admin_repository.dart';
-import 'package:wishlist/src/api/api_client.dart';
+import 'package:shushgift/src/admin/admin_repository.dart';
+import 'package:shushgift/src/api/api_client.dart';
 
 import '../support/fakes.dart';
 import 'support/fake_admin.dart';

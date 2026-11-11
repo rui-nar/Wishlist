@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
-import 'package:wishlist/src/lists/list_detail_screen.dart';
-import 'package:wishlist/src/lists/lists_repository.dart';
-import 'package:wishlist/src/lists/occasion_form_screen.dart';
-import 'package:wishlist/src/lists/occasion_members_screen.dart';
-import 'package:wishlist/src/lists/share_link.dart';
+import 'package:shushgift/src/lists/list_detail_screen.dart';
+import 'package:shushgift/src/lists/lists_repository.dart';
+import 'package:shushgift/src/lists/occasion_form_screen.dart';
+import 'package:shushgift/src/lists/occasion_members_screen.dart';
+import 'package:shushgift/src/lists/share_link.dart';
 
 import 'support/fake_lists_server.dart';
 
@@ -39,7 +39,7 @@ void main() {
       ..shared.clear()
       ..unavailable = false;
     server = FakeListsServer();
-    server.accounts.publicBaseUrl = 'https://wishlist.example';
+    server.accounts.publicBaseUrl = 'https://shushgift.example';
     listId = server.addList('Christmas', recipientName: 'Léa');
   });
 
@@ -79,10 +79,10 @@ void main() {
     test('the server base URL first, then the web origin, else none', () {
       expect(
         shareLinkBase(
-          publicBaseUrl: 'https://wishlist.example',
+          publicBaseUrl: 'https://shushgift.example',
           webOrigin: 'http://localhost:5500',
         ),
-        'https://wishlist.example',
+        'https://shushgift.example',
       );
       expect(
         shareLinkBase(publicBaseUrl: null, webOrigin: 'http://localhost:5500'),
@@ -92,7 +92,7 @@ void main() {
     });
 
     test('the token is in the fragment, never in the path', () {
-      final link = Uri.parse(shareLink('https://wishlist.example', 'a-b_c'));
+      final link = Uri.parse(shareLink('https://shushgift.example', 'a-b_c'));
       expect(link.path, '/join');
       expect(link.fragment, 'a-b_c');
       expect(link.query, isEmpty);
@@ -136,7 +136,7 @@ void main() {
 
       await tapVisible(tester, find.text('Copy link'));
 
-      expect(copied, ['https://wishlist.example/join#tok']);
+      expect(copied, ['https://shushgift.example/join#tok']);
       expect(find.text('Link copied'), findsOneWidget);
     });
 
@@ -146,7 +146,7 @@ void main() {
 
       await tapVisible(tester, find.text('Share'));
 
-      expect(share.shared.single.uri, Uri.parse('https://wishlist.example/join#tok'));
+      expect(share.shared.single.uri, Uri.parse('https://shushgift.example/join#tok'));
       expect(share.shared.single.subject, 'Christmas 2026');
       expect(share.shared.single.mailToFallbackEnabled, isFalse);
     });
@@ -159,7 +159,7 @@ void main() {
 
       await tapVisible(tester, find.text('Share'));
 
-      expect(copied, ['https://wishlist.example/join#tok']);
+      expect(copied, ['https://shushgift.example/join#tok']);
       expect(find.text('Link copied'), findsOneWidget);
     });
 
@@ -226,7 +226,7 @@ void main() {
       await tapVisible(tester, find.text('Copy link'));
       expect(
         copied,
-        ['https://wishlist.example/join#${server.occasions[id]!['join_token']}'],
+        ['https://shushgift.example/join#${server.occasions[id]!['join_token']}'],
       );
     });
 

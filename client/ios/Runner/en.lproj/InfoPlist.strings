@@ -1,3 +1,3 @@
 /* The image picker's usage descriptions (IOS_APP_PLAN D6), as in Info.plist. */
-"NSCameraUsageDescription" = "Wishlist uses the camera so you can take a picture for a gift.";
-"NSPhotoLibraryUsageDescription" = "Wishlist opens your photos so you can choose a picture for a gift.";
+"NSCameraUsageDescription" = "Shush Gift uses the camera so you can take a picture for a gift.";
+"NSPhotoLibraryUsageDescription" = "Shush Gift opens your photos so you can choose a picture for a gift.";

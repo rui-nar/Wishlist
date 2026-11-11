@@ -5,7 +5,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/main.dart';
+import 'package:shushgift/main.dart';
 
 import '../support/fakes.dart';
 
@@ -41,7 +41,7 @@ void main() {
         await tester.pumpAndSettle();
 
         await expectLater(
-          find.byType(WishlistApp),
+          find.byType(ShushGiftApp),
           matchesGoldenFile('goldens/legal_terms_$mode.png'),
         );
       }, tags: ['golden']);

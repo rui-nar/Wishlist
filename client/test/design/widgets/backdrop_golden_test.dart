@@ -5,10 +5,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/design/theme.dart';
-import 'package:wishlist/src/design/tokens.dart';
-import 'package:wishlist/src/design/widgets/backdrop.dart';
-import 'package:wishlist/src/design/widgets/page_frame.dart';
+import 'package:shushgift/src/design/theme.dart';
+import 'package:shushgift/src/design/tokens.dart';
+import 'package:shushgift/src/design/widgets/backdrop.dart';
+import 'package:shushgift/src/design/widgets/page_frame.dart';
 
 // Goldens render on Linux only (DESIGN_SYSTEM_PLAN D10): .\goldens.ps1
 // regenerates them there.
@@ -49,7 +49,7 @@ void main() {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text('Wishlist', style: text.headlineMedium),
+                            Text('Shush Gift', style: text.headlineMedium),
                             const SizedBox(height: Spacing.s8),
                             Text(
                               'Wish lists for every occasion.',

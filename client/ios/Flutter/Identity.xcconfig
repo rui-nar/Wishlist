@@ -8,10 +8,10 @@
 // The bundle id. PROD's is IOS_BUNDLE_ID, VAL's IOS_BUNDLE_ID_VAL: two apps,
 // so a VAL build never replaces a PROD one. The tests' target appends
 // ".RunnerTests".
-WISHLIST_BUNDLE_ID = com.example.wishlist
+SHUSHGIFT_BUNDLE_ID = com.example.shushgift
 
-// The name under the icon: "Wishlist VAL" for VAL.
-WISHLIST_DISPLAY_NAME = Wishlist
+// The name under the icon: "Shush Gift VAL" for VAL.
+SHUSHGIFT_DISPLAY_NAME = Shush Gift
 
 // Google's iOS client ID reversed, which Google sign-in needs as a URL scheme:
 // com.googleusercontent.apps.<id> for the client <id>.apps.googleusercontent.com.
@@ -21,6 +21,6 @@ WISHLIST_DISPLAY_NAME = Wishlist
 // Google sign-in, and this placeholder registers a scheme nothing uses.
 GOOGLE_IOS_REVERSED_CLIENT_ID = com.googleusercontent.apps.unset
 
-PRODUCT_BUNDLE_IDENTIFIER = $(WISHLIST_BUNDLE_ID)
+PRODUCT_BUNDLE_IDENTIFIER = $(SHUSHGIFT_BUNDLE_ID)
 
 #include? "Identity.local.xcconfig"
