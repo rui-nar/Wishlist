@@ -9,6 +9,7 @@ import 'package:wishlist/main.dart';
 import 'package:wishlist/src/billing/billing_repository.dart';
 
 import '../support/fakes.dart';
+import 'support.dart';
 
 // Goldens render on Linux only (DESIGN_SYSTEM_PLAN D10): .\goldens.ps1
 // regenerates them there.
@@ -36,18 +37,24 @@ void main() {
     limits: const {'max_lists': null, 'max_gifts_per_list': null},
   );
 
-  // The golden's name, the location the app opens at, and the plan. As on the
-  // web: on Android and iOS these screens offer no purchase.
+  // In the iOS app (Apple IAP plan D8): Apple selling, and Premium bought
+  // there.
+  final iosFree = billingStatus(appleOffer: kAppleOffer, offer: kBillingOffer);
+
+  // The golden's name, the location the app opens at, the plan, and whether
+  // in the iOS app; the others as on the web.
   final screens = {
-    'account_screen_free_offer': ('/account', free),
-    'account_screen_premium': ('/account', premium),
-    'plan_screen_free': (kPlanPath, free),
-    'plan_screen_premium': (kPlanPath, premium),
-    'plan_screen_manual': (kPlanPath, manual),
+    'account_screen_free_offer': ('/account', free, false),
+    'account_screen_premium': ('/account', premium, false),
+    'plan_screen_free': (kPlanPath, free, false),
+    'plan_screen_premium': (kPlanPath, premium, false),
+    'plan_screen_manual': (kPlanPath, manual, false),
+    'plan_screen_ios_free': (kPlanPath, iosFree, true),
+    'plan_screen_ios_apple': (kPlanPath, kAppleSubscribed, true),
   };
 
   group('goldens', skip: _skip, () {
-    for (final MapEntry(key: screen, value: (location, billing))
+    for (final MapEntry(key: screen, value: (location, billing, ios))
         in screens.entries) {
       for (final MapEntry(key: mode, value: brightness)
           in brightnesses.entries) {
@@ -65,8 +72,12 @@ void main() {
           WidgetsApp.debugAllowBannerOverride = false;
           addTearDown(() => WidgetsApp.debugAllowBannerOverride = true);
           installFakeGoogleSignIn();
-          debugOnTheWeb = true;
-          addTearDown(() => debugOnTheWeb = null);
+          if (ios) {
+            installFakeStore();
+          } else {
+            debugOnTheWeb = true;
+            addTearDown(() => debugOnTheWeb = null);
+          }
 
           final server = FakeServer()..billing = billing;
           final app = buildApp(

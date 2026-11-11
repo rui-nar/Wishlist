@@ -11,6 +11,7 @@ import '../billing/plan_screen.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import '../intro/intro_screen.dart';
+import '../lists/gift_links.dart';
 import 'auth_controller.dart';
 import 'preferences_repository.dart';
 
@@ -116,9 +117,20 @@ class _AccountScreenState extends State<AccountScreen> {
 
   Future<void> _delete() async {
     final l10n = AppLocalizations.of(context);
+    setState(() => _busy = true);
+    // Read now, not when the screen opened: a subscription bought meanwhile
+    // must be warned of (Apple IAP plan D9). Unknown when it cannot be read.
+    bool? appleRenewing;
+    try {
+      appleRenewing = (await _billing.status()).appleRenewing;
+    } catch (_) {
+      appleRenewing = null;
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => const _DeleteDialog(),
+      builder: (context) => _DeleteDialog(appleRenewing: appleRenewing),
     );
     if (confirmed != true || !mounted) return;
     setState(() => _busy = true);
@@ -230,8 +242,9 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 }
 
-/// "Your plan": what it is, and the way to Premium or to manage it. On Android
-/// and iOS, the plan and its limits only (PREMIUM_PLAN D18).
+/// "Your plan": what it is, and the way to Premium or to manage it: through
+/// Stripe on the web, through Apple in the iOS app (Apple IAP plan D8, review
+/// R1-8). On Android, the plan and its limits only (PREMIUM_PLAN D18).
 class _PlanSection extends StatelessWidget {
   const _PlanSection({
     required this.status,
@@ -259,33 +272,64 @@ class _PlanSection extends StatelessWidget {
           const SizedBox(height: Spacing.s8),
           Text(l10n.planFreeLimits(maxLists, maxGifts)),
         ],
-        if (onTheWeb && !status.isPremium && status.offer != null) ...[
+        if (!status.isPremium && status.offeredHere) ...[
           const SizedBox(height: Spacing.s12),
           OutlinedButton(onPressed: onSeePremium, child: Text(l10n.planSee)),
         ],
-        if (onTheWeb && status.canManage) ...[
+        if (status.offersAppleManagement) ...[
+          const SizedBox(height: Spacing.s12),
+          const AppleSubscriptionsButton(),
+        ],
+        if (status.offersStripePortal) ...[
           const SizedBox(height: Spacing.s12),
           ManageSubscriptionButton(onStale: onStale),
         ],
-        if (onTheWeb) ...[
+        if (onTheWeb || onIos) ...[
           const SizedBox(height: Spacing.s8),
-          LegalLinks(legal: status.legal),
+          LegalLinks(legal: status.legal, apple: onIos),
         ],
       ],
     );
   }
 }
 
-/// Asks before deleting; pops true to delete.
+/// Asks before deleting; pops true to delete. Warns, on every platform, of an
+/// Apple subscription the deletion does not stop, with the way to Apple's
+/// page (Apple IAP plan D9).
 class _DeleteDialog extends StatelessWidget {
-  const _DeleteDialog();
+  const _DeleteDialog({required this.appleRenewing});
+
+  /// Null when the plan could not be read: the warning is then conditional.
+  final bool? appleRenewing;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final warning = switch (appleRenewing) {
+      true => l10n.deleteAccountAppleRenewing,
+      null => l10n.deleteAccountAppleUnknown,
+      false => null,
+    };
     return AlertDialog(
       title: Text(l10n.deleteAccountTitle),
-      content: Text(l10n.deleteAccountBody),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.deleteAccountBody),
+            if (warning != null) ...[
+              const SizedBox(height: Spacing.s12),
+              Text(
+                warning,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              const SizedBox(height: Spacing.s4),
+              const _AppleSubscriptionsLink(),
+            ],
+          ],
+        ),
+      ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
@@ -301,4 +345,24 @@ class _DeleteDialog extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Apple's subscriptions page, in the browser or the App Store.
+class _AppleSubscriptionsLink extends StatelessWidget {
+  const _AppleSubscriptionsLink();
+
+  Future<void> _open(BuildContext context) async {
+    final message = AppLocalizations.of(context).planActionFailed;
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await openGiftLink(kAppleSubscriptionsUrl)) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => TextButton.icon(
+        onPressed: () => _open(context),
+        icon: const Icon(Icons.open_in_new),
+        label: Text(AppLocalizations.of(context).deleteAccountAppleLink),
+      );
 }

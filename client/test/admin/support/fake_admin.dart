@@ -20,6 +20,10 @@ Map<String, Object?> adminRow({
     'until': null,
   },
   Map<String, Object?>? subscription,
+  // Apple's, and whether one can still charge (Apple IAP plan D9); left out
+  // of the row when null, as a server from before them sends it.
+  Map<String, Object?>? appleSubscription,
+  bool? appleRenewing,
   int listsOwned = 0,
   Map<String, Object?> photos = const {
     'count': 0,
@@ -35,11 +39,13 @@ Map<String, Object?> adminRow({
       'sign_in': signIn,
       'plan': plan,
       'subscription': subscription,
+      'apple_subscription': ?appleSubscription,
+      'apple_renewing': ?appleRenewing,
       'lists_owned': listsOwned,
       'photos': photos,
     };
 
-/// A Stripe subscription as a row gives it.
+/// A Stripe or Apple subscription as a row gives it.
 Map<String, Object?> stripeSubscription(
   String status, {
   String? startedAt = '2026-05-02T10:05:00Z',

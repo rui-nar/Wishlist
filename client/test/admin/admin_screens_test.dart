@@ -210,9 +210,9 @@ void main() {
     testWidgets('at 1440 wide every column shows without scrolling',
         (tester) async {
       // The longest a row gets: a long address, every way of signing in, a
-      // plan cell on three lines, each the longest of its kind (the plan, a
-      // subscription's state, an expired grant), and photos in the
-      // gigabytes.
+      // plan cell on four lines, each the longest of its kind (the plan, a
+      // Stripe and an Apple subscription's state, an expired grant), and
+      // photos in the gigabytes.
       const longId = '7b0c2f1e-0000-4000-8000-000000000009';
       admin.rows.insert(
         0,
@@ -227,6 +227,10 @@ void main() {
             'until': '2027-12-28T12:00:00Z',
           },
           subscription: stripeSubscription('incomplete', periodEnd: null),
+          appleSubscription: stripeSubscription(
+            'no_news',
+            periodEnd: '2026-09-28T12:00:00Z',
+          ),
           listsOwned: 120,
           photos: const {'count': 120, 'bytes': 1234567890, 'measuring': false},
         ),
@@ -248,11 +252,13 @@ void main() {
       expect(find.text('Apple, Email, Google'), findsOneWidget);
       final plan = find.text('Premium until Dec 28, 2027 · Google Play');
       final stripe = find.text('Stripe · first payment not completed');
+      final apple = find.text('App Store · no news since Sep 28, 2026');
       final granted = find.text('Granted here until Sep 28, 2026 (expired)');
       expect(plan, findsOneWidget);
       expect(stripe, findsOneWidget);
+      expect(apple, findsOneWidget);
       expect(granted, findsOneWidget);
-      for (final line in [plan, stripe, granted]) {
+      for (final line in [plan, stripe, apple, granted]) {
         expect(tester.getRect(line).right, lessThanOrEqualTo(_wide.width));
       }
       final address = tester.widget<Text>(find.text(
@@ -565,18 +571,30 @@ void main() {
       expect(grant.width, subscription.width);
     });
 
-    testWidgets('on a wide screen, side by side, as tall, never overlapping',
-        (tester) async {
+    testWidgets('on a wide screen, the stores side by side, as tall, the '
+        'grant below as wide, never overlapping', (tester) async {
       bobSubscribes('past_due');
       admin.grants[kBobId] = '2027-06-01T12:00:00Z';
       await start(tester, bobPath(), size: _wide);
 
       final subscription = tester.getRect(subscriptionBlock);
+      final apple = tester.getRect(
+        find.byKey(const ValueKey('admin-apple-subscription')),
+      );
       final grant = tester.getRect(grantBlock);
-      expect(grant.top, subscription.top);
-      expect(grant.height, subscription.height);
-      expect(grant.left, greaterThan(subscription.right));
-      expect(subscription.overlaps(grant), isFalse);
+      expect(apple.top, subscription.top);
+      expect(apple.height, subscription.height);
+      expect(apple.left, greaterThan(subscription.right));
+      expect(grant.top, greaterThan(subscription.bottom));
+      expect(grant.left, subscription.left);
+      expect(grant.width, subscription.width);
+      for (final (a, b) in [
+        (subscription, apple),
+        (subscription, grant),
+        (apple, grant),
+      ]) {
+        expect(a.overlaps(b), isFalse);
+      }
     });
 
     testWidgets('the users cards: the plan, then the subscription and the '
@@ -712,6 +730,194 @@ void main() {
     });
   });
 
+  group('the Apple subscription (Apple IAP plan D9)', () {
+    final appleBlock =
+        find.byKey(const ValueKey('admin-apple-subscription'));
+    Finder inApple(Finder finder) =>
+        find.descendant(of: appleBlock, matching: finder);
+
+    void bobOnApple(String status, {String? periodEnd}) =>
+        admin.rows.first['apple_subscription'] =
+            stripeSubscription(status, periodEnd: periodEnd);
+
+    const retrying = 'Payment failed: Apple is retrying';
+    const check = 'Check it in App Store Connect.';
+    const statuses = [
+      (
+        status: 'active',
+        periodEnd: '2027-11-11T12:00:00Z',
+        words: 'Active',
+        end: 'Renews on Nov 11, 2027',
+        warning: null,
+        short: 'App Store · renews Nov 11, 2027',
+      ),
+      // Apple's billing grace period: Premium until its end (D5).
+      (
+        status: 'past_due',
+        periodEnd: '2026-11-20T12:00:00Z',
+        words: 'Payment overdue',
+        end: 'Premium kept until Nov 20, 2026 while Apple retries',
+        warning: retrying,
+        short: 'App Store · payment failed',
+      ),
+      // Billing retry past the grace period: no Premium, yet Apple may
+      // still charge, with no date.
+      (
+        status: 'past_due',
+        periodEnd: null,
+        words: 'Payment overdue',
+        end: null,
+        warning: retrying,
+        short: 'App Store · payment failed',
+      ),
+      (
+        status: 'canceling',
+        periodEnd: '2027-11-11T12:00:00Z',
+        words: 'Cancellation scheduled',
+        end: 'Ends on Nov 11, 2027',
+        warning: null,
+        short: 'App Store · ends Nov 11, 2027',
+      ),
+      (
+        status: 'ended',
+        periodEnd: null,
+        words: 'Ended',
+        end: null,
+        warning: null,
+        short: 'App Store · ended',
+      ),
+      (
+        status: 'no_news',
+        periodEnd: '2026-10-01T12:00:00Z',
+        words: 'No news from Apple since Oct 1, 2026',
+        end: null,
+        warning: check,
+        short: 'App Store · no news since Oct 1, 2026',
+      ),
+    ];
+    for (final (:status, :periodEnd, :words, :end, :warning, :short)
+        in statuses) {
+      final label = '$status${periodEnd == null ? ', undated' : ''}';
+      testWidgets('$label: its block beside Stripe\'s', (tester) async {
+        bobOnApple(status, periodEnd: periodEnd);
+        await start(tester, bobPath());
+
+        expect(inApple(find.text('App Store subscription')), findsOneWidget);
+        expect(inApple(find.text(words)), findsOneWidget);
+        expect(inApple(find.text('Started on May 2, 2026')), findsOneWidget);
+        if (end != null) expect(inApple(find.text(end)), findsOneWidget);
+        expect(
+          inApple(find.byType(Text)),
+          findsNWidgets(3 + (end == null ? 0 : 1) + (warning == null ? 0 : 1)),
+        );
+        for (final text in [retrying, check]) {
+          expect(
+            inApple(find.text(text)),
+            text == warning ? findsOneWidget : findsNothing,
+          );
+        }
+        // Stripe's block is untouched.
+        expect(find.text('Stripe subscription'), findsOneWidget);
+        expect(find.text('Renews on Mar 12, 2027'), findsOneWidget);
+      });
+
+      testWidgets('$label: its line in the users table, under Stripe\'s',
+          (tester) async {
+        bobOnApple(status, periodEnd: periodEnd);
+        await start(tester, '/admin', size: _wide);
+
+        final stripe = find.text('Stripe · renews Mar 12, 2027');
+        expect(find.text(short), findsOneWidget);
+        expect(tester.getRect(find.text(short)).top,
+            greaterThanOrEqualTo(tester.getRect(stripe).bottom));
+      });
+    }
+
+    testWidgets('never subscribed through Apple: says so', (tester) async {
+      await start(tester, '/admin/users/$kCarolId');
+
+      expect(inApple(find.text('No App Store subscription')), findsOneWidget);
+    });
+
+    testWidgets('on a phone, stacked between Stripe and the grant',
+        (tester) async {
+      await start(tester, bobPath());
+
+      final stripe =
+          tester.getRect(find.byKey(const ValueKey('admin-subscription')));
+      final apple = tester.getRect(appleBlock);
+      final grant = tester.getRect(find.byKey(const ValueKey('admin-grant')));
+      expect(apple.top, greaterThanOrEqualTo(stripe.bottom));
+      expect(grant.top, greaterThanOrEqualTo(apple.bottom));
+      expect(apple.width, stripe.width);
+    });
+
+    testWidgets('in French', (tester) async {
+      bobOnApple('past_due', periodEnd: '2026-11-20T12:00:00Z');
+      await start(tester, bobPath(), locale: const Locale('fr'));
+
+      expect(find.text('Abonnement App Store'), findsOneWidget);
+      expect(
+        find.text("Premium maintenu jusqu'au 20 nov. 2026 pendant qu'Apple "
+            'réessaie'),
+        findsOneWidget,
+      );
+      expect(find.text('Paiement échoué : Apple réessaie'), findsOneWidget);
+    });
+
+    group('deleting', () {
+      const warning = 'Their App Store subscription keeps renewing: deleting '
+          'the account does not cancel it. Only they can, in their Apple '
+          'subscriptions.';
+
+      Future<void> openDelete(WidgetTester tester) async {
+        await start(tester, bobPath());
+        await tester.ensureVisible(find.text('Delete this account'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Delete this account'));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('renewing: the dialog warns, and still deletes',
+          (tester) async {
+        admin.rows.first['apple_renewing'] = true;
+        await openDelete(tester);
+
+        expect(find.text(warning), findsOneWidget);
+        await tester.enterText(find.byType(TextField), 'bob@example.com');
+        await tester.pump();
+        await tester.tap(find.text('Delete the account'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Account deleted.'), findsOneWidget);
+      });
+
+      testWidgets('follows apple_renewing, not the block', (tester) async {
+        // A block reading cancelled while another Apple subscription renews.
+        bobOnApple('canceling', periodEnd: '2027-11-11T12:00:00Z');
+        admin.rows.first['apple_renewing'] = true;
+        await openDelete(tester);
+
+        expect(find.text(warning), findsOneWidget);
+      });
+
+      testWidgets('an active block with apple_renewing false: no warning',
+          (tester) async {
+        bobOnApple('active', periodEnd: '2027-11-11T12:00:00Z');
+        admin.rows.first['apple_renewing'] = false;
+        await openDelete(tester);
+
+        expect(find.text(warning), findsNothing);
+      });
+
+      testWidgets('a row without apple_renewing: no warning', (tester) async {
+        await openDelete(tester);
+
+        expect(find.text(warning), findsNothing);
+      });
+    });
+  });
+
   group('deleting an account', () {
     TextButton deleteButton(WidgetTester tester) => tester.widget<TextButton>(
           find.widgetWithText(TextButton, 'Delete the account'),
@@ -721,6 +927,8 @@ void main() {
         (tester) async {
       await start(tester, bobPath());
 
+      await tester.ensureVisible(find.text('Delete this account'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Delete this account'));
       await tester.pumpAndSettle();
       expect(deleteButton(tester).onPressed, isNull);
@@ -748,6 +956,8 @@ void main() {
     testWidgets('cancelling deletes nothing', (tester) async {
       await start(tester, bobPath());
 
+      await tester.ensureVisible(find.text('Delete this account'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Delete this account'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Cancel'));
@@ -759,6 +969,8 @@ void main() {
 
     Future<void> deleteBob(WidgetTester tester) async {
       await start(tester, bobPath());
+      await tester.ensureVisible(find.text('Delete this account'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Delete this account'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'bob@example.com');
@@ -839,6 +1051,8 @@ void main() {
       admin.reauth = true;
       final auth = await start(tester, bobPath());
 
+      await tester.ensureVisible(find.text('Delete this account'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Delete this account'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'bob@example.com');

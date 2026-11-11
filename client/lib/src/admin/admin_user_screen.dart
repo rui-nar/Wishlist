@@ -153,7 +153,10 @@ class _AdminUserScreenState extends State<AdminUserScreen> {
     final l10n = AppLocalizations.of(context);
     final typed = await showDialog<String>(
       context: context,
-      builder: (context) => _DeleteDialog(email: detail.user.email),
+      builder: (context) => _DeleteDialog(
+        email: detail.user.email,
+        appleRenewing: detail.user.appleRenewing,
+      ),
     );
     if (typed == null || !mounted) return;
     setState(() => _busy = true);
@@ -314,13 +317,13 @@ class _Identity extends StatelessWidget {
   }
 }
 
-/// Wide enough for the subscription and the grant side by side: each block
-/// keeps room for its dates and the grant's buttons. Stacked below.
+/// Wide enough for two blocks side by side: each keeps room for its dates
+/// and the grant's buttons. Stacked below.
 const _kBlocksSideBySide = 2 * 4 * Spacing.s64 + Spacing.s12;
 
-/// The effective plan, then the Stripe subscription and the grant in blocks
-/// of their own: neither hides the other, and the grant's changes are in its
-/// block only.
+/// The effective plan, then the Stripe and Apple subscriptions (Apple IAP
+/// plan D9) and the grant in blocks of their own: none hides another, and the
+/// grant's changes are in its block only. Two to a row when wide.
 class _Plan extends StatelessWidget {
   const _Plan({
     required this.user,
@@ -342,6 +345,11 @@ class _Plan extends StatelessWidget {
       title: l10n.adminSubscriptionTitle,
       child: _Subscription(subscription: user.subscription),
     );
+    final apple = _Block(
+      key: const ValueKey('admin-apple-subscription'),
+      title: l10n.adminAppleTitle,
+      child: _Subscription(subscription: user.appleSubscription, apple: true),
+    );
     final grant = _Block(
       key: const ValueKey('admin-grant'),
       title: l10n.adminGrantBlockTitle,
@@ -360,21 +368,38 @@ class _Plan extends StatelessWidget {
         LayoutBuilder(
           builder: (context, constraints) =>
               constraints.maxWidth >= _kBlocksSideBySide
-                  // As tall as each other, so they read as a pair.
-                  ? IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(child: subscription),
-                          const SizedBox(width: Spacing.s12),
-                          Expanded(child: grant),
-                        ],
-                      ),
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // As tall as each other, so they read as a pair.
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(child: subscription),
+                              const SizedBox(width: Spacing.s12),
+                              Expanded(child: apple),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: Spacing.s12),
+                        // The same width as the stores' blocks above.
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: grant),
+                            const SizedBox(width: Spacing.s12),
+                            const Spacer(),
+                          ],
+                        ),
+                      ],
                     )
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         subscription,
+                        const SizedBox(height: Spacing.s12),
+                        apple,
                         const SizedBox(height: Spacing.s12),
                         grant,
                       ],
@@ -415,27 +440,34 @@ class _Block extends StatelessWidget {
   }
 }
 
-/// The Stripe subscription: its status, since when, when it renews or ends,
-/// a failed payment Stripe is retrying, and where to look when Stripe was not
-/// heard of.
+/// The Stripe subscription, or the Apple one when [apple]: its status, since
+/// when, when it renews or ends, a failed payment the store is retrying, and
+/// where to look when the store was not heard of.
 class _Subscription extends StatelessWidget {
-  const _Subscription({required this.subscription});
+  const _Subscription({required this.subscription, this.apple = false});
 
   final AdminSubscription? subscription;
+  final bool apple;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final subscription = this.subscription;
-    if (subscription == null) return Text(l10n.adminNoSubscription);
+    if (subscription == null) {
+      return Text(
+        apple ? l10n.adminNoAppleSubscription : l10n.adminNoSubscription,
+      );
+    }
     final small = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
     final started = subscription.startedAt;
-    final end = subscriptionEndLine(context, subscription);
+    final end = subscriptionEndLine(context, subscription, apple: apple);
     final warning = switch (subscription.status) {
+      'past_due' when apple => l10n.adminAppleRetrying,
       'past_due' => l10n.adminSubscriptionRetrying,
+      'no_news' when apple => l10n.adminAppleCheck,
       // Its events were lost: Stripe may still be billing it (review R5-2).
       'no_news' => l10n.adminSubscriptionCheckStripe,
       _ => null,
@@ -443,7 +475,7 @@ class _Subscription extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(subscriptionStatus(context, subscription)),
+        Text(subscriptionStatus(context, subscription, apple: apple)),
         if (started != null)
           Text(
             l10n.adminSubscriptionStarted(formatDay(context, started)),
@@ -656,11 +688,13 @@ class _GrantDialogState extends State<_GrantDialog> {
 
 /// Deleting asks for the account's address; the button waits until what is
 /// typed matches it, ignoring case and surrounding spaces, as the server
-/// does (D9). Pops what was typed.
+/// does (D9). Pops what was typed. Warns of an Apple subscription that the
+/// deletion does not stop (Apple IAP plan D9).
 class _DeleteDialog extends StatefulWidget {
-  const _DeleteDialog({required this.email});
+  const _DeleteDialog({required this.email, required this.appleRenewing});
 
   final String email;
+  final bool appleRenewing;
 
   @override
   State<_DeleteDialog> createState() => _DeleteDialogState();
@@ -689,6 +723,13 @@ class _DeleteDialogState extends State<_DeleteDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(l10n.adminDeleteBody(widget.email)),
+          if (widget.appleRenewing) ...[
+            const SizedBox(height: Spacing.s12),
+            Text(
+              l10n.adminDeleteAppleRenewing,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
           const SizedBox(height: Spacing.s16),
           TextField(
             controller: _typed,

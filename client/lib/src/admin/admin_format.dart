@@ -83,12 +83,13 @@ String planLine(BuildContext context, AdminPlan plan) {
   return source == null ? premium : l10n.adminFiguresLine(premium, source);
 }
 
-/// A Stripe subscription's status in words; `no_news` with the last day
-/// Stripe gave.
+/// A Stripe subscription's status in words, or an Apple one's when [apple];
+/// `no_news` with the last day the store gave.
 String subscriptionStatus(
   BuildContext context,
-  AdminSubscription subscription,
-) {
+  AdminSubscription subscription, {
+  bool apple = false,
+}) {
   final l10n = AppLocalizations.of(context);
   final end = subscription.periodEnd;
   return switch ((subscription.status, end)) {
@@ -97,25 +98,30 @@ String subscriptionStatus(
     ('canceling', _) => l10n.adminSubscriptionCanceling,
     ('incomplete', _) => l10n.adminSubscriptionIncomplete,
     ('ended', _) => l10n.adminSubscriptionEnded,
-    ('no_news', final DateTime end) =>
-      l10n.adminSubscriptionNoNewsSince(formatDay(context, end)),
-    ('no_news', _) => l10n.adminSubscriptionNoNews,
+    ('no_news', final DateTime end) => apple
+        ? l10n.adminAppleNoNewsSince(formatDay(context, end))
+        : l10n.adminSubscriptionNoNewsSince(formatDay(context, end)),
+    ('no_news', _) =>
+      apple ? l10n.adminAppleNoNews : l10n.adminSubscriptionNoNews,
     (final other, _) => other,
   };
 }
 
 /// When the subscription renews or ends; null without the day, and for the
 /// statuses whose day says nothing of it (review R5-1) or that their status
-/// already dates.
+/// already dates. An Apple one past due is in Apple's billing grace period,
+/// which ends on its day (Apple IAP plan D5).
 String? subscriptionEndLine(
   BuildContext context,
-  AdminSubscription subscription,
-) {
+  AdminSubscription subscription, {
+  bool apple = false,
+}) {
   final l10n = AppLocalizations.of(context);
   final end = subscription.periodEnd;
   if (end == null) return null;
   final day = formatDay(context, end);
   return switch (subscription.status) {
+    'past_due' when apple => l10n.adminAppleGraceUntil(day),
     'active' || 'past_due' => l10n.adminSubscriptionRenews(day),
     'canceling' => l10n.adminSubscriptionEnds(day),
     _ => null,
@@ -123,11 +129,12 @@ String? subscriptionEndLine(
 }
 
 /// The subscription on one short line of the users list:
-/// `Stripe · renews 12 Mar 2027`.
+/// `Stripe · renews 12 Mar 2027`, or `App Store · …` when [apple].
 String subscriptionShortLine(
   BuildContext context,
-  AdminSubscription subscription,
-) {
+  AdminSubscription subscription, {
+  bool apple = false,
+}) {
   final l10n = AppLocalizations.of(context);
   final end = subscription.periodEnd;
   final day = end == null ? null : formatDay(context, end);
@@ -140,20 +147,26 @@ String subscriptionShortLine(
     ('no_news', final String day) => l10n.adminStripeNoNews(day),
     ('no_news', _) => l10n.adminStripeNoNewsUndated,
     // Without its day, the status in words.
-    _ => subscriptionStatus(context, subscription),
+    _ => subscriptionStatus(context, subscription, apple: apple),
   };
-  return l10n.adminFiguresLine(l10n.adminSourceStripe, state);
+  return l10n.adminFiguresLine(
+    apple ? l10n.adminSourceApple : l10n.adminSourceStripe,
+    state,
+  );
 }
 
-/// The users list's plan: the effective plan first, then the Stripe
-/// subscription and the grant on lines of their own, so none hides another.
+/// The users list's plan: the effective plan first, then the Stripe and
+/// Apple subscriptions and the grant on lines of their own, so none hides
+/// another.
 List<String> planLines(BuildContext context, AdminUserRow user) {
   final l10n = AppLocalizations.of(context);
   final subscription = user.subscription;
+  final apple = user.appleSubscription;
   final grantEnd = user.manualGrantEnd;
   return [
     planLine(context, user.plan),
     if (subscription != null) subscriptionShortLine(context, subscription),
+    if (apple != null) subscriptionShortLine(context, apple, apple: true),
     if (grantEnd != null)
       grantExpired(grantEnd)
           ? l10n.adminGrantedUntilExpired(formatDay(context, grantEnd))

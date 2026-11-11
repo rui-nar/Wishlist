@@ -2213,5 +2213,119 @@
   "howItWorks": "How Wishlist works",
   "@howItWorks": {
     "description": "The account screen: opens the introduction's pages again."
+  },
+  "planAppleProduct": "Premium, yearly subscription",
+  "@planAppleProduct": {
+    "description": "The Premium page in the iOS app: the subscription's name and length, as Apple requires."
+  },
+  "planApplePrice": "{price} per year",
+  "@planApplePrice": {
+    "description": "The Premium page in the iOS app: the App Store's localised yearly price.",
+    "placeholders": {
+      "price": {
+        "type": "String",
+        "example": "€19.99"
+      }
+    }
+  },
+  "planAppleRenewal": "Renews automatically every year until you cancel it in your Apple account's subscriptions, at least 24 hours before the end of the current year. Payment is charged to your Apple account.",
+  "@planAppleRenewal": {
+    "description": "The Premium page in the iOS app: how the subscription renews and is cancelled, as Apple requires."
+  },
+  "planSubscribe": "Subscribe",
+  "@planSubscribe": {
+    "description": "The Premium page in the iOS app: the button opening Apple's purchase sheet."
+  },
+  "planRestore": "Restore purchases",
+  "@planRestore": {
+    "description": "The Premium page in the iOS app: finds a subscription bought earlier with the same Apple account."
+  },
+  "planManageApple": "Manage in the App Store",
+  "@planManageApple": {
+    "description": "The button opening Apple's subscriptions page, where an App Store subscription is managed or cancelled."
+  },
+  "planStoreUnavailable": "The App Store cannot be reached right now. Try again later.",
+  "@planStoreUnavailable": {
+    "description": "The Premium page in the iOS app: the App Store did not give the subscription's price."
+  },
+  "planPurchasePending": "Your purchase is waiting for approval. Your plan will update once it goes through.",
+  "@planPurchasePending": {
+    "description": "The Premium page in the iOS app: the purchase waits for approval (Ask to Buy, or the bank)."
+  },
+  "planPurchaseUnconfirmed": "Apple has your purchase, but it could not be confirmed yet. It will be the next time you open this page.",
+  "@planPurchaseUnconfirmed": {
+    "description": "The Premium page in the iOS app: the server could not record the purchase now; the app sends it again later."
+  },
+  "planPurchaseOtherAccount": "This App Store purchase belongs to another Wishlist account. Sign in to that account to use it.",
+  "@planPurchaseOtherAccount": {
+    "description": "The Premium page in the iOS app: the purchase was made while signed in to another account."
+  },
+  "planPurchaseSandbox": "Test purchases are not accepted here.",
+  "@planPurchaseSandbox": {
+    "description": "The Premium page in the iOS app: a Sandbox (test) purchase refused by the production server."
+  },
+  "planPurchaseInvalid": "This App Store purchase could not be confirmed for your account.",
+  "@planPurchaseInvalid": {
+    "description": "The Premium page in the iOS app: the server refused the purchase as invalid or unknown."
+  },
+  "planNothingToRestore": "No subscription to restore was found for your Apple account.",
+  "@planNothingToRestore": {
+    "description": "The Premium page in the iOS app: Restore purchases found nothing."
+  },
+  "deleteAccountAppleRenewing": "Your App Store subscription keeps renewing: deleting your account does not cancel it. Cancel it in your Apple subscriptions first.",
+  "@deleteAccountAppleRenewing": {
+    "description": "The account deletion dialog: an Apple subscription of the account still renews, which only the person can stop."
+  },
+  "deleteAccountAppleUnknown": "If you subscribed on iPhone, deleting your account does not cancel that subscription: cancel it in your Apple subscriptions.",
+  "@deleteAccountAppleUnknown": {
+    "description": "The account deletion dialog, when the plan could not be read: an Apple subscription may still renew."
+  },
+  "deleteAccountAppleLink": "Open Apple subscriptions",
+  "@deleteAccountAppleLink": {
+    "description": "The account deletion dialog: opens Apple's subscriptions page."
+  },
+  "adminAppleTitle": "App Store subscription",
+  "@adminAppleTitle": {
+    "description": "The admin panel: the title of the Apple subscription's block."
+  },
+  "adminNoAppleSubscription": "No App Store subscription",
+  "@adminNoAppleSubscription": {
+    "description": "The admin panel: the account never subscribed through Apple."
+  },
+  "adminAppleNoNews": "No news from Apple",
+  "@adminAppleNoNews": {
+    "description": "The admin panel: an Apple subscription that grants nothing and was not heard of, with no date known."
+  },
+  "adminAppleNoNewsSince": "No news from Apple since {date}",
+  "@adminAppleNoNewsSince": {
+    "description": "The admin panel: an Apple subscription that should have renewed on that day and was not heard of since.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2027"
+      }
+    }
+  },
+  "adminAppleRetrying": "Payment failed: Apple is retrying",
+  "@adminAppleRetrying": {
+    "description": "The admin panel: under a past_due Apple subscription, Apple tries the payment again."
+  },
+  "adminAppleGraceUntil": "Premium kept until {date} while Apple retries",
+  "@adminAppleGraceUntil": {
+    "description": "The admin panel: an Apple subscription in its billing grace period, which ends on that day.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2027"
+      }
+    }
+  },
+  "adminAppleCheck": "Check it in App Store Connect.",
+  "@adminAppleCheck": {
+    "description": "The admin panel: an Apple subscription not heard of: where to look."
+  },
+  "adminDeleteAppleRenewing": "Their App Store subscription keeps renewing: deleting the account does not cancel it. Only they can, in their Apple subscriptions.",
+  "@adminDeleteAppleRenewing": {
+    "description": "The admin's deletion dialog: an Apple subscription of the account still renews, which the server cannot stop."
   }
 }

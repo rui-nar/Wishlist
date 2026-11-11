@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../api/api_client.dart';
+import '../auth/auth_controller.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import '../error_line.dart';
+import '../lists/gift_links.dart';
 import '../lists/price.dart';
 import 'billing_repository.dart';
 import 'legal_links.dart';
+import 'store.dart';
+import 'store_purchases.dart';
 
 /// How many times the status is read again after Stripe's redirect, and how
 /// far apart: the webhook can land after it (D18).
@@ -75,7 +80,28 @@ class PlanSummary extends StatelessWidget {
   }
 }
 
-/// "Manage subscription": sends this tab to the Customer Portal (D14).
+/// "Manage in the App Store": Apple's subscriptions page, where only the
+/// person can change or cancel an App Store subscription (Apple IAP plan D8).
+class AppleSubscriptionsButton extends StatelessWidget {
+  const AppleSubscriptionsButton({super.key});
+
+  Future<void> _open(BuildContext context) async {
+    final message = AppLocalizations.of(context).planActionFailed;
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await openGiftLink(kAppleSubscriptionsUrl)) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton(
+        onPressed: () => _open(context),
+        child: Text(AppLocalizations.of(context).planManageApple),
+      );
+}
+
+/// "Manage subscription": the Customer Portal (D14), in this tab on the web,
+/// in the browser from the iOS app (Apple IAP plan D8).
 class ManageSubscriptionButton extends StatefulWidget {
   const ManageSubscriptionButton({super.key, required this.onStale});
 
@@ -97,7 +123,8 @@ class _ManageSubscriptionButtonState extends State<ManageSubscriptionButton> {
     void fail() => messenger.showSnackBar(SnackBar(content: Text(message)));
     setState(() => _busy = true);
     try {
-      if (!await openInThisTab(await _repository.openPortal())) fail();
+      final url = await _repository.openPortal();
+      if (!await (onTheWeb ? openInThisTab(url) : openGiftLink(url))) fail();
     } catch (error) {
       // A 401 signs the user out: the sign-in screen says enough.
       if (error is! UnauthorizedException) fail();
@@ -118,7 +145,8 @@ class _ManageSubscriptionButtonState extends State<ManageSubscriptionButton> {
 }
 
 /// `/account/plan`: the plan, what Premium adds and the way to buy it
-/// (PREMIUM_PLAN D18). A real route, because Stripe sends the browser back to
+/// (PREMIUM_PLAN D18): through Stripe on the web, through Apple in the iOS app
+/// (Apple IAP plan D8). A real route, because Stripe sends the browser back to
 /// it with `?checkout=` (kept through the sign-in guard by `from`).
 class PlanScreen extends StatefulWidget {
   const PlanScreen({super.key, this.checkout});
@@ -144,10 +172,41 @@ class _PlanScreenState extends State<PlanScreen> {
   /// A checkout is being opened: no second one starts meanwhile.
   bool _buying = false;
 
+  /// The iOS app's purchases through Apple (Apple IAP plan D3): reported to
+  /// the server while this page is open. Null elsewhere.
+  StorePurchases? _purchases;
+
+  /// Apple's product, once the server sells it and the App Store priced it.
+  StoreProduct? _product;
+  bool _productAsked = false;
+  bool _productFailed = false;
+
+  /// A restore is on its way.
+  bool _restoring = false;
+
+  /// What the last purchase or restore came to, to say above the plan.
+  StoreOutcome? _outcome;
+
+  /// Restore found nothing to restore.
+  bool _nothingRestored = false;
+
   @override
   void initState() {
     super.initState();
+    if (deviceStore case final store?) {
+      _purchases = StorePurchases(
+        store: store,
+        report: _repository.reportAppleTransaction,
+        onOutcome: _onOutcome,
+      )..start();
+    }
     _waiting ? _waitForPayment() : _load();
+  }
+
+  @override
+  void dispose() {
+    _purchases?.dispose();
+    super.dispose();
   }
 
   /// Reads the plan. A failure when a plan is already on screen leaves it there.
@@ -159,6 +218,7 @@ class _PlanScreenState extends State<PlanScreen> {
           _status = status;
           _failed = false;
         });
+        _loadProduct(status);
       }
     } catch (error) {
       if (!mounted || error is UnauthorizedException) return;
@@ -220,6 +280,79 @@ class _PlanScreenState extends State<PlanScreen> {
     if (error.statusCode == 404 || error.statusCode == 409) await _load();
   }
 
+  /// Asks the App Store for its price once the server sells through Apple:
+  /// the app never shows the server's amount there (D1).
+  Future<void> _loadProduct(BillingStatus status) async {
+    final offer = status.appleOffer;
+    final purchases = _purchases;
+    if (offer == null || purchases == null || _productAsked) return;
+    _productAsked = true;
+    StoreProduct? product;
+    try {
+      product = await purchases.store.product(offer.productId);
+    } catch (_) {
+      product = null;
+    }
+    if (mounted) {
+      setState(() {
+        _product = product;
+        _productFailed = product == null;
+      });
+    }
+  }
+
+  void _onOutcome(StoreOutcome outcome) {
+    if (!mounted) return;
+    switch (outcome) {
+      case StoreOutcome.cancelled:
+        return;
+      case StoreOutcome.failed:
+        _say(AppLocalizations.of(context).planActionFailed);
+        return;
+      case StoreOutcome.accepted:
+        _load();
+      default:
+        break;
+    }
+    setState(() => _outcome = outcome);
+  }
+
+  /// Apple's purchase sheet, the purchase tied to this account (D2).
+  Future<void> _buyFromApple(StoreProduct product) async {
+    final accountId = context.read<AuthController>().user?.id;
+    if (accountId == null) return;
+    final failed = AppLocalizations.of(context).planActionFailed;
+    setState(() {
+      _buying = true;
+      _outcome = null;
+      _nothingRestored = false;
+    });
+    try {
+      await _purchases!.buy(product, accountId);
+    } catch (_) {
+      // StoreKit could not open its sheet: nothing was charged.
+      if (mounted) _say(failed);
+    }
+    if (mounted) setState(() => _buying = false);
+  }
+
+  /// Required by Apple: finds what this Apple account bought earlier.
+  Future<void> _restore() async {
+    final failed = AppLocalizations.of(context).planActionFailed;
+    setState(() {
+      _restoring = true;
+      _outcome = null;
+      _nothingRestored = false;
+    });
+    try {
+      final found = await _purchases!.restore();
+      if (mounted && !found) setState(() => _nothingRestored = true);
+    } catch (_) {
+      if (mounted) _say(failed);
+    }
+    if (mounted) setState(() => _restoring = false);
+  }
+
   void _back() => context.canPop() ? context.pop() : context.go('/account');
 
   @override
@@ -279,6 +412,22 @@ class _PlanScreenState extends State<PlanScreen> {
 
   /// What the return from Stripe has to say, once it is known.
   String? _notice(AppLocalizations l10n, BillingStatus? status) {
+    if (_nothingRestored && status?.isPremium != true) {
+      return l10n.planNothingToRestore;
+    }
+    if (_outcome case final outcome?) {
+      return switch (outcome) {
+        // Once the plan read again says so.
+        StoreOutcome.accepted =>
+          status?.isPremium == true ? l10n.planThanks : null,
+        StoreOutcome.pending => l10n.planPurchasePending,
+        StoreOutcome.otherAccount => l10n.planPurchaseOtherAccount,
+        StoreOutcome.sandboxRefused => l10n.planPurchaseSandbox,
+        StoreOutcome.notValid => l10n.planPurchaseInvalid,
+        StoreOutcome.unconfirmed => l10n.planPurchaseUnconfirmed,
+        StoreOutcome.cancelled || StoreOutcome.failed => null,
+      };
+    }
     if (widget.checkout == _kCancelled) return l10n.planCheckoutCancelled;
     if (widget.checkout != _kSuccess || _waiting) return null;
     return status?.isPremium == true
@@ -320,18 +469,61 @@ class _PlanScreenState extends State<PlanScreen> {
           child: Text(l10n.planBuy),
         ),
       ],
-      if (onTheWeb && status.canManage) ...[
+      // No purchase while Premium is in force, from any source (D8).
+      if (onIos && !status.isPremium && status.appleOffer != null)
+        ..._applePurchase(l10n, theme),
+      if (status.offersAppleManagement) ...[
+        const SizedBox(height: Spacing.s12),
+        const AppleSubscriptionsButton(),
+      ],
+      if (status.offersStripePortal) ...[
         const SizedBox(height: Spacing.s12),
         ManageSubscriptionButton(onStale: _load),
       ],
-      if (onTheWeb) ...[
+      if (onTheWeb || onIos) ...[
         const SizedBox(height: Spacing.s8),
-        LegalLinks(legal: status.legal),
+        LegalLinks(legal: status.legal, apple: onIos),
       ],
-      if (!onTheWeb && !status.isPremium) ...[
+      if (!onTheWeb && !status.isPremium && !status.offeredHere) ...[
         const SizedBox(height: Spacing.s16),
         Text(l10n.planMobileUnavailable),
       ],
+    ];
+  }
+
+  /// What Apple's guideline 3.1.2 asks of a subscription's sale (D8): its
+  /// name and length, the App Store's price, how it renews and is cancelled,
+  /// then Restore. The terms and privacy links follow.
+  List<Widget> _applePurchase(AppLocalizations l10n, ThemeData theme) {
+    final product = _product;
+    final busy = _buying || _restoring;
+    return [
+      const SizedBox(height: Spacing.s16),
+      if (product != null) ...[
+        Text(l10n.planAppleProduct, style: theme.textTheme.titleMedium),
+        const SizedBox(height: Spacing.s4),
+        Text(l10n.planApplePrice(product.price)),
+        const SizedBox(height: Spacing.s8),
+        Text(
+          l10n.planAppleRenewal,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.s12),
+        FilledButton(
+          onPressed: busy ? null : () => _buyFromApple(product),
+          child: Text(l10n.planSubscribe),
+        ),
+      ] else if (_productFailed)
+        Text(l10n.planStoreUnavailable)
+      else
+        const Center(child: CircularProgressIndicator()),
+      const SizedBox(height: Spacing.s8),
+      TextButton(
+        onPressed: busy ? null : _restore,
+        child: Text(l10n.planRestore),
+      ),
     ];
   }
 }
