@@ -1,4 +1,4 @@
-package com.example.wishlist
+package app.wishlist
 
 import io.flutter.embedding.android.FlutterActivity
 
