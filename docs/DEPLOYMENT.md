@@ -2839,7 +2839,18 @@ files under `$SRC/deploy/`; the way back: `rm -r "$SRC"`.
 
 **Caddy first.** Append the snippet as in [step 6](#6-caddy), after its DNS
 check: copy, `caddy validate`, then reload. Until PROD moves, the new
-`<prod-host>` reaches the old PROD stack on 8010.
+`<prod-host>` reaches the old PROD stack on 8010. **One guard differs:** during
+the move the old hosts' blocks already proxy 8010 and 8011, so step 6's
+`grep -c '127.0.0.1:801[01]'` prints 2 here and would read as "already
+appended". Use a guard on the new hosts instead, which must print 0 before
+the append:
+
+```bash
+grep -c '<val-host>\|<prod-host>' /etc/caddy/Caddyfile      # 0: the new hosts are not in it yet
+```
+
+If it prints more than 0, the snippet is already there: do not append it
+again. The way back is unchanged (the copy step 6 makes).
 
 **[VPS]** Check: `curl -sI https://<val-host>/ | head -n 1` answers with no TLS
 error (the old VAL stack answers on the new host, until its cut-over), and
@@ -2855,6 +2866,7 @@ container, with the seed script's forms, into the old directory (the new one
 does not exist yet):
 
 ```bash
+: "${OLD:?set OLD first, see the top of this section}"
 cd /opt/$OLD-val
 docker compose stop app
 ( umask 077; docker compose exec -T -u postgres db sh -c \
@@ -2920,6 +2932,7 @@ back: `rm -r /opt/shushgift-val`, the old directory is untouched.
 modification times the media purge relies on. Check both before and after:
 
 ```bash
+: "${OLD:?set OLD first, see the top of this section}"
 stat -c '%d' /opt/$OLD-media /opt/shushgift-media          # the same number twice
 before=$(sudo find /opt/$OLD-media/val -type f -printf '%T@\n' | sort -n | head -n 1)
 sudo mv /opt/$OLD-media/val /opt/shushgift-media/val
@@ -2967,6 +2980,7 @@ the old unit stops first. The new `hooks.yaml` keeps the old secret, so
 GitHub's webhook needs only its URL changed:
 
 ```bash
+: "${OLD:?set OLD first, see the top of this section}"
 sudo systemctl disable --now $OLD-webhook
 install -m 755 "$SRC/deploy/webhook/deploy-validation.sh" /opt/shushgift-val/webhook/
 install -m 644 "$SRC/deploy/webhook/hooks.yaml.example" \
@@ -3007,7 +3021,7 @@ curl.exe -s https://<val-host>/api/config                           # "public_ba
 And a sign-in: email and password on `https://<val-host>` with an account that
 existed before the move. Google and Apple sign-in wait for the consoles. The
 way back is the one of the step that failed. Once all of it passes, VAL is confirmed and the dump goes (it holds VAL's
-data, seeded from PROD): **[VPS]** `rm /opt/$OLD-val/before-move.dump`. The
+data, seeded from PROD): **[VPS]** `rm "/opt/${OLD:?}-val/before-move.dump"`. The
 old volume still holds the same data until part 8.
 
 ### 4. The consoles for VAL
@@ -3072,7 +3086,21 @@ a console entry, or, for the whole of VAL, starting the old project
 
 ### 6. PROD, the same way
 
-First, a release under the new name, since `:latest` exists only for a `vX.Y.Z`
+First, the **PROD apps' server address**: the release tag below starts both
+release workflows, which build the PROD apps for whatever `API_BASE_URL_PROD`
+holds, and the old host goes in part 7. `<prod-host>` already proxies to the
+running PROD stack (part 3's Caddy step), so it can be set now:
+
+```powershell
+gh secret set API_BASE_URL_PROD --body https://<prod-host>
+gh secret list                           # API_BASE_URL_PROD, updated just now
+```
+
+Check: `gh secret list` shows `API_BASE_URL_PROD` updated just now (a secret's
+value is never shown; the release gates print an error if it is empty or not
+https). The way back: set it again to `https://<old-prod-host>`.
+
+Then a release under the new name, since `:latest` exists only for a `vX.Y.Z`
 tag built after the rename (the old package does not move):
 
 ```powershell
@@ -3097,6 +3125,7 @@ the backup service never writes (its first dump in step 7 replaces the day's
 counts it as it counts any `*.dump`.
 
 ```bash
+: "${OLD:?set OLD first, see the top of this section}"
 cd /opt/$OLD
 sudo OLD="$OLD" sh -c 'ls -1 /opt/$OLD/backups/${OLD}_*.dump | wc -l'      # note the number of dumps
 sudo OLD="$OLD" sh -c 'stat -c "%y" $(ls -1 /opt/$OLD/backups/${OLD}_*.dump | head -n 1)'   # and the oldest dump's time
@@ -3148,6 +3177,7 @@ The way back: `rm -r /opt/shushgift`, the old directory is untouched.
 **Cut-over step 4: the media**, as for VAL, with `prod`:
 
 ```bash
+: "${OLD:?set OLD first, see the top of this section}"
 before=$(sudo find /opt/$OLD-media/prod -type f -printf '%T@\n' | sort -n | head -n 1)
 sudo mv /opt/$OLD-media/prod /opt/shushgift-media/prod
 after=$(sudo find /opt/shushgift-media/prod -type f -printf '%T@\n' | sort -n | head -n 1)
@@ -3165,6 +3195,7 @@ the rotation, the seeding and the purge's horizon all find them. They are moved
 the oldest dump in the directory.
 
 ```bash
+: "${OLD:?set OLD first, see the top of this section}"
 sudo OLD="$OLD" bash -c '
     cd /opt/$OLD/backups
     for f in ${OLD}_*.dump; do mv -n "$f" "/opt/shushgift/backups/shushgift_${f#${OLD}_}"; done
@@ -3183,6 +3214,7 @@ would find none and exit 1, and the old rotation would never delete them), with
 the new backup service stopped:
 
 ```bash
+: "${OLD:?set OLD first, see the top of this section}"
 sudo OLD="$OLD" bash -c '
     cd /opt/shushgift/backups
     for f in shushgift_*.dump; do mv -n "$f" "/opt/$OLD/backups/${OLD}_${f#shushgift_}"; done
@@ -3216,12 +3248,22 @@ restore again, or take the way back of step 5 and start the old project.
 ```bash
 docker compose up -d --wait --wait-timeout 300
 docker compose ps                                          # app, db, backup: (healthy)
-docker compose logs app | grep 'media purge:' | head -n 1  # horizon=<the oldest moved dump's time>, not today's
 sudo ls -l backups/                                        # today's shushgift_<date>.dump is new; before-move.dump stays
 ```
 
-Check the purge's first log line, which shows its horizon: it must be the
-oldest moved dump's date, not today's, and not `none`. If it is, **stop**:
+The actual guard of the horizon is **step 5**: the dumps were listed in the
+new directory before the app started, and the purge dates its horizon from
+the oldest of them. The log is a confirmation. The purge's first run comes 10
+minutes after start-up and logs its `horizon=` line at the end of that run,
+so wait 10 minutes or more before looking:
+
+```bash
+docker compose logs app | grep 'media purge:' | head -n 1  # horizon=<the oldest moved dump's time>, not today's
+```
+
+Check the line once it appears: it must show the oldest moved dump's date,
+not today's, and not `none` (empty output before the 10 minutes are up is
+normal, not a failure). If it shows today's date or `none`, **stop**:
 `docker compose stop app`, and fix step 5 (the dumps are not where the purge
 looks) before the purge's next run. The way back: take the ways back of cut-over steps
 7, 5 and 4 in that order (`docker compose down` here, the dumps and media moved
@@ -3246,7 +3288,8 @@ Consoles, as in part 4, for PROD: the web client's origin `https://<prod-host>`;
 Services ID domain and return URL; the App Store Server Notifications URLs of
 the PROD app (Production and Sandbox); the Pub/Sub endpoint for PROD; the live
 Stripe endpoint `https://<prod-host>/api/billing/webhook`, public details and
-product name; `API_BASE_URL_PROD`; `DEPLOY_PROD_URL`; the `LEGAL_*` URLs in
+product name; `DEPLOY_PROD_URL` (`API_BASE_URL_PROD` was set before the
+release tag, at the start of this part); the `LEGAL_*` URLs in
 PROD's `.env`; and the PROD values tied to the app ids. Then the tests of part
 5 with a real address, and, **instead of a purchase**, a subscription created
 before the move: its account keeps Premium, since the marker is unchanged.
@@ -3296,15 +3339,18 @@ docker compose -f /opt/shushgift/docker-compose.yml logs app | grep 'media purge
 Check: all four. This is the point of no return. Each deletion below has the
 same way back, the nightly dump just proved: restore it as in [Restoring PROD
 from a dump](#restoring-prod-from-a-dump) (the old project itself cannot be
-started again). Then:
+started again). Then, **in a new SSH session set `OLD` again** (`OLD=<old>`, as
+at the top of this section): the block refuses to run while it is unset, since
+`rm -r /opt/$OLD` with an empty `OLD` would remove all of `/opt`.
 
 ```bash
+: "${OLD:?set OLD first, see the top of this section}"
 sudo rm /opt/shushgift/backups/before-move.dump             # or it holds the purge's horizon at the move day for good (R3-1)
                                                             # way back: the nightly dump holds the same data, newer
 cd /opt/$OLD && docker compose down --volumes
 cd /opt/$OLD-val && docker compose down --volumes
                                                             # way back: the nightly dump (PROD); VAL is re-seeded from it
-sudo rm -r /opt/$OLD /opt/$OLD-val
+sudo rm -r "/opt/${OLD:?}" "/opt/${OLD:?}-val"
                                                             # way back: the nightly dump; the compose and .env files are
                                                             # copies of /opt/shushgift* and the repository's deploy/
 sudo rmdir /opt/$OLD-media                                  # only succeeds when empty: both media moved
