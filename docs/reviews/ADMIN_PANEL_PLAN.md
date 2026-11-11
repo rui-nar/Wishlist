@@ -171,7 +171,7 @@ Decisions approved by the owner ("as recommended", 2026-11-11).
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (a179eb0)
 
 ### R5-2 — A subscription whose events were lost reads "Ended"
 - Trigger: the webhook is unreachable across a renewal → past the grace the panel says "Ended" while Stripe probably still charges.
@@ -180,7 +180,7 @@ Decisions approved by the owner ("as recommended", 2026-11-11).
 - Revisit when: —
 - Guard: —
 - Override: owner: Fix now — seeing what Stripe really does is the point of the request; "No news from Stripe since <date>" instead of "Ended"
-- Outcome: open
+- Outcome: fixed (a179eb0)
 
 ### R5-3 — The users list drops the effective plan beside a subscription or grant line
 - Trigger: a grant's date passes → the row reads only "Granted here until <past date>", never "Free".
@@ -189,4 +189,4 @@ Decisions approved by the owner ("as recommended", 2026-11-11).
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (a179eb0)
