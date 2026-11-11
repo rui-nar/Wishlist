@@ -37,31 +37,40 @@ RecordingUrlLauncher installRecordingUrlLauncher() {
   addTearDown(() => UrlLauncherPlatform.instance = previous);
   return fake;
 }
-
-/// The App Store for the iOS app's tests (Apple IAP plan D3): what it sells,
-/// what each step sends, and what the app asked of it.
+/// A phone's store for the tests (Apple IAP plan D3, Android release plan
+/// D6): the App Store unless [source] says Google Play; what it sells, what
+/// each step sends, and what the app asked of it.
 class FakeStore implements Store {
+  FakeStore({this.source = StoreSource.apple});
+
+  @override
+  final StoreSource source;
+
   final _purchases = StreamController<List<StorePurchase>>.broadcast();
 
-  /// What [product] answers; null as when the App Store cannot be reached.
-  StoreProduct? storeProduct =
-      const StoreProduct(id: kAppleProductId, price: '€49.99');
+  /// What [product] answers; null as when the store cannot be reached.
+  late StoreProduct? storeProduct = StoreProduct(
+    id: source == StoreSource.apple ? kAppleProductId : kGoogleProductId,
+    price: '€49.99',
+  );
 
   /// What [unfinished] answers.
   List<StorePurchase> unfinishedPurchases = [];
 
-  /// What a purchase sends; a bought transaction unless set.
+  /// What a purchase sends; a bought purchase unless set.
   List<StorePurchase> Function()? onBuy;
 
-  /// Thrown by [buy], as when StoreKit cannot open its sheet.
+  /// Thrown by [buy], as when the store cannot open its sheet.
   Object? buyError;
 
   /// What [restore] sends.
   List<StorePurchase> restorable = [];
 
-  /// Every purchase asked for, and every purchase finished.
+  /// Every purchase asked for, and every purchase finished, with those
+  /// finished as only another account's.
   final bought = <({String productId, String accountId})>[];
   final finished = <String?>[];
+  final finishedForOtherAccount = <String?>[];
 
   bool get listening => _purchases.hasListener;
 
@@ -82,7 +91,14 @@ class FakeStore implements Store {
   Future<void> buy(StoreProduct product, {required String accountId}) async {
     bought.add((productId: product.id, accountId: accountId));
     if (buyError case final error?) throw error;
-    _purchases.add(onBuy?.call() ?? [applePurchase()]);
+    _purchases.add(
+      onBuy?.call() ??
+          [
+            source == StoreSource.apple
+                ? applePurchase()
+                : googlePurchase(),
+          ],
+    );
   }
 
   @override
@@ -91,11 +107,19 @@ class FakeStore implements Store {
   }
 
   @override
-  Future<void> finish(StorePurchase purchase) async {
+  Future<void> finish(
+    StorePurchase purchase, {
+    bool otherAccount = false,
+  }) async {
     finished.add(purchase.id);
+    if (otherAccount) finishedForOtherAccount.add(purchase.id);
     unfinishedPurchases.removeWhere((p) => p.id == purchase.id);
   }
 }
+
+bool _paid(StorePurchaseStatus status) =>
+    status == StorePurchaseStatus.purchased ||
+    status == StorePurchaseStatus.restored;
 
 /// A transaction as StoreKit gives it, its JWS named after its id.
 StorePurchase applePurchase({
@@ -105,14 +129,24 @@ StorePurchase applePurchase({
     StorePurchase(
       status: status,
       productId: kAppleProductId,
-      id: status == StorePurchaseStatus.purchased ||
-              status == StorePurchaseStatus.restored
-          ? id
-          : null,
-      signedTransaction: status == StorePurchaseStatus.purchased ||
-              status == StorePurchaseStatus.restored
-          ? 'jws-$id'
-          : null,
+      id: _paid(status) ? id : null,
+      verificationData: _paid(status) ? 'jws-$id' : null,
+    );
+
+/// A purchase as Play Billing gives it: an order id once paid, and a token
+/// named after it, which a pending purchase already has.
+StorePurchase googlePurchase({
+  String id = 'GPA.0001',
+  StorePurchaseStatus status = StorePurchaseStatus.purchased,
+}) =>
+    StorePurchase(
+      status: status,
+      productId: kGoogleProductId,
+      id: _paid(status) ? id : null,
+      verificationData: status == StorePurchaseStatus.cancelled ||
+              status == StorePurchaseStatus.failed
+          ? null
+          : 'token-$id',
     );
 
 /// The iOS app, buying through a fresh [FakeStore], for the test.
@@ -123,6 +157,23 @@ FakeStore installFakeStore() {
   debugOnTheWeb = false;
   addTearDown(() {
     debugStore = null;
+    debugOnIos = null;
+    debugOnTheWeb = null;
+  });
+  return store;
+}
+
+/// The Android app, buying through a fresh Google Play [FakeStore], for the
+/// test.
+FakeStore installFakeGoogleStore() {
+  final store = FakeStore(source: StoreSource.google);
+  debugStore = store;
+  debugOnAndroid = true;
+  debugOnIos = false;
+  debugOnTheWeb = false;
+  addTearDown(() {
+    debugStore = null;
+    debugOnAndroid = null;
     debugOnIos = null;
     debugOnTheWeb = null;
   });

@@ -82,24 +82,37 @@ class PlanSummary extends StatelessWidget {
   }
 }
 
-/// "Manage in the App Store": Apple's subscriptions page, where only the
-/// person can change or cancel an App Store subscription (Apple IAP plan D8).
-class AppleSubscriptionsButton extends StatelessWidget {
-  const AppleSubscriptionsButton({super.key});
+/// "Manage in the App Store" or "Manage in Google Play": the store's
+/// subscriptions page, where the person changes or cancels a subscription
+/// bought there (Apple IAP plan D8, Android release plan D8).
+class StoreSubscriptionsButton extends StatelessWidget {
+  const StoreSubscriptionsButton({super.key, required this.store});
+
+  final StoreSource store;
 
   Future<void> _open(BuildContext context) async {
     final message = AppLocalizations.of(context).planActionFailed;
     final messenger = ScaffoldMessenger.of(context);
-    if (!await openGiftLink(kAppleSubscriptionsUrl)) {
+    final url = switch (store) {
+      StoreSource.apple => kAppleSubscriptionsUrl,
+      StoreSource.google => kGoogleSubscriptionsUrl,
+    };
+    if (!await openGiftLink(url)) {
       messenger.showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
   @override
-  Widget build(BuildContext context) => OutlinedButton(
-        onPressed: () => _open(context),
-        child: Text(AppLocalizations.of(context).planManageApple),
-      );
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return OutlinedButton(
+      onPressed: () => _open(context),
+      child: Text(switch (store) {
+        StoreSource.apple => l10n.planManageApple,
+        StoreSource.google => l10n.planManageGoogle,
+      }),
+    );
+  }
 }
 
 /// "Manage subscription": the Customer Portal (D14), in this tab on the web,
@@ -148,7 +161,8 @@ class _ManageSubscriptionButtonState extends State<ManageSubscriptionButton> {
 
 /// `/account/plan`: the plan, what Premium adds and the way to buy it
 /// (PREMIUM_PLAN D18): through Stripe on the web, through Apple in the iOS app
-/// (Apple IAP plan D8). A real route, because Stripe sends the browser back to
+/// (Apple IAP plan D8), through Google Play in the Android app (Android
+/// release plan D8). A real route, because Stripe sends the browser back to
 /// it with `?checkout=` (kept through the sign-in guard by `from`).
 class PlanScreen extends StatefulWidget {
   const PlanScreen({super.key, this.checkout});
@@ -174,13 +188,17 @@ class _PlanScreenState extends State<PlanScreen> {
   /// A checkout is being opened: no second one starts meanwhile.
   bool _buying = false;
 
-  /// The iOS app's purchases through Apple (Apple IAP plan D3), the app's
-  /// one listener: this page buys and restores through it, and says what
-  /// they came to while it is open. Null elsewhere.
+  /// The phone app's purchases through its store (Apple IAP plan D3, Android
+  /// release plan D6), the app's one listener: this page buys and restores
+  /// through it, and says what they came to while it is open. Null
+  /// elsewhere.
   late final StorePurchases? _purchases = context.read<StorePurchases?>();
   StreamSubscription<StoreOutcome>? _outcomes;
 
-  /// Apple's product, once the server sells it and the App Store priced it.
+  /// Google Play sells here, not Apple: the words name it.
+  bool get _google => _purchases?.store.source == StoreSource.google;
+
+  /// The store's product, once the server sells it and the store priced it.
   StoreProduct? _product;
   bool _productAsked = false;
   bool _productFailed = false;
@@ -278,16 +296,16 @@ class _PlanScreenState extends State<PlanScreen> {
     if (error.statusCode == 404 || error.statusCode == 409) await _load();
   }
 
-  /// Asks the App Store for its price once the server sells through Apple:
-  /// the app never shows the server's amount there (D1).
+  /// Asks the store for its price once the server sells through it: the app
+  /// never shows the server's amount there (D1).
   Future<void> _loadProduct(BillingStatus status) async {
-    final offer = status.appleOffer;
+    final productId = status.storeProductId;
     final purchases = _purchases;
-    if (offer == null || purchases == null || _productAsked) return;
+    if (productId == null || purchases == null || _productAsked) return;
     _productAsked = true;
     StoreProduct? product;
     try {
-      product = await purchases.store.product(offer.productId);
+      product = await purchases.store.product(productId);
     } catch (_) {
       product = null;
     }
@@ -315,8 +333,8 @@ class _PlanScreenState extends State<PlanScreen> {
     setState(() => _outcome = outcome);
   }
 
-  /// Apple's purchase sheet, the purchase tied to this account (D2).
-  Future<void> _buyFromApple(StoreProduct product) async {
+  /// The store's purchase sheet, the purchase tied to this account (D2).
+  Future<void> _buyFromStore(StoreProduct product) async {
     final accountId = context.read<AuthController>().user?.id;
     if (accountId == null) return;
     final failed = AppLocalizations.of(context).planActionFailed;
@@ -328,13 +346,14 @@ class _PlanScreenState extends State<PlanScreen> {
     try {
       await _purchases!.buy(product, accountId);
     } catch (_) {
-      // StoreKit could not open its sheet: nothing was charged.
+      // The store could not open its sheet: nothing was charged.
       if (mounted) _say(failed);
     }
     if (mounted) setState(() => _buying = false);
   }
 
-  /// Required by Apple: finds what this Apple account bought earlier.
+  /// Required by Apple, and as useful on Android: finds what this store
+  /// account bought earlier.
   Future<void> _restore() async {
     final failed = AppLocalizations.of(context).planActionFailed;
     setState(() {
@@ -410,8 +429,11 @@ class _PlanScreenState extends State<PlanScreen> {
 
   /// What the return from Stripe has to say, once it is known.
   String? _notice(AppLocalizations l10n, BillingStatus? status) {
+    final google = _google;
     if (_nothingRestored && status?.isPremium != true) {
-      return l10n.planNothingToRestore;
+      return google
+          ? l10n.planNothingToRestoreGoogle
+          : l10n.planNothingToRestore;
     }
     if (_outcome case final outcome?) {
       return switch (outcome) {
@@ -419,10 +441,17 @@ class _PlanScreenState extends State<PlanScreen> {
         StoreOutcome.accepted =>
           status?.isPremium == true ? l10n.planThanks : null,
         StoreOutcome.pending => l10n.planPurchasePending,
-        StoreOutcome.otherAccount => l10n.planPurchaseOtherAccount,
+        StoreOutcome.otherAccount => google
+            ? l10n.planPurchaseOtherAccountGoogle
+            : l10n.planPurchaseOtherAccount,
         StoreOutcome.sandboxRefused => l10n.planPurchaseSandbox,
-        StoreOutcome.notValid => l10n.planPurchaseInvalid,
-        StoreOutcome.unconfirmed => l10n.planPurchaseUnconfirmed,
+        StoreOutcome.realRefused => l10n.planPurchaseRealRefused,
+        StoreOutcome.notValid => google
+            ? l10n.planPurchaseInvalidGoogle
+            : l10n.planPurchaseInvalid,
+        StoreOutcome.unconfirmed => google
+            ? l10n.planPurchaseUnconfirmedGoogle
+            : l10n.planPurchaseUnconfirmed,
         StoreOutcome.cancelled || StoreOutcome.failed => null,
       };
     }
@@ -468,19 +497,25 @@ class _PlanScreenState extends State<PlanScreen> {
         ),
       ],
       // No purchase while Premium is in force, from any source (D8).
-      if (onIos && !status.isPremium && status.appleOffer != null)
-        ..._applePurchase(l10n, theme),
+      if (!status.isPremium &&
+          status.storeProductId != null &&
+          _purchases != null)
+        ..._storePurchase(l10n, theme),
       if (status.offersAppleManagement) ...[
         const SizedBox(height: Spacing.s12),
-        const AppleSubscriptionsButton(),
+        const StoreSubscriptionsButton(store: StoreSource.apple),
+      ],
+      if (status.offersGoogleManagement) ...[
+        const SizedBox(height: Spacing.s12),
+        const StoreSubscriptionsButton(store: StoreSource.google),
       ],
       if (status.offersStripePortal) ...[
         const SizedBox(height: Spacing.s12),
         ManageSubscriptionButton(onStale: _load),
       ],
-      if (onTheWeb || onIos) ...[
+      if (onTheWeb || appStore != null) ...[
         const SizedBox(height: Spacing.s8),
-        LegalLinks(legal: status.legal, apple: onIos),
+        LegalLinks(legal: status.legal, store: appStore),
       ],
       if (!onTheWeb && !status.isPremium && !status.offeredHere) ...[
         const SizedBox(height: Spacing.s16),
@@ -489,12 +524,14 @@ class _PlanScreenState extends State<PlanScreen> {
     ];
   }
 
-  /// What Apple's guideline 3.1.2 asks of a subscription's sale (D8): its
-  /// name and length, the App Store's price, how it renews and is cancelled,
-  /// then Restore. The terms and privacy links follow.
-  List<Widget> _applePurchase(AppLocalizations l10n, ThemeData theme) {
+  /// What a subscription's sale must say, by Apple's guideline 3.1.2 (D8)
+  /// and Google Play's subscription policy alike: its name and length, the
+  /// store's price, how it renews and is cancelled, then Restore. The terms
+  /// and privacy links follow.
+  List<Widget> _storePurchase(AppLocalizations l10n, ThemeData theme) {
     final product = _product;
     final busy = _buying || _restoring;
+    final google = _google;
     return [
       const SizedBox(height: Spacing.s16),
       if (product != null) ...[
@@ -503,18 +540,22 @@ class _PlanScreenState extends State<PlanScreen> {
         Text(l10n.planApplePrice(product.price)),
         const SizedBox(height: Spacing.s8),
         Text(
-          l10n.planAppleRenewal,
+          google ? l10n.planGoogleRenewal : l10n.planAppleRenewal,
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: Spacing.s12),
         FilledButton(
-          onPressed: busy ? null : () => _buyFromApple(product),
+          onPressed: busy ? null : () => _buyFromStore(product),
           child: Text(l10n.planSubscribe),
         ),
       ] else if (_productFailed)
-        Text(l10n.planStoreUnavailable)
+        Text(
+          google
+              ? l10n.planGoogleStoreUnavailable
+              : l10n.planStoreUnavailable,
+        )
       else
         const Center(child: CircularProgressIndicator()),
       const SizedBox(height: Spacing.s8),

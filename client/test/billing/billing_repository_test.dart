@@ -1,7 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wishlist/src/api/api_client.dart';
 import 'package:wishlist/src/billing/billing_repository.dart';
+import 'package:wishlist/src/billing/store.dart';
 
 import '../support/fakes.dart';
+import 'support.dart';
 
 void main() {
   test('reads a premium status, its dates in UTC', () {
@@ -138,6 +141,89 @@ void main() {
       debugOnIos = false;
       expect(stripe.offersStripePortal, isFalse);
       expect(apple.offersAppleManagement, isFalse);
+    });
+
+    test("in the Android app, Google Play's offer, and Stripe's portal unless "
+        "Premium is Google's (Android release plan D8)", () {
+      debugOnTheWeb = false;
+      debugOnIos = false;
+      debugOnAndroid = true;
+      addTearDown(() => debugOnAndroid = null);
+      final selling = BillingStatus.fromJson(
+        billingStatus(offer: kBillingOffer, googleOffer: kGoogleOffer),
+      );
+      expect(selling.offeredHere, isTrue);
+      expect(selling.storeProductId, kGoogleProductId);
+      expect(both.offeredHere, isFalse);
+      expect(both.storeProductId, isNull);
+
+      final stripe = BillingStatus.fromJson(
+        billingStatus(plan: 'premium', canManage: true),
+      );
+      final google = BillingStatus.fromJson(
+        {...kGoogleSubscribed, 'can_manage': true},
+      );
+      expect(stripe.offersStripePortal, isTrue);
+      expect(stripe.offersGoogleManagement, isFalse);
+      expect(google.offersStripePortal, isFalse);
+      expect(google.offersGoogleManagement, isTrue);
+      expect(google.offersAppleManagement, isFalse);
+
+      debugOnAndroid = false;
+      expect(selling.offeredHere, isFalse);
+      expect(google.offersGoogleManagement, isFalse);
+    });
+  });
+
+  test("reads Google Play's offer and renewal (Android release plan D7)", () {
+    final status = BillingStatus.fromJson(kGoogleSubscribed);
+
+    expect(status.googleOffer!.productId, kGoogleProductId);
+    expect(status.googleRenewing, isTrue);
+    expect(status.source, 'google');
+    expect(status.managedAtGoogle, isTrue);
+    expect(BillingStatus.fromJson(billingStatus()).googleOffer, isNull);
+    expect(BillingStatus.fromJson(billingStatus()).managedAtGoogle, isFalse);
+    expect(
+      BillingStatus.fromJson(billingStatus(googleRenewing: true))
+          .managedAtGoogle,
+      isTrue,
+    );
+  });
+
+  test("Google's offer, or a Google subscription that renews, is something "
+      'to show', () {
+    expect(
+      BillingStatus.fromJson(billingStatus(googleOffer: kGoogleOffer))
+          .nothingToShow,
+      isFalse,
+    );
+    expect(
+      BillingStatus.fromJson(billingStatus(googleRenewing: true))
+          .nothingToShow,
+      isFalse,
+    );
+  });
+
+  group('reporting a store purchase', () {
+    late FakeServer server;
+    late BillingRepository repository;
+
+    setUp(() {
+      server = FakeServer();
+      final api = ApiClient(server.client, baseUrl: kApiBase)
+        ..token = server.addSession();
+      repository = BillingRepository(api);
+    });
+
+    test("Apple's to Apple's route, Google's to Google's", () async {
+      await repository.reporterFor(FakeStore())('jws-1');
+      await repository.reporterFor(
+        FakeStore(source: StoreSource.google),
+      )('token-1');
+
+      expect(server.appleTransactions, ['jws-1']);
+      expect(server.googlePurchases, ['token-1']);
     });
   });
 }

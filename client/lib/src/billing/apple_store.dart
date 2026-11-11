@@ -15,6 +15,9 @@ class AppleStore implements Store {
     InAppPurchaseStoreKitPlatform.registerPlatform();
   }
 
+  @override
+  StoreSource get source => StoreSource.apple;
+
   InAppPurchasePlatform get _platform => InAppPurchasePlatform.instance;
 
   /// StoreKit's products by id, which a purchase is made with.
@@ -45,7 +48,7 @@ class AppleStore implements Store {
         productId: details.productID,
         id: details.purchaseID,
         // The transaction's JWS under StoreKit 2.
-        signedTransaction: details.verificationData.serverVerificationData,
+        verificationData: details.verificationData.serverVerificationData,
       );
 
   @override
@@ -55,7 +58,7 @@ class AppleStore implements Store {
             status: StorePurchaseStatus.purchased,
             productId: transaction.productId,
             id: transaction.id,
-            signedTransaction: transaction.receiptData,
+            verificationData: transaction.receiptData,
           ),
       ];
 
@@ -73,8 +76,13 @@ class AppleStore implements Store {
   @override
   Future<void> restore() => _platform.restorePurchases();
 
+  /// Finished whatever the server said, as StoreKit would resend it
+  /// otherwise; another account takes it through Restore.
   @override
-  Future<void> finish(StorePurchase purchase) async {
+  Future<void> finish(
+    StorePurchase purchase, {
+    bool otherAccount = false,
+  }) async {
     final id = int.tryParse(purchase.id ?? '');
     if (id != null) await SK2Transaction.finish(id);
   }

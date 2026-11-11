@@ -64,6 +64,9 @@ Map<String, Object?> billingStatus({
   // Apple's (Apple IAP plan D7, D9).
   Map<String, Object?>? appleOffer,
   bool appleRenewing = false,
+  // Google Play's (Android release plan D7).
+  Map<String, Object?>? googleOffer,
+  bool googleRenewing = false,
   bool canManage = false,
   Map<String, Object?> legal = const {
     'terms_url': null,
@@ -82,6 +85,8 @@ Map<String, Object?> billingStatus({
       'offer': offer,
       'apple_offer': appleOffer,
       'apple_renewing': appleRenewing,
+      'google_offer': googleOffer,
+      'google_renewing': googleRenewing,
       'can_manage': canManage,
       'legal': legal,
     };
@@ -103,6 +108,23 @@ final kAppleSubscribed = billingStatus(
   limits: const {'max_lists': null, 'max_gifts_per_list': null},
   appleOffer: kAppleOffer,
   appleRenewing: true,
+);
+
+/// What a server selling through Google Play gives as `google_offer`
+/// (Android release plan D7).
+const kGoogleProductId = 'test.premium.yearly.google';
+const kGoogleOffer = {'product_id': kGoogleProductId};
+
+/// Premium through Google Play, renewing, as the server reads it once a
+/// purchase is recorded.
+final kGoogleSubscribed = billingStatus(
+  plan: 'premium',
+  source: 'google',
+  status: 'active',
+  renewsAt: '2027-11-11T12:00:00Z',
+  limits: const {'max_lists': null, 'max_gifts_per_list': null},
+  googleOffer: kGoogleOffer,
+  googleRenewing: true,
 );
 
 /// The server's account endpoints (ACCOUNTS_PLAN D7), preferences and
@@ -171,6 +193,15 @@ class FakeServer {
   /// What `POST /api/billing/apple/transactions` does to [billing] once it
   /// accepts: Premium through Apple, unless set otherwise.
   Map<String, Object?>? billingAfterApple;
+
+  /// The `purchase_token` of every `POST /api/billing/google/purchases`,
+  /// oldest first, and the refusal `code` it answers with: 204 when null.
+  final googlePurchases = <String>[];
+  String? googleRefusal;
+
+  /// What `POST /api/billing/google/purchases` does to [billing] once it
+  /// accepts: Premium through Google Play, unless set otherwise.
+  Map<String, Object?>? billingAfterGoogle;
   int _next = 0;
 
   /// `is_admin` in `/api/me` for Alice (admin panel plan D2).
@@ -299,6 +330,21 @@ class FakeServer {
           );
         }
         billing = billingAfterApple ?? kAppleSubscribed;
+        return http.Response('', 204);
+      case 'POST /api/billing/google/purchases':
+        if (user == null) return unauthorized;
+        googlePurchases.add(
+          (jsonDecode(request.body) as Map<String, dynamic>)['purchase_token']
+              as String,
+        );
+        if (googleRefusal case final code?) {
+          final status = code == 'invalid_purchase' ? 400 : 409;
+          return http.Response(
+            jsonEncode({'detail': code, 'code': code}),
+            status,
+          );
+        }
+        billing = billingAfterGoogle ?? kGoogleSubscribed;
         return http.Response('', 204);
       case 'POST /api/billing/portal':
         return user == null ? unauthorized : json({'url': portalUrl});

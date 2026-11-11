@@ -49,6 +49,14 @@ void main() {
     return app.auth;
   }
 
+  /// Scrolls to the account page's delete button, below the plan's blocks
+  /// and past what the list builds at first.
+  Future<void> revealDelete(WidgetTester tester) => tester.scrollUntilVisible(
+        find.text('Delete this account'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+
   Iterable<String> adminCalls() =>
       server.calls.where((call) => call.contains('/api/admin'));
 
@@ -210,9 +218,9 @@ void main() {
     testWidgets('at 1440 wide every column shows without scrolling',
         (tester) async {
       // The longest a row gets: a long address, every way of signing in, a
-      // plan cell on four lines, each the longest of its kind (the plan, a
-      // Stripe and an Apple subscription's state, an expired grant), and
-      // photos in the gigabytes.
+      // plan cell on five lines, each the longest of its kind (the plan, a
+      // Stripe, an Apple and a Google subscription's state, an expired grant),
+      // and photos in the gigabytes.
       const longId = '7b0c2f1e-0000-4000-8000-000000000009';
       admin.rows.insert(
         0,
@@ -228,6 +236,10 @@ void main() {
           },
           subscription: stripeSubscription('incomplete', periodEnd: null),
           appleSubscription: stripeSubscription(
+            'no_news',
+            periodEnd: '2026-09-28T12:00:00Z',
+          ),
+          googleSubscription: stripeSubscription(
             'no_news',
             periodEnd: '2026-09-28T12:00:00Z',
           ),
@@ -253,12 +265,14 @@ void main() {
       final plan = find.text('Premium until Dec 28, 2027 · Google Play');
       final stripe = find.text('Stripe · first payment not completed');
       final apple = find.text('App Store · no news since Sep 28, 2026');
+      final google = find.text('Google Play · no news since Sep 28, 2026');
       final granted = find.text('Granted here until Sep 28, 2026 (expired)');
       expect(plan, findsOneWidget);
       expect(stripe, findsOneWidget);
       expect(apple, findsOneWidget);
+      expect(google, findsOneWidget);
       expect(granted, findsOneWidget);
-      for (final line in [plan, stripe, apple, granted]) {
+      for (final line in [plan, stripe, apple, google, granted]) {
         expect(tester.getRect(line).right, lessThanOrEqualTo(_wide.width));
       }
       final address = tester.widget<Text>(find.text(
@@ -571,8 +585,8 @@ void main() {
       expect(grant.width, subscription.width);
     });
 
-    testWidgets('on a wide screen, the stores side by side, as tall, the '
-        'grant below as wide, never overlapping', (tester) async {
+    testWidgets('on a wide screen, two by two: Stripe and Apple, then Google '
+        'and the grant, each pair as tall, never overlapping', (tester) async {
       bobSubscribes('past_due');
       admin.grants[kBobId] = '2027-06-01T12:00:00Z';
       await start(tester, bobPath(), size: _wide);
@@ -581,19 +595,25 @@ void main() {
       final apple = tester.getRect(
         find.byKey(const ValueKey('admin-apple-subscription')),
       );
+      final google = tester.getRect(
+        find.byKey(const ValueKey('admin-google-subscription')),
+      );
       final grant = tester.getRect(grantBlock);
       expect(apple.top, subscription.top);
       expect(apple.height, subscription.height);
       expect(apple.left, greaterThan(subscription.right));
-      expect(grant.top, greaterThan(subscription.bottom));
-      expect(grant.left, subscription.left);
-      expect(grant.width, subscription.width);
-      for (final (a, b) in [
-        (subscription, apple),
-        (subscription, grant),
-        (apple, grant),
-      ]) {
-        expect(a.overlaps(b), isFalse);
+      expect(google.top, greaterThan(subscription.bottom));
+      expect(google.left, subscription.left);
+      expect(google.width, subscription.width);
+      expect(grant.top, google.top);
+      expect(grant.height, google.height);
+      expect(grant.left, apple.left);
+      expect(grant.width, apple.width);
+      final blocks = [subscription, apple, google, grant];
+      for (var i = 0; i < blocks.length; i++) {
+        for (final other in blocks.skip(i + 1)) {
+          expect(blocks[i].overlaps(other), isFalse);
+        }
       }
     });
 
@@ -872,7 +892,7 @@ void main() {
 
       Future<void> openDelete(WidgetTester tester) async {
         await start(tester, bobPath());
-        await tester.ensureVisible(find.text('Delete this account'));
+        await revealDelete(tester);
         await tester.pumpAndSettle();
         await tester.tap(find.text('Delete this account'));
         await tester.pumpAndSettle();
@@ -918,6 +938,189 @@ void main() {
     });
   });
 
+  group('the Google Play subscription (Android release plan D8)', () {
+    final googleBlock =
+        find.byKey(const ValueKey('admin-google-subscription'));
+    Finder inGoogle(Finder finder) =>
+        find.descendant(of: googleBlock, matching: finder);
+
+    void bobOnGoogle(String status, {String? periodEnd}) =>
+        admin.rows.first['google_subscription'] =
+            stripeSubscription(status, periodEnd: periodEnd);
+
+    const retrying = 'Payment failed: Google is retrying';
+    const mayResume = 'Google may charge it again if it resumes.';
+    const check = 'Check it in the Play Console.';
+    const statuses = [
+      (
+        status: 'active',
+        periodEnd: '2027-11-11T12:00:00Z',
+        words: 'Active',
+        end: 'Renews on Nov 11, 2027',
+        warning: null,
+        short: 'Google Play · renews Nov 11, 2027',
+      ),
+      // Play's grace period: Premium until its end (D6).
+      (
+        status: 'past_due',
+        periodEnd: '2026-11-20T12:00:00Z',
+        words: 'Payment overdue',
+        end: 'Premium kept until Nov 20, 2026 while Google retries',
+        warning: retrying,
+        short: 'Google Play · payment failed',
+      ),
+      // On hold or paused: no Premium, yet Google may charge again.
+      (
+        status: 'past_due',
+        periodEnd: null,
+        words: 'On hold or paused',
+        end: null,
+        warning: mayResume,
+        short: 'Google Play · on hold or paused',
+      ),
+      (
+        status: 'canceling',
+        periodEnd: '2027-11-11T12:00:00Z',
+        words: 'Cancellation scheduled',
+        end: 'Ends on Nov 11, 2027',
+        warning: null,
+        short: 'Google Play · ends Nov 11, 2027',
+      ),
+      (
+        status: 'ended',
+        periodEnd: null,
+        words: 'Ended',
+        end: null,
+        warning: null,
+        short: 'Google Play · ended',
+      ),
+      (
+        status: 'no_news',
+        periodEnd: '2026-10-01T12:00:00Z',
+        words: 'No news from Google since Oct 1, 2026',
+        end: null,
+        warning: check,
+        short: 'Google Play · no news since Oct 1, 2026',
+      ),
+    ];
+    for (final (:status, :periodEnd, :words, :end, :warning, :short)
+        in statuses) {
+      final label = '$status${periodEnd == null ? ', undated' : ''}';
+      testWidgets('$label: its block beside the grant', (tester) async {
+        bobOnGoogle(status, periodEnd: periodEnd);
+        await start(tester, bobPath());
+
+        expect(inGoogle(find.text('Google Play subscription')), findsOneWidget);
+        expect(inGoogle(find.text(words)), findsOneWidget);
+        expect(inGoogle(find.text('Started on May 2, 2026')), findsOneWidget);
+        if (end != null) expect(inGoogle(find.text(end)), findsOneWidget);
+        expect(
+          inGoogle(find.byType(Text)),
+          findsNWidgets(3 + (end == null ? 0 : 1) + (warning == null ? 0 : 1)),
+        );
+        for (final text in [retrying, mayResume, check]) {
+          expect(
+            inGoogle(find.text(text)),
+            text == warning ? findsOneWidget : findsNothing,
+          );
+        }
+        // Stripe's block is untouched.
+        expect(find.text('Stripe subscription'), findsOneWidget);
+        expect(find.text('Renews on Mar 12, 2027'), findsOneWidget);
+      });
+
+      testWidgets("$label: its line in the users table, under Stripe's",
+          (tester) async {
+        bobOnGoogle(status, periodEnd: periodEnd);
+        await start(tester, '/admin', size: _wide);
+
+        final stripe = find.text('Stripe · renews Mar 12, 2027');
+        expect(find.text(short), findsOneWidget);
+        expect(tester.getRect(find.text(short)).top,
+            greaterThanOrEqualTo(tester.getRect(stripe).bottom));
+      });
+    }
+
+    testWidgets('never subscribed through Google: says so', (tester) async {
+      await start(tester, '/admin/users/$kCarolId');
+
+      expect(
+        inGoogle(find.text('No Google Play subscription')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('on a phone, stacked between Apple and the grant',
+        (tester) async {
+      await start(tester, bobPath());
+
+      final apple = tester
+          .getRect(find.byKey(const ValueKey('admin-apple-subscription')));
+      final google = tester.getRect(googleBlock);
+      final grant = tester.getRect(find.byKey(const ValueKey('admin-grant')));
+      expect(google.top, greaterThanOrEqualTo(apple.bottom));
+      expect(grant.top, greaterThanOrEqualTo(google.bottom));
+      expect(google.width, apple.width);
+    });
+
+    testWidgets('in French', (tester) async {
+      bobOnGoogle('past_due', periodEnd: '2026-11-20T12:00:00Z');
+      await start(tester, bobPath(), locale: const Locale('fr'));
+
+      expect(find.text('Abonnement Google Play'), findsOneWidget);
+      expect(
+        find.text("Premium maintenu jusqu'au 20 nov. 2026 pendant que Google "
+            'réessaie'),
+        findsOneWidget,
+      );
+      expect(find.text('Paiement échoué : Google réessaie'), findsOneWidget);
+    });
+
+    group('deleting', () {
+      const cancelled = 'Their Google Play subscription will be cancelled '
+          'before the account is deleted.';
+
+      Future<void> openDelete(WidgetTester tester) async {
+        await start(tester, bobPath());
+        await revealDelete(tester);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Delete this account'));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('renewing: the dialog says it is cancelled, and deletes',
+          (tester) async {
+        admin.rows.first['google_renewing'] = true;
+        await openDelete(tester);
+
+        expect(find.text(cancelled), findsOneWidget);
+        expect(find.textContaining('Only they can'), findsNothing);
+        await tester.enterText(find.byType(TextField), 'bob@example.com');
+        await tester.pump();
+        await tester.tap(find.text('Delete the account'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Account deleted.'), findsOneWidget);
+      });
+
+      testWidgets('follows google_renewing, not the block', (tester) async {
+        bobOnGoogle('canceling', periodEnd: '2027-11-11T12:00:00Z');
+        admin.rows.first['google_renewing'] = true;
+        await openDelete(tester);
+
+        expect(find.text(cancelled), findsOneWidget);
+      });
+
+      testWidgets('not renewing, or a row without it: nothing said',
+          (tester) async {
+        bobOnGoogle('active', periodEnd: '2027-11-11T12:00:00Z');
+        await openDelete(tester);
+
+        expect(find.text(cancelled), findsNothing);
+      });
+    });
+  });
+
   group('deleting an account', () {
     TextButton deleteButton(WidgetTester tester) => tester.widget<TextButton>(
           find.widgetWithText(TextButton, 'Delete the account'),
@@ -927,7 +1130,7 @@ void main() {
         (tester) async {
       await start(tester, bobPath());
 
-      await tester.ensureVisible(find.text('Delete this account'));
+      await revealDelete(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete this account'));
       await tester.pumpAndSettle();
@@ -956,7 +1159,7 @@ void main() {
     testWidgets('cancelling deletes nothing', (tester) async {
       await start(tester, bobPath());
 
-      await tester.ensureVisible(find.text('Delete this account'));
+      await revealDelete(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete this account'));
       await tester.pumpAndSettle();
@@ -969,7 +1172,7 @@ void main() {
 
     Future<void> deleteBob(WidgetTester tester) async {
       await start(tester, bobPath());
-      await tester.ensureVisible(find.text('Delete this account'));
+      await revealDelete(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete this account'));
       await tester.pumpAndSettle();
@@ -1051,7 +1254,7 @@ void main() {
       admin.reauth = true;
       final auth = await start(tester, bobPath());
 
-      await tester.ensureVisible(find.text('Delete this account'));
+      await revealDelete(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Delete this account'));
       await tester.pumpAndSettle();

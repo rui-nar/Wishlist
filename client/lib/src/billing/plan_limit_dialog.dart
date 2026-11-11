@@ -6,7 +6,8 @@ import '../lists/lists_repository.dart';
 import 'billing_repository.dart';
 
 /// Says the free plan refused to grow a list (PREMIUM_PLAN D18), and on the
-/// web and in the iOS app (Apple IAP plan D8) offers the plan page, opened
+/// web and in the phone apps (Apple IAP plan D8, Android release plan D8)
+/// offers the plan page, opened
 /// above the screen so that coming back finds it as it was. Done once the dialog is closed, not the plan page.
 Future<void> showPlanLimitDialog(
   BuildContext context,
@@ -27,7 +28,7 @@ Future<void> showPlanLimitDialog(
             onPressed: () => Navigator.of(context).pop(false),
             child: Text(l10n.planNotNow),
           ),
-          if (onTheWeb || onIos)
+          if (onTheWeb || appStore != null)
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
               child: Text(l10n.planSee),

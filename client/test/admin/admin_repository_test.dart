@@ -74,6 +74,23 @@ void main() {
     expect(carol.appleRenewing, isFalse);
   });
 
+  test("a row carries Google's subscription and whether one renews",
+      () async {
+    admin.rows.first['google_subscription'] =
+        stripeSubscription('past_due', periodEnd: null);
+    admin.rows.first['google_renewing'] = true;
+    final page = await repository.users();
+
+    final bob = page.users.first;
+    expect(bob.googleSubscription?.status, 'past_due');
+    expect(bob.googleSubscription?.periodEnd, isNull);
+    expect(bob.googleRenewing, isTrue);
+    // A row without them, as a server from before them sends it.
+    final carol = page.users[1];
+    expect(carol.googleSubscription, isNull);
+    expect(carol.googleRenewing, isFalse);
+  });
+
   test('a subscription without its dates still reads', () async {
     admin.rows.first['subscription'] =
         stripeSubscription('ended', startedAt: null, periodEnd: null);
