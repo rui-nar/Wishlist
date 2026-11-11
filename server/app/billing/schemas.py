@@ -3,9 +3,12 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 Plan = Literal["free", "premium"]
+
+# A signed transaction is a few KiB: its three certificates and its claims.
+MAX_SIGNED_LENGTH = 64 * 1024
 SubscriptionStatus = Literal["active", "past_due", "canceling"]
 
 
@@ -19,6 +22,12 @@ class Offer(BaseModel):
     amount: str
     currency: str
     interval: Literal["year"]
+
+
+class AppleOffer(BaseModel):
+    """What the iOS app sells (Apple IAP plan D7): the price is StoreKit's."""
+
+    product_id: str
 
 
 class LegalLinks(BaseModel):
@@ -35,13 +44,25 @@ class BillingStatus(BaseModel):
     ends_at: datetime | None
     limits: Limits
     enforced: bool
+    # Stripe's, for the web and Android.
     offer: Offer | None
+    # Apple's, for the iOS app (Apple IAP plan D7).
+    apple_offer: AppleOffer | None
+    # An Apple subscription may still charge, which only the person can stop
+    # (D9): the deletion warns of it.
+    apple_renewing: bool
     can_manage: bool
     legal: LegalLinks
 
 
 class SessionUrl(BaseModel):
     url: str
+
+
+class AppleTransactionReport(BaseModel):
+    """A StoreKit transaction as the iOS app got it (D3), signed by Apple."""
+
+    signed_transaction: str = Field(min_length=1, max_length=MAX_SIGNED_LENGTH)
 
 
 class BillingRefusal(BaseModel):

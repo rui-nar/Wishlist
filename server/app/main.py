@@ -24,6 +24,7 @@ from app.accounts.email_router import router as email_router
 from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
 from app.admin.router import router as admin_router
+from app.billing import apple_gateway
 from app.billing.router import router as billing_router
 from app.billing.stripe_gateway import StripeGateway
 from app.comments.router import router as comments_router
@@ -153,7 +154,11 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         if settings.billing_gateway_configured
         else None
     )
+    # None until every variable it needs is set and its key loads (Apple IAP
+    # plan D7); replaced by tests, which never reach Apple.
+    app.state.apple_gateway, apple_gaps = apple_gateway.from_settings(settings)
     _log_billing_gaps(settings)
+    _log_apple_purchase_gaps(settings, apple_gaps)
     _log_email_sign_in_gap(settings)
     _log_admin_gap(settings)
     _log_apple_revocation_gap(settings, revocation_gaps)
@@ -242,6 +247,24 @@ def _log_billing_gaps(settings: Settings) -> None:
         _log.warning(
             "billing is not selling; missing or invalid: %s",
             ", ".join(settings.missing_selling_settings),
+        )
+
+
+def _log_apple_purchase_gaps(settings: Settings, gaps: list[str]) -> None:
+    """Names what keeps the app from selling on iPhone, once, when it is asked
+    for (Apple IAP plan D7). Never a value: the key is a secret."""
+    asked = any(
+        value.strip()
+        for value in (
+            settings.apple_product_id,
+            settings.apple_iap_issuer_id,
+            settings.apple_iap_key_id,
+            settings.apple_iap_private_key,
+        )
+    )
+    if asked and gaps:
+        _log.warning(
+            "selling on iPhone is off; missing or invalid: %s", ", ".join(gaps)
         )
 
 

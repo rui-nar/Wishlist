@@ -45,6 +45,8 @@ from datetime import date, timedelta
 from typing import Any
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from PIL import Image
 
 # Relative to today: a fixed date would turn the occasions into passed ones,
@@ -623,6 +625,8 @@ COVERED_ELSEWHERE = {
     ("POST", "/api/billing/checkout"),  # test_billing_sessions_by_role
     ("POST", "/api/billing/portal"),  # test_billing_sessions_by_role
     ("POST", "/api/billing/webhook"),  # test_stripe_webhook_by_role
+    ("POST", "/api/billing/apple/transactions"),  # test_apple_transactions_by_role
+    ("POST", "/api/billing/apple/notifications"),  # test_apple_notifications_by_role
     # The admin routes: every role but the admin gets 404, in
     # tests/admin/test_admin_routes.py (admin panel plan Conventions).
     ("GET", "/api/admin/users"),
@@ -1070,6 +1074,74 @@ def test_stripe_webhook_by_role(client, billing_client, scenario, actor):
     )
     assert (absent.status_code, absent.json()) == (404, {"detail": "Not found"})
     assert gateway.calls == []
+    assert owners_view(client, scenario) == before
+
+
+@pytest.fixture
+def apple_client(make_client, billing_on):
+    """A client for the same database with Apple's gateway configured (Apple
+    IAP plan D7): the real one, with Apple's root and a generated key. No
+    call reaches Apple: nothing sent below passes verification, which fails
+    before any network."""
+    key = ec.generate_private_key(ec.SECP256R1()).private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    return make_client(
+        **billing_on,
+        apple_product_id="example.premium.yearly",
+        apple_bundle_id="com.example.wishlist",
+        apple_iap_issuer_id="issuer-placeholder",
+        apple_iap_key_id="KEYPLACEHOLDER",
+        apple_iap_private_key=key.decode(),
+    )
+
+
+@pytest.mark.parametrize("actor", ACTORS)
+def test_apple_transactions_by_role(client, apple_client, scenario, actor):
+    """A transaction is about the caller alone: without Apple's signature,
+    every actor gets the same refusal and changes nothing, and with no
+    gateway the same 404."""
+    before = owners_view(client, scenario)
+    headers = scenario.headers(actor)
+    body = {"signed_transaction": "not a transaction"}
+
+    refused = apple_client.post(
+        "/api/billing/apple/transactions", json=body, headers=headers
+    )
+    absent = client.post("/api/billing/apple/transactions", json=body, headers=headers)
+
+    assert owners_view(client, scenario) == before
+    if actor == SIGNED_OUT:
+        assert {refused.status_code, absent.status_code} == {401}
+        return
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {"detail": "Invalid transaction", "code": "invalid_transaction"},
+    )
+    assert (absent.status_code, absent.json()) == (404, {"detail": "Not found"})
+
+
+@pytest.mark.parametrize("actor", ACTORS)
+def test_apple_notifications_by_role(client, apple_client, scenario, actor):
+    """A session is nothing to Apple's notifications: without Apple's
+    signature, every actor gets the same refusal and changes nothing, and
+    with no gateway the same 404."""
+    before = owners_view(client, scenario)
+    headers = scenario.headers(actor)
+    body = {"signedPayload": "not a notification"}
+
+    refused = apple_client.post(
+        "/api/billing/apple/notifications", json=body, headers=headers
+    )
+    absent = client.post("/api/billing/apple/notifications", json=body, headers=headers)
+
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {"detail": "Invalid notification"},
+    )
+    assert (absent.status_code, absent.json()) == (404, {"detail": "Not found"})
     assert owners_view(client, scenario) == before
 
 

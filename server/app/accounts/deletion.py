@@ -1,6 +1,7 @@
 """Deleting an account, from its own account screen or from the admin panel
 (accounts plan D8, admin panel plan D9): one way, whoever asks."""
 
+import logging
 import uuid
 
 from fastapi import HTTPException, status
@@ -11,12 +12,15 @@ from starlette.datastructures import State
 
 from app.accounts import apple_tokens, identities
 from app.accounts.models import EmailLink, User, UserIdentity
+from app.billing import apple_events
 from app.billing.closing import report_late_purchases, stop_billing
 from app.hidden_gifts.lifecycle import lock_authored
 from app.lists.deletion import delete_lists_owned_only_by
 from app.lists.models import List, ListOwner, Occasion, OccasionMember
 from app.lists.visibility import of_lists
 from app.reserving.release import delete_gift_claims, lock_occasions, release_activity
+
+_log = logging.getLogger(__name__)
 
 
 def delete_account(
@@ -59,6 +63,14 @@ def delete_account(
     user = _lock(db, user_id)
     report_late_purchases(db, user.id, stopped)
     apple_tokens.report_late_tokens(db, user.id, revoked)
+    # Apple gives the server no way to cancel one, and refusing the deletion
+    # is not allowed: the person was warned (Apple IAP plan D9).
+    for external_id in apple_events.renewing(db, user.id):
+        _log.warning(
+            "billing: account %s deleted with Apple subscription %s still renewing",
+            user.id,
+            external_id,
+        )
     lock_occasions(
         db,
         or_(
