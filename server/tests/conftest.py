@@ -2,7 +2,7 @@
 
 The tests run against a real PostgreSQL (plan D12) named by `DATABASE_URL`,
 the same variable the app reads, e.g.
-`postgresql+psycopg://wishlist:wishlist@localhost:5432/wishlist_test`.
+`postgresql+psycopg://shushgift:shushgift@localhost:5432/shushgift_test`.
 Point it at a test database, never at a database whose data matters:
 `dev.ps1 -Test` and CI set it to theirs. The user needs the CREATEDB privilege
 (the official Postgres image's user has it): the migration test runs on a
