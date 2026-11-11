@@ -140,3 +140,44 @@ these fixes.
 - Guard: —
 - Override: —
 - Outcome: fixed (plan updated)
+
+## Round 4 — 2026-11-12, integrated review (DELIVERY.md §5 point 2), reviewed at a4b6709
+
+Standing instruction of 2026-11-11, as in round 2: table self-approved, floors
+enforced. No envelope question.
+
+### R4-1 — Part 8's deletion block removes all of /opt when OLD is not set in the shell
+- Trigger: owner comes back a day later in a new SSH session and pastes part 8's block → `sudo rm -r /opt/$OLD /opt/$OLD-val` runs as `sudo rm -r /opt/ /opt/-val` → the new PROD's `.env`, every dump and all media are deleted
+- Scores: trigger=concrete (triage, was plausible), impact=data-loss, detect=user-visible, later=expensive, fix=S/local, confidence=verified
+- Decision: Fix now (D3)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R4-2 — The PROD release tag is pushed before API_BASE_URL_PROD names the new host
+- Trigger: owner follows part 6 in order and pushes the release tag → both release workflows build the PROD apps for the old host, which part 7 removes
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R4-3 — Cut-over step 7's horizon check prints nothing for ten minutes
+- Trigger: owner runs the purge-log check right after `up -d --wait` → empty output, none of the documented cases
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R4-4 — Part 3 reuses step 6's Caddy guard, which expects 0 but prints 2 or more during the move
+- Trigger: owner appends the snippet "as in step 6" → the guard counts the old hosts' blocks → reads as already appended, the append is skipped
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open
