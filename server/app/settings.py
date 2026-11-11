@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     apple_client_ids: str = ""
     # The Android package Apple's callback hands the sign-in to (D16).
     apple_android_package: str = ""
+    # Sign the client secret of Apple's token endpoints, which revoking an
+    # account's Apple token at its deletion needs (iOS app plan D5). The key is
+    # a secret. Any of the three empty: no token is kept or revoked.
+    apple_team_id: str = ""
+    apple_key_id: str = ""
+    apple_private_key: str = ""
     # The origin share links are built on, `<PUBLIC_BASE_URL>/join#<token>`
     # (lists plan D5); /api/config hands it to the mobile apps. Empty in DEV:
     # the web client builds the link on its own origin.
@@ -88,6 +94,38 @@ class Settings(BaseSettings):
     legal_terms_url: str = ""
     legal_privacy_url: str = ""
     legal_withdrawal_url: str = ""
+    # Premium bought on iPhone (Apple IAP plan D3, D7): the subscription sold,
+    # the app it is sold in, and the In-App Purchase key that reads it from the
+    # App Store Server API. The key is a secret. Any of them empty: no purchase
+    # is offered on iPhone and none is recorded.
+    apple_product_id: str = ""
+    apple_bundle_id: str = ""
+    apple_iap_issuer_id: str = ""
+    apple_iap_key_id: str = ""
+    apple_iap_private_key: str = ""
+    # The app's Apple ID in App Store Connect, digits: Apple's library needs it
+    # to check a production notification. Production only.
+    apple_app_apple_id: str = ""
+    # Comma-separated account ids whose Sandbox purchases production accepts
+    # (D6): the demo account given to Apple's review. Ignored elsewhere, where
+    # only Sandbox purchases are accepted.
+    apple_sandbox_account_ids: str = ""
+    # Premium bought on Android (Android release plan D6): the subscription
+    # sold, the app it is sold in, and the service account that reads it from
+    # the Play Developer API, as its JSON key, a secret.
+    google_play_product_id: str = ""
+    google_play_package_name: str = ""
+    google_play_service_account_json: str = ""
+    # Who may push Play's notifications: the audience their Pub/Sub token is
+    # for, and the service account it names. Without them, renewals, grace
+    # and refunds could not be recorded, so nothing is sold (review R1-2).
+    # Any of the five empty: no purchase is offered on Android and none is
+    # recorded.
+    google_play_pubsub_audience: str = ""
+    google_play_pubsub_service_account: str = ""
+    # Comma-separated account ids whose test purchases production accepts
+    # (D6). Elsewhere only test purchases are accepted, from anyone.
+    google_play_test_account_ids: str = ""
     # Comma-separated account ids of the admins (admin panel plan D1), never
     # addresses. Empty: no admin, and /api/admin answers 404 to everyone.
     admin_user_ids: str = ""
@@ -116,6 +154,61 @@ class Settings(BaseSettings):
             except ValueError:
                 positions.append(position)
         return positions
+
+    @property
+    def apple_sandbox_ids(self) -> frozenset[uuid.UUID]:
+        # As ADMIN_USER_IDS: an entry that is not an id names no one.
+        ids = set()
+        for entry in self.apple_sandbox_account_ids.split(","):
+            with contextlib.suppress(ValueError):
+                ids.add(uuid.UUID(entry.strip()))
+        return frozenset(ids)
+
+    @property
+    def missing_apple_settings(self) -> list[str]:
+        """The variables that keep the app from selling on iPhone (Apple IAP
+        plan D7). Whether the key loads is known only by loading it: the
+        gateway's construction says so."""
+        values = {
+            "APPLE_PRODUCT_ID": self.apple_product_id,
+            "APPLE_BUNDLE_ID": self.apple_bundle_id,
+            "APPLE_IAP_ISSUER_ID": self.apple_iap_issuer_id,
+            "APPLE_IAP_KEY_ID": self.apple_iap_key_id,
+            "APPLE_IAP_PRIVATE_KEY": self.apple_iap_private_key,
+        }
+        if self.app_env == "production":
+            app_apple_id = self.apple_app_apple_id.strip()
+            values["APPLE_APP_APPLE_ID"] = (
+                app_apple_id
+                if app_apple_id.isascii() and app_apple_id.isdigit()
+                else ""
+            )
+        return [name for name, value in values.items() if not value.strip()]
+
+    @property
+    def google_play_test_ids(self) -> frozenset[uuid.UUID]:
+        # As ADMIN_USER_IDS: an entry that is not an id names no one.
+        ids = set()
+        for entry in self.google_play_test_account_ids.split(","):
+            with contextlib.suppress(ValueError):
+                ids.add(uuid.UUID(entry.strip()))
+        return frozenset(ids)
+
+    @property
+    def missing_google_settings(self) -> list[str]:
+        """The variables that keep the app from selling on Android (Android
+        release plan D6). Whether the key loads is known only by loading it:
+        the gateway's construction says so."""
+        values = {
+            "GOOGLE_PLAY_PRODUCT_ID": self.google_play_product_id,
+            "GOOGLE_PLAY_PACKAGE_NAME": self.google_play_package_name,
+            "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON": self.google_play_service_account_json,
+            "GOOGLE_PLAY_PUBSUB_AUDIENCE": self.google_play_pubsub_audience,
+            "GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT": (
+                self.google_play_pubsub_service_account
+            ),
+        }
+        return [name for name, value in values.items() if not value.strip()]
 
     @property
     def billing_price(self) -> Decimal | None:
@@ -211,6 +304,16 @@ class Settings(BaseSettings):
             for client_id in self.apple_client_ids.split(",")
             if client_id.strip()
         ]
+
+    @property
+    def apple_redirect_uri(self) -> str | None:
+        """Where Apple's web flow, on the web and Android, sends its answer
+        (sign-in plan D16). Apple's token endpoint wants it again with a code
+        from that flow."""
+        public_base_url = self.public_base_url.strip().rstrip("/")
+        if not public_base_url:
+            return None
+        return f"{public_base_url}/api/auth/apple/callback"
 
     @property
     def frontend_origins(self) -> list[str]:

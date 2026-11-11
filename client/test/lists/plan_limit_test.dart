@@ -330,7 +330,18 @@ void main() {
     });
   });
 
-  testWidgets('See Premium is on the web only; the message is everywhere',
+  testWidgets('in the iOS app, See Premium is offered (Apple IAP plan D8)',
+      (tester) async {
+    debugOnIos = true;
+    addTearDown(() => debugOnIos = null);
+    server.refuseAtLimit(newList, 'lists', 1);
+    await createListForLea(tester);
+
+    expect(inDialog('See Premium'), findsOneWidget);
+  });
+
+  testWidgets('See Premium is on the web and iOS only; the message is '
+      'everywhere',
       (tester) async {
     server.refuseAtLimit(newList, 'lists', 1);
     await createListForLea(tester);

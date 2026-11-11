@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The adaptive launcher icon (ANDROID_RELEASE_PLAN D5), from API 26. The
+     foreground is the iOS icon's source image (Icon-App-1024x1024) filling the
+     inner 72dp of the 108dp layer; older launchers use mipmap-*/ic_launcher.png,
+     the same image. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>

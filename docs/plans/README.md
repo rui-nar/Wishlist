@@ -24,3 +24,6 @@ the plan.
 | [PREMIUM_PLAN](PREMIUM_PLAN.md) | — | feat/paywall |
 | [APPLE_EMAIL_SIGNIN_PLAN](APPLE_EMAIL_SIGNIN_PLAN.md) | — | feat/apple-email-signin |
 | [ADMIN_PANEL_PLAN](ADMIN_PANEL_PLAN.md) | — | feat/admin-panel |
+| [IOS_APP_PLAN](IOS_APP_PLAN.md) | — | feat/ios-app |
+| [APPLE_IAP_PLAN](APPLE_IAP_PLAN.md) | — | feat/ios-app |
+| [ANDROID_RELEASE_PLAN](ANDROID_RELEASE_PLAN.md) | — | feat/android-release |

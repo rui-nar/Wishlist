@@ -756,6 +756,26 @@ def reads(
     rec.call("POST", "/api/billing/checkout")
     rec.call("POST", "/api/billing/portal")
     rec.call("POST", "/api/billing/webhook", content=b"{}")
+    rec.call(
+        "POST",
+        "/api/billing/apple/transactions",
+        json={"signed_transaction": "not a transaction"},
+    )
+    rec.call(
+        "POST",
+        "/api/billing/apple/notifications",
+        json={"signedPayload": "not a notification"},
+    )
+    rec.call(
+        "POST",
+        "/api/billing/google/purchases",
+        json={"purchase_token": "not a purchase token"},
+    )
+    rec.call(
+        "POST",
+        "/api/billing/google/notifications",
+        json={"message": {"data": "not a notification"}},
+    )
     for method, route, body in ADMIN_ROUTES:
         rec.call(method, route, json=body, user_id=OWNER)
     rec.call("GET", "/api/lists")

@@ -292,8 +292,10 @@ def recording(client):
         event.remove(engine, "after_cursor_execute", record)
 
 
-# The subscription's and the grant's reads, which filter on the source. The
-# plan's reads (`summary`) do not, or exclude one with `!=`.
+# The Stripe, Apple and Google subscriptions', Apple's and Google's renewing
+# ones' and the grant's reads, which filter on the source: six per page,
+# whatever its size. The plan's reads (`summary`) do not, or exclude one with
+# `!=`.
 _BY_SOURCE = re.compile(r"entitlements\.source = ")
 
 
@@ -316,4 +318,4 @@ def test_the_subscriptions_and_grants_are_read_once_per_page(
     for _ in range(5):
         subscribed()
 
-    assert by_source_reads(client, admin) == few == 2
+    assert by_source_reads(client, admin) == few == 6

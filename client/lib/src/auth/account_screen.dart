@@ -8,9 +8,11 @@ import '../api/api_client.dart';
 import '../billing/billing_repository.dart';
 import '../billing/legal_links.dart';
 import '../billing/plan_screen.dart';
+import '../billing/store.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import '../intro/intro_screen.dart';
+import '../lists/gift_links.dart';
 import 'auth_controller.dart';
 import 'preferences_repository.dart';
 
@@ -116,9 +118,23 @@ class _AccountScreenState extends State<AccountScreen> {
 
   Future<void> _delete() async {
     final l10n = AppLocalizations.of(context);
+    setState(() => _busy = true);
+    // Read now, not when the screen opened: a subscription bought meanwhile
+    // must be warned of (Apple IAP plan D9). Unknown when it cannot be read.
+    BillingStatus? status;
+    try {
+      status = await _billing.status();
+    } catch (_) {
+      status = null;
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => const _DeleteDialog(),
+      builder: (context) => _DeleteDialog(
+        appleRenewing: status?.appleRenewing,
+        googleRenewing: status?.googleRenewing ?? false,
+      ),
     );
     if (confirmed != true || !mounted) return;
     setState(() => _busy = true);
@@ -230,8 +246,10 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 }
 
-/// "Your plan": what it is, and the way to Premium or to manage it. On Android
-/// and iOS, the plan and its limits only (PREMIUM_PLAN D18).
+/// "Your plan": what it is, and the way to Premium or to manage it: through
+/// Stripe on the web, through Apple in the iOS app (Apple IAP plan D8, review
+/// R1-8), through Google Play in the Android app (Android release plan D8).
+/// The apps never link to Stripe: Premium bought there gets a plain line.
 class _PlanSection extends StatelessWidget {
   const _PlanSection({
     required this.status,
@@ -259,33 +277,84 @@ class _PlanSection extends StatelessWidget {
           const SizedBox(height: Spacing.s8),
           Text(l10n.planFreeLimits(maxLists, maxGifts)),
         ],
-        if (onTheWeb && !status.isPremium && status.offer != null) ...[
+        if (!status.isPremium && status.offeredHere) ...[
           const SizedBox(height: Spacing.s12),
           OutlinedButton(onPressed: onSeePremium, child: Text(l10n.planSee)),
         ],
-        if (onTheWeb && status.canManage) ...[
+        if (status.offersAppleManagement) ...[
+          const SizedBox(height: Spacing.s12),
+          const StoreSubscriptionsButton(store: StoreSource.apple),
+        ],
+        if (status.offersGoogleManagement) ...[
+          const SizedBox(height: Spacing.s12),
+          const StoreSubscriptionsButton(store: StoreSource.google),
+        ],
+        if (status.offersStripePortal) ...[
           const SizedBox(height: Spacing.s12),
           ManageSubscriptionButton(onStale: onStale),
         ],
-        if (onTheWeb) ...[
+        if (status.managedOnTheWebsite) ...[
+          const SizedBox(height: Spacing.s12),
+          Text(l10n.planManagedOnWebsite),
+        ],
+        if (onTheWeb || appStore != null) ...[
           const SizedBox(height: Spacing.s8),
-          LegalLinks(legal: status.legal),
+          LegalLinks(legal: status.legal, store: appStore),
         ],
       ],
     );
   }
 }
 
-/// Asks before deleting; pops true to delete.
+/// Asks before deleting; pops true to delete. Warns, on every platform, of an
+/// Apple subscription the deletion does not stop, with the way to Apple's
+/// page (Apple IAP plan D9). Says a Google Play subscription is cancelled with
+/// the account: the server cancels it first (Android release plan D6), so
+/// nothing is asked of the person.
 class _DeleteDialog extends StatelessWidget {
-  const _DeleteDialog();
+  const _DeleteDialog({
+    required this.appleRenewing,
+    required this.googleRenewing,
+  });
+
+  /// Null when the plan could not be read: the warning is then conditional.
+  final bool? appleRenewing;
+
+  /// The account has a Google subscription that may still charge.
+  final bool googleRenewing;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final warning = switch (appleRenewing) {
+      true => l10n.deleteAccountAppleRenewing,
+      null => l10n.deleteAccountAppleUnknown,
+      false => null,
+    };
     return AlertDialog(
       title: Text(l10n.deleteAccountTitle),
-      content: Text(l10n.deleteAccountBody),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.deleteAccountBody),
+            if (googleRenewing) ...[
+              const SizedBox(height: Spacing.s12),
+              Text(l10n.deleteAccountGoogleRenewing),
+            ],
+            if (warning != null) ...[
+              const SizedBox(height: Spacing.s12),
+              Text(
+                warning,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              const SizedBox(height: Spacing.s4),
+              const _AppleSubscriptionsLink(),
+            ],
+          ],
+        ),
+      ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
@@ -301,4 +370,24 @@ class _DeleteDialog extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Apple's subscriptions page, in the browser or the App Store.
+class _AppleSubscriptionsLink extends StatelessWidget {
+  const _AppleSubscriptionsLink();
+
+  Future<void> _open(BuildContext context) async {
+    final message = AppLocalizations.of(context).planActionFailed;
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await openGiftLink(kAppleSubscriptionsUrl)) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => TextButton.icon(
+        onPressed: () => _open(context),
+        icon: const Icon(Icons.open_in_new),
+        label: Text(AppLocalizations.of(context).deleteAccountAppleLink),
+      );
 }

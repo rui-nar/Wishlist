@@ -98,6 +98,157 @@ void main() {
     expect(find.byType(AccountScreen), findsOneWidget);
   });
 
+  group('an Apple subscription at deletion (Apple IAP plan D9)', () {
+    const renewing = 'Your App Store subscription keeps renewing: deleting '
+        'your account does not cancel it. Cancel it in your Apple '
+        'subscriptions first.';
+    const unknown = 'If you subscribed on iPhone, deleting your account does '
+        'not cancel that subscription: cancel it in your Apple '
+        'subscriptions.';
+    const link = 'Open Apple subscriptions';
+
+    for (final web in [true, false]) {
+      testWidgets('renewing: warned, with the way to Apple '
+          '(${web ? 'web' : 'Android'})', (tester) async {
+        debugOnTheWeb = web;
+        addTearDown(() => debugOnTheWeb = null);
+        final launcher = installRecordingUrlLauncher();
+        await pumpAccount(tester);
+        // Bought after the screen opened: read again at deletion.
+        server.billing = billingStatus(appleRenewing: true);
+
+        await tester.tap(find.text('Delete account'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(renewing), findsOneWidget);
+        expect(find.text(unknown), findsNothing);
+        await tester.tap(find.text(link));
+        await tester.pumpAndSettle();
+        expect(launcher.launched.single.url, kAppleSubscriptionsUrl);
+
+        // The deletion still goes ahead (guideline 5.1.1(v)).
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+        expect(server.deleted, isTrue);
+      });
+    }
+
+    testWidgets('none renewing: no warning', (tester) async {
+      server.billing = billingStatus(
+        plan: 'premium',
+        source: 'apple',
+        status: 'canceling',
+        endsAt: '2027-03-12T12:00:00Z',
+        limits: null,
+      );
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete your account?'), findsOneWidget);
+      expect(find.text(renewing), findsNothing);
+      expect(find.text(unknown), findsNothing);
+      expect(find.text(link), findsNothing);
+    });
+
+    testWidgets('the plan cannot be read: the warning, as a condition',
+        (tester) async {
+      await pumpAccount(tester);
+      server.status['GET /api/billing'] = 500;
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(unknown), findsOneWidget);
+      expect(find.text(link), findsOneWidget);
+    });
+
+    testWidgets('in French', (tester) async {
+      tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+      addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+      server.billing = billingStatus(appleRenewing: true);
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('Supprimer le compte'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Votre abonnement App Store continue de se renouveler : '
+            'supprimer votre compte ne le résilie pas. Résiliez-le '
+            "d'abord dans vos abonnements Apple."),
+        findsOneWidget,
+      );
+      expect(find.text('Ouvrir les abonnements Apple'), findsOneWidget);
+    });
+  });
+
+  group('a Google subscription at deletion (Android release plan D6)', () {
+    const cancelled = 'Your Google Play subscription will be cancelled along '
+        'with your account.';
+
+    for (final web in [true, false]) {
+      testWidgets('renewing: says the deletion cancels it '
+          '(${web ? 'web' : 'Android'})', (tester) async {
+        debugOnTheWeb = web;
+        addTearDown(() => debugOnTheWeb = null);
+        await pumpAccount(tester);
+        // Bought after the screen opened: read again at deletion.
+        server.billing = billingStatus(googleRenewing: true);
+
+        await tester.tap(find.text('Delete account'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(cancelled), findsOneWidget);
+        // Nothing to do at Google: no warning to cancel, no link.
+        expect(find.textContaining('Cancel it'), findsNothing);
+        expect(find.text('Open Apple subscriptions'), findsNothing);
+
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+        expect(server.deleted, isTrue);
+      });
+    }
+
+    testWidgets('beside a renewing Apple one: both said', (tester) async {
+      server.billing = billingStatus(appleRenewing: true, googleRenewing: true);
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(cancelled), findsOneWidget);
+      expect(find.textContaining('App Store subscription'), findsOneWidget);
+    });
+
+    testWidgets('none renewing, or the plan unread: nothing said of Google',
+        (tester) async {
+      await pumpAccount(tester);
+      server.status['GET /api/billing'] = 500;
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(cancelled), findsNothing);
+    });
+
+    testWidgets('in French', (tester) async {
+      tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+      addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+      server.billing = billingStatus(googleRenewing: true);
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('Supprimer le compte'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Votre abonnement Google Play sera résilié avec votre '
+            'compte.'),
+        findsOneWidget,
+      );
+    });
+  });
+
   testWidgets('the confirmation is in French on a French device',
       (tester) async {
     tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
@@ -321,6 +472,7 @@ void main() {
       expect(find.text(renews), findsOneWidget);
       expect(find.text('Manage subscription'), findsOneWidget);
       expect(find.text('See Premium'), findsNothing);
+      expect(find.textContaining('bought on the website'), findsNothing);
     });
 
     testWidgets('premium, canceling: the end date', (tester) async {
@@ -426,6 +578,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Manage subscription'), findsNothing);
+      expect(
+        find.text(
+          'Your Premium was bought on the website and is managed there.',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('in French on a French device', (tester) async {

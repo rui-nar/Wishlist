@@ -87,8 +87,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The SDK version is the Dockerfile's FLUTTER_TAG, goldens.ps1's and the
-      # dev machine's: move all four together.
+      # The SDK version is the Dockerfile's FLUTTER_TAG, goldens.ps1's, the
+      # dev machine's, the ios and android jobs' below, ios-release.yml's and
+      # android-release.yml's: move them all together.
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -124,3 +125,81 @@ jobs:
           name: golden-failures
           path: client/test/**/failures/
           if-no-files-found: ignore
+
+  # The iOS project builds (plan D7): unsigned, with the committed placeholders
+  # of Identity.xcconfig (no Identity.local.xcconfig, no Google client id) and
+  # no secrets. The tests stay on Linux, in the client job.
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # App Store Connect takes only builds made with Xcode 26 or later, and
+      # the runner image's default Xcode may be older. ios-release.yml selects
+      # it the same way, so this job builds with the release's toolchain.
+      - name: Select Xcode 26
+        run: |
+          xcode=$(printf '%s\n' /Applications/Xcode_26*.app | grep -iv beta | sort -V | tail -n 1 || true)
+          if [ ! -d "$xcode" ]; then
+            echo "::error::No Xcode 26 on this runner image"
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      # Pinned as in the client job: move them together.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.1"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build
+        run: flutter build ios --release --no-codesign
+
+  # The Android project builds (ANDROID_RELEASE_PLAN D4): the PROD flavour's
+  # release bundle with no secrets, so with the placeholder application id and
+  # signed with the debug key (D1, D3). android-release.yml builds the same way.
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # The dev machine's JDK. The Android Gradle plugin needs 17 or later.
+      # The Gradle cache is keyed on the project's Gradle files.
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      # Pinned as in the client job: move them together.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.1"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build
+        run: flutter build appbundle --flavor prod

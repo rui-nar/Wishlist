@@ -83,55 +83,82 @@ String planLine(BuildContext context, AdminPlan plan) {
   return source == null ? premium : l10n.adminFiguresLine(premium, source);
 }
 
-/// A Stripe subscription's status in words; `no_news` with the last day
-/// Stripe gave.
+/// Who sells a subscription the panel shows: each in a block of its own.
+enum SubscriptionSeller { stripe, apple, google }
+
+/// A subscription's status in words, Stripe's unless [seller] says
+/// otherwise; `no_news` with the last day the seller gave. A store's
+/// `past_due` without a day is Apple's billing retry, or Google's account
+/// hold or pause (Android release plan D6).
 String subscriptionStatus(
   BuildContext context,
-  AdminSubscription subscription,
-) {
+  AdminSubscription subscription, {
+  SubscriptionSeller seller = SubscriptionSeller.stripe,
+}) {
   final l10n = AppLocalizations.of(context);
   final end = subscription.periodEnd;
   return switch ((subscription.status, end)) {
     ('active', _) => l10n.adminSubscriptionActive,
+    ('past_due', null) when seller == SubscriptionSeller.google =>
+      l10n.adminGoogleOnHold,
     ('past_due', _) => l10n.adminSubscriptionPastDue,
     ('canceling', _) => l10n.adminSubscriptionCanceling,
     ('incomplete', _) => l10n.adminSubscriptionIncomplete,
     ('ended', _) => l10n.adminSubscriptionEnded,
-    ('no_news', final DateTime end) =>
-      l10n.adminSubscriptionNoNewsSince(formatDay(context, end)),
-    ('no_news', _) => l10n.adminSubscriptionNoNews,
+    ('no_news', final DateTime end) => switch (seller) {
+        SubscriptionSeller.stripe =>
+          l10n.adminSubscriptionNoNewsSince(formatDay(context, end)),
+        SubscriptionSeller.apple =>
+          l10n.adminAppleNoNewsSince(formatDay(context, end)),
+        SubscriptionSeller.google =>
+          l10n.adminGoogleNoNewsSince(formatDay(context, end)),
+      },
+    ('no_news', _) => switch (seller) {
+        SubscriptionSeller.stripe => l10n.adminSubscriptionNoNews,
+        SubscriptionSeller.apple => l10n.adminAppleNoNews,
+        SubscriptionSeller.google => l10n.adminGoogleNoNews,
+      },
     (final other, _) => other,
   };
 }
 
 /// When the subscription renews or ends; null without the day, and for the
 /// statuses whose day says nothing of it (review R5-1) or that their status
-/// already dates.
+/// already dates. A store's one past due is in the store's grace period,
+/// which ends on its day (Apple IAP plan D5, Android release plan D6).
 String? subscriptionEndLine(
   BuildContext context,
-  AdminSubscription subscription,
-) {
+  AdminSubscription subscription, {
+  SubscriptionSeller seller = SubscriptionSeller.stripe,
+}) {
   final l10n = AppLocalizations.of(context);
   final end = subscription.periodEnd;
   if (end == null) return null;
   final day = formatDay(context, end);
-  return switch (subscription.status) {
-    'active' || 'past_due' => l10n.adminSubscriptionRenews(day),
-    'canceling' => l10n.adminSubscriptionEnds(day),
+  return switch ((subscription.status, seller)) {
+    ('past_due', SubscriptionSeller.apple) => l10n.adminAppleGraceUntil(day),
+    ('past_due', SubscriptionSeller.google) =>
+      l10n.adminGoogleGraceUntil(day),
+    ('active' || 'past_due', _) => l10n.adminSubscriptionRenews(day),
+    ('canceling', _) => l10n.adminSubscriptionEnds(day),
     _ => null,
   };
 }
 
 /// The subscription on one short line of the users list:
-/// `Stripe · renews 12 Mar 2027`.
+/// `Stripe · renews 12 Mar 2027`, `App Store · …` or `Google Play · …` by
+/// [seller].
 String subscriptionShortLine(
   BuildContext context,
-  AdminSubscription subscription,
-) {
+  AdminSubscription subscription, {
+  SubscriptionSeller seller = SubscriptionSeller.stripe,
+}) {
   final l10n = AppLocalizations.of(context);
   final end = subscription.periodEnd;
   final day = end == null ? null : formatDay(context, end);
   final state = switch ((subscription.status, day)) {
+    ('past_due', null) when seller == SubscriptionSeller.google =>
+      l10n.adminGoogleOnHoldShort,
     ('past_due', _) => l10n.adminStripePaymentFailed,
     ('incomplete', _) => l10n.adminStripeIncomplete,
     ('ended', _) => l10n.adminStripeEnded,
@@ -140,20 +167,38 @@ String subscriptionShortLine(
     ('no_news', final String day) => l10n.adminStripeNoNews(day),
     ('no_news', _) => l10n.adminStripeNoNewsUndated,
     // Without its day, the status in words.
-    _ => subscriptionStatus(context, subscription),
+    _ => subscriptionStatus(context, subscription, seller: seller),
   };
-  return l10n.adminFiguresLine(l10n.adminSourceStripe, state);
+  return l10n.adminFiguresLine(
+    switch (seller) {
+      SubscriptionSeller.stripe => l10n.adminSourceStripe,
+      SubscriptionSeller.apple => l10n.adminSourceApple,
+      SubscriptionSeller.google => l10n.adminSourceGoogle,
+    },
+    state,
+  );
 }
 
-/// The users list's plan: the effective plan first, then the Stripe
-/// subscription and the grant on lines of their own, so none hides another.
+/// The users list's plan: the effective plan first, then the Stripe, Apple
+/// and Google subscriptions and the grant on lines of their own, so none
+/// hides another.
 List<String> planLines(BuildContext context, AdminUserRow user) {
   final l10n = AppLocalizations.of(context);
   final subscription = user.subscription;
+  final apple = user.appleSubscription;
+  final google = user.googleSubscription;
   final grantEnd = user.manualGrantEnd;
   return [
     planLine(context, user.plan),
     if (subscription != null) subscriptionShortLine(context, subscription),
+    if (apple != null)
+      subscriptionShortLine(context, apple, seller: SubscriptionSeller.apple),
+    if (google != null)
+      subscriptionShortLine(
+        context,
+        google,
+        seller: SubscriptionSeller.google,
+      ),
     if (grantEnd != null)
       grantExpired(grantEnd)
           ? l10n.adminGrantedUntilExpired(formatDay(context, grantEnd))

@@ -62,8 +62,10 @@ prod_dumps cat "/prod-backups/$newest" |
 log "database restored"
 
 # 4b. PROD's purchases stay on PROD (premium plan D16): their ids mean nothing
-# to VAL's Stripe test account. Before anything else can fail or start the app.
-# A dump can predate these tables; the app then creates them empty on start.
+# to VAL's Stripe test account. So do PROD's Apple tokens (iOS app plan D5):
+# they are real secrets, and an account deleted on VAL would revoke them.
+# Before anything else can fail or start the app. A dump can predate these
+# tables; the app then creates them empty on start.
 # shellcheck disable=SC2016
 compose exec -T -u postgres db sh -c '
     psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' <<'SQL'
@@ -75,10 +77,13 @@ BEGIN
     IF to_regclass('public.billing_customers') IS NOT NULL THEN
         TRUNCATE public.billing_customers;
     END IF;
+    IF to_regclass('public.apple_tokens') IS NOT NULL THEN
+        TRUNCATE public.apple_tokens;
+    END IF;
 END
 $$;
 SQL
-log "PROD's purchases removed"
+log "PROD's purchases and Apple tokens removed"
 
 # 5. PROD's files, hard-linked into VAL's directory: no extra disk, and safe
 # because a media file is never modified (D18). Files VAL already has are kept.

@@ -16,6 +16,9 @@ import 'src/auth/email_link.dart';
 import 'src/auth/language_report.dart';
 import 'src/auth/start_gate.dart';
 import 'src/auth/token_store.dart';
+import 'src/billing/billing_repository.dart';
+import 'src/billing/store.dart';
+import 'src/billing/store_purchases.dart';
 import 'src/config.dart';
 import 'src/design/theme.dart';
 import 'src/shared/pending_join.dart';
@@ -80,8 +83,38 @@ class _WishlistAppState extends State<WishlistApp> {
     emailLinkToken: widget.emailLinkToken,
   );
 
+  /// The phone store's purchases (Apple IAP plan D3, Android release plan
+  /// D6), listened to while someone is signed in, whatever page is shown.
+  /// Null without a store, as on the web.
+  StorePurchases? _purchases;
+
+  @override
+  void initState() {
+    super.initState();
+    if (deviceStore case final store?) {
+      _purchases = StorePurchases(
+        store: store,
+        report: BillingRepository(widget.api).reporterFor(store),
+      );
+      widget.auth.addListener(_followSession);
+      _followSession();
+    }
+  }
+
+  void _followSession() {
+    if (widget.auth.isSignedIn) {
+      _purchases!.start();
+    } else {
+      _purchases!.stop();
+    }
+  }
+
   @override
   void dispose() {
+    if (_purchases case final purchases?) {
+      widget.auth.removeListener(_followSession);
+      purchases.dispose();
+    }
     _router.dispose();
     super.dispose();
   }
@@ -93,6 +126,7 @@ class _WishlistAppState extends State<WishlistApp> {
         Provider<ApiClient>.value(value: widget.api),
         ChangeNotifierProvider<AuthController>.value(value: widget.auth),
         Provider<PendingJoin>.value(value: _pendingJoin),
+        Provider<StorePurchases?>.value(value: _purchases),
       ],
       child: MaterialApp.router(
         onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,

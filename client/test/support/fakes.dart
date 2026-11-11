@@ -25,6 +25,9 @@ const kValidIdToken = 'valid-google-id-token';
 /// The Apple ID token [FakeServer] accepts.
 const kValidAppleIdToken = 'valid-apple-id-token';
 
+/// The one-time code [FakeAppleSignIn] answers with, shaped like Apple's.
+const kAppleAuthorizationCode = 'c0ffee.0.abcd.ZmFrZS1jb2Rl';
+
 /// What a server with Apple configured gives in `/api/config`.
 const kAppleClientId = 'test.apple.service';
 const kAppleRedirectUri = 'https://app.test/api/auth/apple/callback';
@@ -58,6 +61,12 @@ Map<String, Object?> billingStatus({
   },
   bool enforced = false,
   Map<String, Object?>? offer,
+  // Apple's (Apple IAP plan D7, D9).
+  Map<String, Object?>? appleOffer,
+  bool appleRenewing = false,
+  // Google Play's (Android release plan D7).
+  Map<String, Object?>? googleOffer,
+  bool googleRenewing = false,
   bool canManage = false,
   Map<String, Object?> legal = const {
     'terms_url': null,
@@ -74,12 +83,49 @@ Map<String, Object?> billingStatus({
       'limits': limits,
       'enforced': enforced,
       'offer': offer,
+      'apple_offer': appleOffer,
+      'apple_renewing': appleRenewing,
+      'google_offer': googleOffer,
+      'google_renewing': googleRenewing,
       'can_manage': canManage,
       'legal': legal,
     };
 
 /// The offer of a server that is selling, as in `GET /api/billing`.
 const kBillingOffer = {'amount': '49.00', 'currency': 'EUR', 'interval': 'year'};
+
+/// What a server selling through Apple gives as `apple_offer` (D7).
+const kAppleProductId = 'test.premium.yearly';
+const kAppleOffer = {'product_id': kAppleProductId};
+
+/// Premium through Apple, renewing, as the server reads it once a purchase
+/// is recorded.
+final kAppleSubscribed = billingStatus(
+  plan: 'premium',
+  source: 'apple',
+  status: 'active',
+  renewsAt: '2027-11-11T12:00:00Z',
+  limits: const {'max_lists': null, 'max_gifts_per_list': null},
+  appleOffer: kAppleOffer,
+  appleRenewing: true,
+);
+
+/// What a server selling through Google Play gives as `google_offer`
+/// (Android release plan D7).
+const kGoogleProductId = 'test.premium.yearly.google';
+const kGoogleOffer = {'product_id': kGoogleProductId};
+
+/// Premium through Google Play, renewing, as the server reads it once a
+/// purchase is recorded.
+final kGoogleSubscribed = billingStatus(
+  plan: 'premium',
+  source: 'google',
+  status: 'active',
+  renewsAt: '2027-11-11T12:00:00Z',
+  limits: const {'max_lists': null, 'max_gifts_per_list': null},
+  googleOffer: kGoogleOffer,
+  googleRenewing: true,
+);
 
 /// The server's account endpoints (ACCOUNTS_PLAN D7), preferences and
 /// unsubscribing (COMMENTS_NOTIFICATIONS_PLAN D18), billing (PREMIUM_PLAN
@@ -138,6 +184,24 @@ class FakeServer {
   Map<String, Object?> billing = billingStatus();
   String checkoutUrl = 'https://checkout.stripe.test/session';
   String portalUrl = 'https://billing.stripe.test/session';
+
+  /// The `signed_transaction` of every `POST /api/billing/apple/transactions`,
+  /// oldest first, and the refusal `code` it answers with: 204 when null.
+  final appleTransactions = <String>[];
+  String? appleRefusal;
+
+  /// What `POST /api/billing/apple/transactions` does to [billing] once it
+  /// accepts: Premium through Apple, unless set otherwise.
+  Map<String, Object?>? billingAfterApple;
+
+  /// The `purchase_token` of every `POST /api/billing/google/purchases`,
+  /// oldest first, and the refusal `code` it answers with: 204 when null.
+  final googlePurchases = <String>[];
+  String? googleRefusal;
+
+  /// What `POST /api/billing/google/purchases` does to [billing] once it
+  /// accepts: Premium through Google Play, unless set otherwise.
+  Map<String, Object?>? billingAfterGoogle;
   int _next = 0;
 
   /// `is_admin` in `/api/me` for Alice (admin panel plan D2).
@@ -191,6 +255,12 @@ class FakeServer {
       case 'POST /api/auth/apple':
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         appleBodies.add(body);
+        // The server refuses a code outside its rule (IOS_APP_PLAN D5).
+        final code = body['authorization_code'];
+        if (code != null &&
+            (code is! String || !RegExp(r'^[!-~]{1,512}$').hasMatch(code))) {
+          return http.Response('', 422);
+        }
         if (body['id_token'] != kValidAppleIdToken) return unauthorized;
         return json({'token': addSession(), 'user': kAlice});
       case 'POST /api/auth/email/start':
@@ -246,6 +316,36 @@ class FakeServer {
         return user == null ? unauthorized : json(billing);
       case 'POST /api/billing/checkout':
         return user == null ? unauthorized : json({'url': checkoutUrl});
+      case 'POST /api/billing/apple/transactions':
+        if (user == null) return unauthorized;
+        appleTransactions.add(
+          (jsonDecode(request.body) as Map<String, dynamic>)['signed_transaction']
+              as String,
+        );
+        if (appleRefusal case final code?) {
+          final status = code == 'invalid_transaction' ? 400 : 409;
+          return http.Response(
+            jsonEncode({'detail': code, 'code': code}),
+            status,
+          );
+        }
+        billing = billingAfterApple ?? kAppleSubscribed;
+        return http.Response('', 204);
+      case 'POST /api/billing/google/purchases':
+        if (user == null) return unauthorized;
+        googlePurchases.add(
+          (jsonDecode(request.body) as Map<String, dynamic>)['purchase_token']
+              as String,
+        );
+        if (googleRefusal case final code?) {
+          final status = code == 'invalid_purchase' ? 400 : 409;
+          return http.Response(
+            jsonEncode({'detail': code, 'code': code}),
+            status,
+          );
+        }
+        billing = billingAfterGoogle ?? kGoogleSubscribed;
+        return http.Response('', 204);
       case 'POST /api/billing/portal':
         return user == null ? unauthorized : json({'url': portalUrl});
     }
@@ -370,12 +470,13 @@ class FakeAppleSignIn extends SignInWithApplePlatform {
     String? identityToken = kValidAppleIdToken,
     String? givenName,
     String? familyName,
+    String authorizationCode = kAppleAuthorizationCode,
   }) =>
       AuthorizationCredentialAppleID(
         userIdentifier: null,
         givenName: givenName,
         familyName: familyName,
-        authorizationCode: 'code',
+        authorizationCode: authorizationCode,
         email: null,
         identityToken: identityToken,
         state: null,

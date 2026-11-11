@@ -76,6 +76,14 @@ dependencies:
   sign_in_with_apple: ^8.2.0
   crypto: ^3.0.8
 
+  # Premium bought on iPhone (Apple IAP plan D3), with StoreKit 2, and on
+  # Android through Google Play Billing (Android release plan D6): each
+  # platform's implementation behind the app's own store interface, not the
+  # in_app_purchase facade.
+  in_app_purchase_storekit: ^0.4.17
+  in_app_purchase_platform_interface: ^1.4.1
+  in_app_purchase_android: ^0.5.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

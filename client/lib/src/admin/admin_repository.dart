@@ -71,7 +71,8 @@ class AdminPhotos {
   final bool measuring;
 }
 
-/// The person's Stripe subscription, shown apart from a grant by hand.
+/// The person's Stripe or Apple subscription, shown apart from a grant by
+/// hand. An Apple one in billing retry reads `past_due` with no date.
 class AdminSubscription {
   const AdminSubscription({
     required this.status,
@@ -105,6 +106,10 @@ class AdminUserRow {
     required this.signIn,
     required this.plan,
     this.subscription,
+    this.appleSubscription,
+    this.appleRenewing = false,
+    this.googleSubscription,
+    this.googleRenewing = false,
     this.manualGrantEnd,
     required this.listsOwned,
     required this.photos,
@@ -112,6 +117,8 @@ class AdminUserRow {
 
   factory AdminUserRow.fromJson(Map<String, dynamic> json) {
     final subscription = json['subscription'] as Map<String, dynamic>?;
+    final apple = json['apple_subscription'] as Map<String, dynamic>?;
+    final google = json['google_subscription'] as Map<String, dynamic>?;
     final grant = json['manual_grant'] as Map<String, dynamic>?;
     return AdminUserRow(
       id: json['id'] as String,
@@ -123,6 +130,13 @@ class AdminUserRow {
       subscription: subscription == null
           ? null
           : AdminSubscription.fromJson(subscription),
+      appleSubscription:
+          apple == null ? null : AdminSubscription.fromJson(apple),
+      // Optional: a server from before it has nothing to warn of.
+      appleRenewing: json['apple_renewing'] as bool? ?? false,
+      googleSubscription:
+          google == null ? null : AdminSubscription.fromJson(google),
+      googleRenewing: json['google_renewing'] as bool? ?? false,
       manualGrantEnd: grant == null ? null : _date(grant['period_end']),
       listsOwned: (json['lists_owned'] as num).toInt(),
       photos: AdminPhotos.fromJson(json['photos'] as Map<String, dynamic>),
@@ -143,6 +157,21 @@ class AdminUserRow {
   /// The one in force, else the latest; null if they never subscribed. Shown
   /// apart from [manualGrantEnd]: neither hides the other.
   final AdminSubscription? subscription;
+
+  /// The same for Apple (Apple IAP plan D9), in a block of its own.
+  final AdminSubscription? appleSubscription;
+
+  /// One of their Apple subscriptions may still charge: deleting the account
+  /// does not stop it, so the deletion warns of it (D9).
+  final bool appleRenewing;
+
+  /// The same for Google Play (Android release plan D8), in a block of its
+  /// own.
+  final AdminSubscription? googleSubscription;
+
+  /// One of their Google subscriptions may still charge: deleting the account
+  /// cancels it first (D6), as its deletion says.
+  final bool googleRenewing;
 
   /// When the admin's grant ends; null when there is none to end (D8).
   final DateTime? manualGrantEnd;

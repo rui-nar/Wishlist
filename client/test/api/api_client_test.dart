@@ -95,6 +95,55 @@ void main() {
     expect(seen.single.body, isEmpty);
   });
 
+  test('post sends its JSON body, with the token, and takes a 204',
+      () async {
+    final seen = <http.Request>[];
+    final api = ApiClient(
+      MockClient((request) async {
+        seen.add(request);
+        return http.Response('', 204);
+      }),
+      baseUrl: 'http://api.test',
+    )..token = 'secret';
+
+    await api.post('/api/thing', body: {'a': 1});
+    await api.post('/api/other');
+
+    expect(seen[0].method, 'POST');
+    expect(seen[0].url, Uri.parse('http://api.test/api/thing'));
+    expect(seen[0].headers['Authorization'], 'Bearer secret');
+    expect(seen[0].headers['Content-Type'], startsWith('application/json'));
+    expect(jsonDecode(seen[0].body), {'a': 1});
+    expect(seen[1].headers.containsKey('Content-Type'), isFalse);
+    expect(seen[1].body, isEmpty);
+  });
+
+  test('post with a body: a 401 reports its token, other errors keep their '
+      'JSON body', () async {
+    var answer = http.Response('', 401);
+    final reported = <String>[];
+    final api = ApiClient(
+      MockClient((request) async => answer),
+      baseUrl: 'http://api.test',
+    )
+      ..token = 'secret'
+      ..onUnauthorized = reported.add;
+
+    await expectLater(
+      api.post('/api/thing', body: {'a': 1}),
+      throwsA(isA<UnauthorizedException>()),
+    );
+    expect(reported, ['secret']);
+
+    answer = http.Response('{"code": "other_account"}', 409);
+    await expectLater(
+      api.post('/api/thing', body: {'a': 1}),
+      throwsA(isA<ApiException>()
+          .having((e) => e.statusCode, 'statusCode', 409)
+          .having((e) => e.body?['code'], 'code', 'other_account')),
+    );
+  });
+
   test('getJsonList reads an array; an object where an array is expected '
       'is not a usable answer, nor the reverse', () async {
     ApiClient answering(String body) => ApiClient(

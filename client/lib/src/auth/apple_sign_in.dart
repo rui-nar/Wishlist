@@ -1,4 +1,5 @@
-/// Asks Apple who the user is, on the web and Android (sign-in plan D15, D16).
+/// Asks Apple who the user is, on the web, Android and iOS (sign-in plan D15,
+/// D16; IOS_APP_PLAN D4).
 library;
 
 import 'dart:convert';
@@ -12,6 +13,7 @@ class AppleAuthorisation {
     required this.idToken,
     required this.nonce,
     this.name,
+    this.authorizationCode,
   });
 
   final String idToken;
@@ -21,6 +23,10 @@ class AppleAuthorisation {
 
   /// Sent by Apple at the first authorisation only.
   final String? name;
+
+  /// Apple's one-time code, which the server exchanges for the token it
+  /// revokes when the account is deleted (IOS_APP_PLAN D5).
+  final String? authorizationCode;
 }
 
 // Longest display name the server accepts, in characters (D13).
@@ -33,6 +39,10 @@ bool _isUnprintable(int c) =>
     (c >= 0x2028 && c <= 0x202e) ||
     (c >= 0x2066 && c <= 0x2069);
 
+// What the server accepts as Apple's code (`_CODE_PATTERN`, IOS_APP_PLAN
+// D5): 1 to 512 printable ASCII characters.
+final _authorizationCodePattern = RegExp(r'^[!-~]{1,512}$');
+
 // Apple's error codes for the user leaving the popup, or starting again:
 // https://developer.apple.com/documentation/signinwithapplejs/signinerrori
 const _webCancellations = [
@@ -41,7 +51,8 @@ const _webCancellations = [
   'user_trigger_new_signin_flow',
 ];
 
-/// Opens Apple's sign-in: a popup on the web, a custom tab on Android.
+/// Opens Apple's sign-in: a popup on the web, a custom tab on Android, and
+/// the system's sheet on iOS, which ignores [WebAuthenticationOptions].
 ///
 /// Returns null when the user cancelled, and throws for any other failure.
 /// On the web, a popup opens only within the tap that asked for it: call this
@@ -74,6 +85,7 @@ Future<AppleAuthorisation?> authoriseWithApple({
       idToken: idToken,
       nonce: nonce,
       name: appleDisplayName(credential.givenName, credential.familyName),
+      authorizationCode: appleAuthorizationCode(credential.authorizationCode),
     );
   } catch (error) {
     if (_isCancellation(error)) return null;
@@ -96,6 +108,12 @@ String? appleDisplayName(String? givenName, String? familyName) {
   }
   return name;
 }
+
+/// The code to send the server, or null when Apple gave none, or one the
+/// server would refuse: that must not cost the user their sign-in, which then
+/// only leaves no token to revoke (IOS_APP_PLAN D5).
+String? appleAuthorizationCode(String code) =>
+    _authorizationCodePattern.hasMatch(code) ? code : null;
 
 bool _isCancellation(Object error) => switch (error) {
       SignInWithAppleAuthorizationException(:final code) =>

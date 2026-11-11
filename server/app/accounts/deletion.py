@@ -1,6 +1,7 @@
 """Deleting an account, from its own account screen or from the admin panel
 (accounts plan D8, admin panel plan D9): one way, whoever asks."""
 
+import logging
 import uuid
 
 from fastapi import HTTPException, status
@@ -9,8 +10,9 @@ from sqlalchemy import delete, exists, or_, select
 from sqlalchemy.orm import Session, aliased
 from starlette.datastructures import State
 
-from app.accounts import identities
+from app.accounts import apple_tokens, identities
 from app.accounts.models import EmailLink, User, UserIdentity
+from app.billing import apple_events
 from app.billing.closing import report_late_purchases, stop_billing
 from app.hidden_gifts.lifecycle import lock_authored
 from app.lists.deletion import delete_lists_owned_only_by
@@ -18,18 +20,26 @@ from app.lists.models import List, ListOwner, Occasion, OccasionMember
 from app.lists.visibility import of_lists
 from app.reserving.release import delete_gift_claims, lock_occasions, release_activity
 
+_log = logging.getLogger(__name__)
+
 
 def delete_account(
     db: Session, state: State, user_id: uuid.UUID
 ) -> JSONResponse | None:
     """Deletes the account, or answers the refusal to send, with nothing
     changed (premium plan D15). The caller holds no lock on the account:
-    Stripe is asked first, for up to 45 s a call."""
+    Stripe is asked first, for up to 45 s a call, then Google, then Apple."""
     # Before any lock, so that none of their requests waits on Stripe (premium
-    # plan D15). A refusal has changed nothing.
-    stopped = stop_billing(db, state.stripe_gateway, user_id, state.clock())
+    # plan D15) or Google (Android release plan D6). A refusal has changed
+    # nothing.
+    stopped = stop_billing(
+        db, state.stripe_gateway, state.google_gateway, user_id, state.clock()
+    )
     if isinstance(stopped, JSONResponse):
         return stopped
+    # Apple's tokens revoked once billing can no longer refuse the deletion,
+    # and before any lock, for the same reason (iOS app plan D5, review R1-5).
+    revoked = apple_tokens.revoke_all(db, state.apple_tokens, user_id)
     # The links of their address (sign-in plan Boundaries crossed), before the
     # user's lock: a link being used holds its row and then waits on the user,
     # so taken after the lock this would deadlock with it. A link used
@@ -55,6 +65,15 @@ def delete_account(
     # by no one. An owner removing them locks them before the occasion too.
     user = _lock(db, user_id)
     report_late_purchases(db, user.id, stopped)
+    apple_tokens.report_late_tokens(db, user.id, revoked)
+    # Apple gives the server no way to cancel one, and refusing the deletion
+    # is not allowed: the person was warned (Apple IAP plan D9).
+    for external_id in apple_events.renewing(db, user.id):
+        _log.warning(
+            "billing: account %s deleted with Apple subscription %s still renewing",
+            user.id,
+            external_id,
+        )
     lock_occasions(
         db,
         or_(

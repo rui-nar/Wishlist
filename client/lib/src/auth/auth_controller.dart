@@ -175,15 +175,23 @@ class AuthController extends ChangeNotifier {
 
   /// Exchanges an Apple ID token for a session (`POST /api/auth/apple`).
   /// [nonce] is the raw one whose hash Apple signed; [name] comes from the
-  /// first authorisation only (sign-in plan D15).
+  /// first authorisation only (sign-in plan D15); the server exchanges
+  /// [authorizationCode] for the token it revokes at the account's deletion
+  /// (IOS_APP_PLAN D5).
   Future<void> signInWithApple({
     required String idToken,
     required String nonce,
     String? name,
+    String? authorizationCode,
   }) =>
       _signIn(
         '/api/auth/apple',
-        {'id_token': idToken, 'nonce': nonce, 'name': ?name},
+        {
+          'id_token': idToken,
+          'nonce': nonce,
+          'name': ?name,
+          'authorization_code': ?authorizationCode,
+        },
         refused: SignInFailure.appleRejected,
         invalidIsRefused: true,
       );

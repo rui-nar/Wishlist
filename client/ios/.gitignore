@@ -24,6 +24,8 @@ Flutter/app.flx
 Flutter/app.zip
 Flutter/flutter_assets/
 Flutter/flutter_export_environment.sh
+# A build's own identity (Identity.xcconfig): VAL or PROD, never committed.
+Flutter/Identity.local.xcconfig
 ServiceDefinitions.json
 Runner/GeneratedPluginRegistrant.*
 

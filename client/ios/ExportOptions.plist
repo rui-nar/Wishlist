@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The TestFlight export of .github/workflows/ios-release.yml (plan D7).
+  Signing is automatic, with the App Store Connect API key the workflow
+  passes: no team, certificate or profile is named here. The team is the
+  archive's, and the build number is the workflow's run number, so Xcode
+  must not change it.
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>export</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>uploadSymbols</key>
+	<true/>
+</dict>
+</plist>

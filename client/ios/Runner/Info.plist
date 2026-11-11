@@ -7,13 +7,20 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Wishlist</string>
+	<string>$(WISHLIST_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- English and French (DESIGN_SYSTEM_PLAN D8). InfoPlist.strings
+	     translates the usage descriptions below. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>fr</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>wishlist</string>
 	<key>CFBundlePackageType</key>
@@ -22,10 +29,31 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<!-- Google sign-in (IOS_APP_PLAN D3): Google returns to the app through
+	     its iOS client ID reversed, set in Flutter/Identity.xcconfig. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(GOOGLE_IOS_REVERSED_CLIENT_ID)</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- HTTPS only: no export compliance documents (IOS_APP_PLAN D6). -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- The image picker's usage descriptions (IOS_APP_PLAN D6), translated in
+	     InfoPlist.strings. The app picks from the library only, but the
+	     picker can open the camera, so the App Store requires both. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Wishlist uses the camera so you can take a picture for a gift.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Wishlist opens your photos so you can choose a picture for a gift.</string>
 	<key>UIApplicationSceneManifest</key>
