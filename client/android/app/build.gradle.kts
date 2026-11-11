@@ -29,6 +29,15 @@ val hasUploadKey = missingUploadKeyVariables.isEmpty()
 // refused instead of uploaded.
 val requireUploadKey = providers.gradleProperty("shushgiftRequireUploadKey").orNull == "true"
 
+// The host whose links open the app (Shush Gift plan D7), from the Gradle
+// property shushgiftAppLinkHost, which the release workflow sets to the host
+// of the build's API_BASE_URL_* secret. Without it, the app claims no link.
+val appLinkHost: String? =
+    providers.gradleProperty("shushgiftAppLinkHost").orNull?.takeIf { it.isNotBlank() }
+if (appLinkHost != null && !Regex("^[A-Za-z0-9.-]+$").matches(appLinkHost)) {
+    throw GradleException("shushgiftAppLinkHost must be a bare host name, got: $appLinkHost")
+}
+
 if (!hasUploadKey && missingUploadKeyVariables.size < uploadKeyVariables.size) {
     // Some are set and some are not: a mistake, not a dev machine.
     throw GradleException("Upload key incomplete, missing: ${missingUploadKeyVariables.joinToString()}")
@@ -96,6 +105,62 @@ android {
             // works on a dev machine. Play refuses a debug-signed bundle, and
             // the release workflow refuses to build one (shushgiftRequireUploadKey).
             signingConfig = signingConfigs.getByName(if (hasUploadKey) "upload" else "debug")
+        }
+    }
+}
+
+// The app-link intent filter, in a manifest generated only when
+// shushgiftAppLinkHost is set and merged into the main one: without the
+// property, the filter is left out (D7). autoVerify has Android check the
+// host's /.well-known/assetlinks.json (server/app/app_links.py), so these are
+// the paths that file's host lets the app open: /join, /shared/*,
+// /create-account, /reset-password and exactly /account. `android:path` is
+// exact, so /account/plan (Stripe's return, sold on the web only),
+// /unsubscribe, /legal/*, /api/* and /welcome stay in the browser.
+abstract class AppLinkManifestTask : DefaultTask() {
+    @get:Input
+    abstract val host: Property<String>
+
+    @get:OutputFile
+    abstract val manifest: RegularFileProperty
+
+    @TaskAction
+    fun write() {
+        manifest.get().asFile.writeText(
+            """
+            |<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            |    <application>
+            |        <activity android:name="app.shushgift.MainActivity">
+            |            <intent-filter android:autoVerify="true">
+            |                <action android:name="android.intent.action.VIEW" />
+            |                <category android:name="android.intent.category.DEFAULT" />
+            |                <category android:name="android.intent.category.BROWSABLE" />
+            |                <data android:scheme="https" />
+            |                <data android:host="${host.get()}" />
+            |                <data android:path="/join" />
+            |                <data android:pathPrefix="/shared/" />
+            |                <data android:path="/create-account" />
+            |                <data android:path="/reset-password" />
+            |                <data android:path="/account" />
+            |            </intent-filter>
+            |        </activity>
+            |    </application>
+            |</manifest>
+            |
+            """.trimMargin(),
+        )
+    }
+}
+
+if (appLinkHost != null) {
+    val appLinkManifest =
+        tasks.register<AppLinkManifestTask>("appLinkManifest") {
+            host.set(appLinkHost)
+            manifest.set(layout.buildDirectory.file("generated/appLinks/AndroidManifest.xml"))
+        }
+    androidComponents {
+        onVariants { variant ->
+            variant.sources.manifests.addGeneratedManifestFile(appLinkManifest, AppLinkManifestTask::manifest)
         }
     }
 }

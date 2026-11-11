@@ -158,11 +158,17 @@ List<RouteBase> _hiddenGiftRoutes(String Function(GoRouterState) location) => [
 /// The lists' routes are under home and the shared occasions under Shared
 /// with me, so one opened from a link still has its destination to go back
 /// to. The two destinations switch without a transition, as tabs do.
+///
+/// [emailLinkToken] gives the token of the latest mailed link, which the
+/// router's location never holds. [initialLocation], when given, replaces
+/// the platform's initial route: on Android and iOS, the location of the link
+/// that started the app (Shush Gift plan D7).
 GoRouter buildRouter({
   required AuthController auth,
   required ApiClient api,
   required String appVersion,
-  String? emailLinkToken,
+  String? Function()? emailLinkToken,
+  String? initialLocation,
 }) {
   // From the live address, before the router exists: the path URL strategy
   // never hands the link's fragment to the router, and the router's first
@@ -174,6 +180,8 @@ GoRouter buildRouter({
   final intro = IntroSeen();
   unawaited(intro.load());
   return GoRouter(
+    initialLocation: initialLocation,
+    overridePlatformDefaultLocation: initialLocation != null,
     refreshListenable: auth,
     errorBuilder: (context, state) => const NotFoundScreen(),
     observers: [listsRouteObserver],
@@ -208,16 +216,16 @@ GoRouter buildRouter({
       ),
       GoRoute(
         path: kCreateAccountPath,
-        builder: (context, state) => EmailLinkScreen(
-          kind: EmailLinkKind.create,
-          token: emailLinkTokenFrom(state.uri) ?? emailLinkToken,
+        builder: (context, state) => _emailLinkScreen(
+          EmailLinkKind.create,
+          emailLinkTokenFrom(state.uri) ?? emailLinkToken?.call(),
         ),
       ),
       GoRoute(
         path: kResetPasswordPath,
-        builder: (context, state) => EmailLinkScreen(
-          kind: EmailLinkKind.reset,
-          token: emailLinkTokenFrom(state.uri) ?? emailLinkToken,
+        builder: (context, state) => _emailLinkScreen(
+          EmailLinkKind.reset,
+          emailLinkTokenFrom(state.uri) ?? emailLinkToken?.call(),
         ),
       ),
       GoRoute(
@@ -313,7 +321,11 @@ GoRouter buildRouter({
       ),
       GoRoute(
         path: kJoinPath,
-        builder: (context, state) => const JoinScreen(),
+        // A new link opened while this page shows starts it again for its
+        // own token, rather than joining it under the previous preview.
+        builder: (context, state) => JoinScreen(
+          key: ValueKey(context.read<PendingJoin>().token),
+        ),
       ),
       // The admin panel (admin panel plan D10). Anyone but the admin gets the
       // page of a location that does not exist, as the server answers 404
@@ -372,6 +384,11 @@ GoRouter buildRouter({
     ],
   );
 }
+
+/// The page of a mailed link, started again for each new [token]: a second
+/// link opened while it shows is its own.
+Widget _emailLinkScreen(EmailLinkKind kind, String? token) =>
+    EmailLinkScreen(key: ValueKey(token), kind: kind, token: token);
 
 /// The page of a location the app does not have, and of the admin panel for
 /// anyone but the admin (admin panel plan D2, D10): the same page, so neither
