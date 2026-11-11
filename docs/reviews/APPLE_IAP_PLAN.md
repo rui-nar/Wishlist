@@ -122,7 +122,7 @@ sells.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (9f17ab7)
 
 ### IAP-R3-2 — The phone apps cannot read the plan from a rolled-back server
 - Trigger: PROD rolled back one release with phone builds installed → `apple_renewing` and `google_renewing` missing, the strict cast throws.
@@ -131,7 +131,7 @@ sells.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (9f17ab7)
 
 ### IAP-R3-3 — An unconfirmed purchase is retried at the next start, not on reopening the page
 - Trigger: the server cannot confirm with Apple → the message promises a retry on reopening the page.
@@ -149,4 +149,18 @@ sells.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (9f17ab7)
+
+## Delivery
+
+Delivered under the owner's standing instruction of 2026-11-11, with
+IOS_APP_PLAN and ANDROID_RELEASE_PLAN on one branch.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Server: the Apple translator and its routes | Opus | S5 | 1 (+ review fixes) | X3: tests/admin | yes | R1-1–R1-5, R2-1–R2-3 |
+| U2 | Client: buying on iPhone | Opus | S5 | 1 | — | yes | R1-8, IAP-R3-2, IAP-R3-3 |
+| U3 | Runbook | Sonnet | — | 1 | — | yes | IAP-R3-1, IAP-R3-4 |
+| F1 | The store listener from launch; ApiClient.post with a body | Opus | S5 | 1 | — | yes | — |
+| F2 | No Stripe link in the mobile apps (store rules) | Opus | S5 | 1 | — | yes | — |
+| F3 | Integrated review fixes | Opus | S5 | 1 | — | yes | IOS-R3-1, IAP-R3-1, IAP-R3-2, IAP-R3-4 |

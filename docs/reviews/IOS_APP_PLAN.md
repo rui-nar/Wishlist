@@ -90,4 +90,19 @@ release against a server rolled back one release is inside the envelope.
 - Revisit when: —
 - Guard: —
 - Override: —
-- Outcome: open
+- Outcome: fixed (9f17ab7)
+
+## Delivery
+
+Delivered under the owner's standing instruction of 2026-11-11, with no stop
+after the split, in one branch with APPLE_IAP_PLAN and ANDROID_RELEASE_PLAN.
+Agent worktrees were made by hand (the harness refused them over a drive-letter
+case mismatch).
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | The iOS project | Opus | S5 | 1 | — | yes (the iOS CI build) | — |
+| U2 | CI: the iOS build and TestFlight release | Opus | S5 | 2 (adapted to U1's xcconfig contract) | — | yes (the iOS CI build) | R1-3, R1-6 |
+| U3 | Server: revoking Apple's token | Opus | S4 | 1 | — | yes | R1-1, R1-4, R1-5, R2-1, IOS-R3-1 |
+| U4 | Apple's authorization code; the runbook | Opus | S5 | 1 | — | yes | R1-4, R1-6 |
+| F1 | One Google iOS client per app | Opus | S5 | 1 | — | yes | — |

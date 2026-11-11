@@ -121,3 +121,20 @@ acknowledges and cancels by the current token only). Plan D6 updated.
 ### R3-3 — Duplicate of APPLE_IAP_PLAN IAP-R3-2
 - Decision: Duplicate (D2)
 - Outcome: fixed with IAP-R3-2
+
+## Delivery
+
+Delivered under the owner's standing instruction of 2026-11-11, with the two
+iOS plans on one branch.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | The Android project: flavours, signing, name, icon | Opus | S5 | 1 | — | yes | — |
+| U2 | CI: the Android build and internal-track release | Opus | S5 | 1 | — | yes (the Android CI build) | R1-6 |
+| U3 | Server: the Google translator, routes, cancelling at deletion | Opus | S4 | 1 (+ review fix) | — | yes | R1-1–R1-5, R2-1–R2-3 |
+| U4 | Client: buying on Android | Opus | S5 | 1 | X3: pubspec, main.dart | yes | R3-2, R3-3 |
+| U5 | Runbook | Sonnet | — | 1 | — | yes | R3-1 |
+
+U3 deviates from D6 as signed off by the orchestrator: `external_id` is the
+current purchase token. U2 keeps the signed bundle as an artefact only when
+Play refuses the upload (the repository is public).
