@@ -64,3 +64,36 @@ resubscription is resolved through its expired token's stored row.
 - Guard: —
 - Override: —
 - Outcome: fixed (plan D4, U5)
+
+## Round 2 — 2026-11-11, unit review of U3, reviewed at 65bf7c4
+
+The orchestrator signed off one deviation of U3: `external_id` is each
+purchase's current token, and a replacing token ends the old row (Google reads,
+acknowledges and cancels by the current token only). Plan D6 updated.
+
+### R2-1 — A purchase recorded by a notification alone is never acknowledged
+- Trigger: an expired subscriber resubscribes in the Play Store and does not open the app for 3 days → Google refunds, Premium disappears after a charge.
+- Scores: trigger=concrete (corrected from plausible), impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (8f25feb)
+
+### R2-2 — A Google subscription renewed after its account was deleted is not cancelled
+- Trigger: a subscriber cancels, deletes the account, then resubscribes the running subscription in Play → "of no known account", Google keeps renewing.
+- Scores: trigger=plausible, impact=wrong-visible, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: PROD logs "google: purchase … of no known account" for a purchase that can still charge, a deleted-account user asks for a Google refund, or the owner states D15 must hold after a renewal the person restarted
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R2-3 — A cancel answered 400 refuses the deletion
+- Trigger: a pending-payment purchase reads as chargeable and Google's cancel answers 400 → 502 on every retry.
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: PROD logs "google: cancel: not found (HTTP 4xx)" during a deletion, or a user reports a deletion that keeps failing
+- Guard: —
+- Override: —
+- Outcome: open
