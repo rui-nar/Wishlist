@@ -53,9 +53,9 @@ def current_session(
 
     The user is locked until the request commits, before any other lock it
     takes (reserving plan D7): `FOR KEY SHARE` for every request, `FOR UPDATE`
-    for the account's deletion (`lock_for_deletion`). A deletion waits for the
-    user's requests in flight, then releases what they did; a request that
-    comes during a deletion waits for it, then finds no user and gets the
+    for the account's deletion (`accounts.deletion._lock`). A deletion waits
+    for the user's requests in flight, then releases what they did; a request
+    that comes during a deletion waits for it, then finds no user and gets the
     answer of a signed-out token.
     """
     return _locked(request, _found(request, credentials, db), db)
@@ -92,8 +92,8 @@ def unlocked_session(
     """For a route that does slow work before it writes (an image's upload or
     download, reserving review R9-3): the session the token opens, nothing
     locked or written yet, so an account deletion meanwhile does not wait for
-    that work. The route calls `lock_signed_in`, or `lock_for_deletion`, before
-    its first write."""
+    that work. The route calls `lock_signed_in`, or the deletion's lock
+    (`accounts.deletion._lock`), before its first write."""
     return _found(request, credentials, db)
 
 
@@ -121,19 +121,6 @@ def lock_signed_in(request: Request, db: DbSession, session: UserSession) -> Use
     if locked is None:
         raise _not_signed_in()
     sessions.touch(locked, request.app.state.clock())
-    return user
-
-
-def lock_for_deletion(db: DbSession, session: UserSession) -> User:
-    """For `DELETE /api/me` only, once billing is stopped (premium plan D15):
-    the user locked `FOR UPDATE`. Taken here, never upgraded from a share lock:
-    two deletions of one account would deadlock. An account deleted meanwhile
-    gets the answer of a signed-out token. A session signed out meanwhile does
-    not: the deletion was asked for while it was valid, Stripe has been told,
-    and the session goes with the account."""
-    user = db.scalar(select(User).where(User.id == session.user_id).with_for_update())
-    if user is None:
-        raise _not_signed_in()
     return user
 
 
