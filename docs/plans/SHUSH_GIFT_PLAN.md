@@ -196,26 +196,46 @@ Name and domain):
     address bar does, both at cold start and while the app is running.
   - No host is committed: it comes from the same secrets as the API base URL.
 
-- **D8 — The VPS move is a runbook procedure, VAL first, then PROD.** For each
-  environment:
+- **D8 — The VPS move is a runbook procedure, VAL first, then PROD.** For
+  PROD:
   1. DNS, then Caddy (D6).
-  2. Stop the stack, then take a final dump.
+  2. Stop the app, then take a final dump, kept as `before-move.dump`: a name
+     the backup service never writes, since its first dump in step 7 replaces
+     the day's `shushgift_<date>.dump` (review R2-1). The purge still counts
+     it, as it counts any `*.dump`.
   3. Create the new directories and `.env`, with the new database user and
      name, `PUBLIC_BASE_URL` and the app-link settings.
   4. Move the media with `mv` on the same filesystem, which keeps the
      modification times the media purge relies on.
-  5. Move the kept dumps, the final one included, into the new backups
-     directory as `shushgift_<date>.dump`, so the rotation, the seeding and the
-     purge's horizon all find them (review R1-1).
+  5. Move the kept nightly dumps into the new backups directory as
+     `shushgift_<date>.dump`, and `before-move.dump` beside them, so the
+     rotation, the seeding and the purge's horizon all find them (review
+     R1-1).
   6. Bring up **only the `db` service** of the new compose project, which
-     starts on an empty volume, and restore the final dump into it. This is
-     the "Restoring PROD from a dump" procedure, with `--no-owner` and the new
-     role.
+     starts on an empty volume, and restore `before-move.dump` into it. This
+     is the "Restoring PROD from a dump" procedure, with `--no-owner` and the
+     new role.
   7. Only then bring up the app and the backup service. The purge's first run
-     dates its horizon from the moved dumps, and the backup service's first
-     dump joins them.
+     dates its horizon from the moved dumps. The backup service's first dump
+     becomes today's `shushgift_<date>.dump`, and `before-move.dump` stays.
   8. Rename the webhook unit, and update its repository filter to
      `rui-nar/shushgift`, the exact name the hook compares (review R1-3).
+
+  **VAL** has no backup service, backups directory or dumps
+  (`deploy/val/docker-compose.yml`), and keeps its data across the move
+  (owner's standing instruction, 2026-11-11, review R2-3). So on VAL:
+  - step 2 dumps through the old `db` container (`docker compose exec db
+    pg_dump -Fc`) into a file in the new directory;
+  - step 4 moves `/opt/wishlist-media/val` the same way as PROD's media;
+  - step 5 does not apply;
+  - step 6 restores that file through the new `db` container (`docker compose
+    exec -T db pg_restore --no-owner --role=shushgift_val`);
+  - step 7 starts the app only.
+
+  VAL therefore rehearses steps 1–4, 6 and 8. Steps 5 and 7 run first on
+  PROD. The runbook gives each one a check before the next step:
+  - after step 5, list the dumps in the new directory;
+  - after step 7, check the purge's first log line, which shows its horizon.
 
   The old volume and directories stay until the new stack has run a day with
   a nightly dump, so going back is starting the old project again. Rules out
@@ -243,8 +263,12 @@ Name and domain):
     `GOOGLE_PLAY_PUBSUB_AUDIENCE`.
   - **Apple:** the App IDs `com.shushgift.app(.val)` with Sign in with Apple
     and Associated Domains; the Services ID's domains and return URLs; App
-    Store Server Notifications URLs; and the App Store Connect app records
-    named "Shush Gift".
+    Store Server Notifications URLs; the App Store Connect app records
+    named "Shush Gift"; and, under "Sign in with Apple for Email
+    Communication", the domain `shushgift.com` and the sender
+    `hello@shushgift.com`. Apple relays mail only from registered senders, so
+    without them, people who hid their address silently stop getting emails
+    (review R2-2).
   - **Play Console:** the apps `com.shushgift.app(.val)` named "Shush Gift".
   - **Stripe:** the webhook endpoint, the public details (name and terms URL)
     and the product name.

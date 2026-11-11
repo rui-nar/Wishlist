@@ -72,3 +72,46 @@ Envelope questions, answered by the owner on 2026-11-11:
 - App links are a need: recorded in docs/NEEDS.md (Name and domain, Sign-in).
 - No App Store Connect or Play Console record exists under any other id, so
   there is nothing to retire.
+
+## Round 2 — 2026-11-11, reviewed at 77a67d0
+
+Decided under the owner's standing instruction of 2026-11-11 ("proceed as
+recommended silently"): table self-approved, floors enforced. Envelope
+question answered with the recommendation: VAL keeps its data across the
+move, dumped and restored through its own `db` container.
+
+### R2-1 — The backup service's first dump overwrites the final dump
+- Trigger: owner moves the final dump in as `shushgift_<today>.dump`, then starts the backup service → its first dump replaces that file through `mv -f`
+- Scores: trigger=concrete, impact=degraded-ux (triage, was data-loss: the replacing dump is of a database restored from that same dump, and the old volume stays), detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan updated: `before-move.dump`)
+
+### R2-2 — D9 leaves out Apple's private relay sender registration
+- Trigger: owner repoints only what D9 lists → Apple stops relaying mail from `hello@shushgift.com`, and people who hid their address silently get no emails
+- Scores: trigger=concrete, impact=degraded-ux, detect=silent, later=cheap, fix=S/local, confidence=verified (triage)
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan updated)
+
+### R2-3 — D8 assumes VAL has a backup service
+- Trigger: owner runs D8 on VAL first → the dump, move and restore steps fail, because VAL has no backup service
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan updated: VAL variant of D8)
+
+### R2-4 — NEEDS.md does not record the app ids or the full rename
+- Trigger: a planner reads NEEDS.md → finds "the bundle identifier is decided later"
+- Scores: trigger=concrete, impact=maintainability, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (NEEDS.md updated)

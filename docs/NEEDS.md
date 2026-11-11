@@ -316,8 +316,9 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
   iOS, decided 2026-11-11 (owner): built and signed by GitHub Actions on
   macOS and delivered through TestFlight; Premium bought on iPhone through
   Apple's in-app purchase from the first iOS release, and Premium bought on
-  the web works on iPhone too; the bundle identifier is decided later, before
-  the first TestFlight upload (the Android one waits for the same choice).
+  the web works on iPhone too. The iOS bundle identifier and the Android
+  application id are `com.shushgift.app`, and `com.shushgift.app.val` for VAL
+  (owner, 2026-11-11, see Name and domain).
 - **Sign-in:** Google, Apple (required on iOS alongside Google), email and
   password.
   Decided 2026-11-10 (owner's instruction to proceed silently):
@@ -349,7 +350,10 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
   next to TraxJourney.
 - **Name and domain** (owner, 2026-11-11): the app is called **Shush Gift**
   and has its own domain, `shushgift.com`: PROD at `shushgift.com`, VAL at
-  `val.shushgift.com`. The move happens as soon as the domain is live, before
+  `val.shushgift.com`. The rename goes all the way, internal identifiers
+  included (code, image, repository, servers, databases). The app ids are
+  `com.shushgift.app` and `com.shushgift.app.val`, and can never change once
+  in the stores. The repository is private. The move happens as soon as the domain is live, before
   the iOS and Android store releases, so no store build ships with the old
   hosts. Until then PROD and VAL are subdomains of TraxJourney's domain
   (hostnames in the owner's VPS notes, not in this repository). The old hosts
