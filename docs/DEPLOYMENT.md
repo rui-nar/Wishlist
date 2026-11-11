@@ -49,6 +49,10 @@ below; replace them as you run the commands.
 | `<apple-team-id>` | the 10-character Team ID of the Apple Developer membership ([step 13](#the-sign-in-with-apple-key)). Not a secret, but never committed |
 | `<apple-key-id>` | the 10-character ID of the Sign in with Apple key; its file is `AuthKey_<apple-key-id>.p8`, a secret ([step 13](#the-sign-in-with-apple-key)). Never committed |
 | `<asc-key-id>`, `<asc-issuer-id>` | the ID and the issuer ID of the App Store Connect API key; its file is `AuthKey_<asc-key-id>.p8`, a secret ([step 13](#the-app-store-connect-api-key)). Never committed |
+| `<apple-product-id>` | the id of the yearly subscription, the same in both apps ([Billing, Part 3](BILLING.md#2-create-the-subscription-in-each-app)). Never committed |
+| `<apple-iap-issuer-id>`, `<apple-iap-key-id>` | the issuer ID and the key ID of an In-App Purchase key; its file is `SubscriptionKey_<apple-iap-key-id>.p8`, a secret ([Billing, Part 3](BILLING.md#3-create-the-in-app-purchase-key)). Never committed |
+| `<apple-app-apple-id>` | the PROD app's Apple ID in App Store Connect, digits only ([Billing, Part 3](BILLING.md#9-fill-in-prod)). Never committed |
+| `<demo-account-id>`, `<demo-account-address>` | the id and the address of the account given to Apple's review ([Billing, Part 3](BILLING.md#6-create-the-app-review-demo-account)). Never committed |
 | `<google-ios-client-id>`, `<google-ios-client-id-val>` | the IDs of the PROD and VAL apps' iOS OAuth clients, one per bundle id, ending in `.apps.googleusercontent.com` ([step 13](#google-ios-oauth-client)). Public, not secrets, but never committed |
 | `<android-application-id>` | the Android applicationId of the build that signs in with Apple ([step 12](#12-apple-sign-in)). Never committed |
 | `<account-address>` | the email address of an account, when it has to be looked up. Never committed |
@@ -1244,6 +1248,15 @@ Nothing else: no analytics, no advertising, no location, no tracking. Publish.
 When in-app purchase ships (`APPLE_IAP_PLAN.md`), Purchases → Purchase
 History joins the table.
 
+### Selling Premium in the app
+
+Premium bought on iPhone, through Apple's in-app purchase, is set up once both
+apps exist in App Store Connect, in [Billing, Part
+3](BILLING.md#part-3-selling-on-iphone): the agreements, the subscription of
+each app, the In-App Purchase key, the notification URLs and the test on VAL.
+The apps offer no purchase until the variables of the [release with Apple
+purchases](#release-specific-steps) are filled in.
+
 ### First build from the validation tag
 
 Before it: VAL runs the release with Apple's token revocation (its migration
@@ -1910,6 +1923,31 @@ Run these on the host **before** deploying the release named, once.
 
   Nothing needs `docker compose up -d` yet: it is empty, and no one is admin
   until [Admin](#admin) is followed.
+
+- **The release with Apple purchases** (the first with `APPLE_PRODUCT_ID` in
+  the `.env.example` files).
+
+  It has no migration: Apple's entitlements use the existing `entitlements`
+  table, so a rollback stays image-only. Selling on iPhone stays absent until
+  the owner fills in the variables ([Billing, Part
+  3](BILLING.md#part-3-selling-on-iphone), VAL first).
+
+  **[VPS]** Each `.env` gets the new lines, from the examples at the release
+  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  adding them twice. VAL gets five lines, PROD seven: the two more are
+  `APPLE_APP_APPLE_ID` and `APPLE_SANDBOX_ACCOUNT_IDS`.
+
+  ```bash
+  cd /opt/wishlist-val
+  grep -q '^APPLE_PRODUCT_ID=' .env || \r
+      grep -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|IAP_)' "$SRC/deploy/val/.env.example" >> .env
+  cd /opt/wishlist
+  grep -q '^APPLE_PRODUCT_ID=' .env || \r
+      grep -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|APP_APPLE_ID|IAP_|SANDBOX_ACCOUNT_IDS)' "$SRC/deploy/prod/.env.example" >> .env
+  grep -c -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|APP_APPLE_ID|IAP_|SANDBOX_ACCOUNT_IDS)' /opt/wishlist-val/.env /opt/wishlist/.env   # :5 for VAL, :7 for PROD
+  ```
+
+  Nothing needs `docker compose up -d` yet: all are empty.
 
 ### Updating the files on the host
 
