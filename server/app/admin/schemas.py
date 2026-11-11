@@ -30,6 +30,25 @@ class AdminPhotos(BaseModel):
     measuring: bool
 
 
+class AdminSubscription(BaseModel):
+    """The person's Stripe subscription, apart from a grant by hand: no id,
+    no customer and no amount."""
+
+    # `active`, `past_due`, `canceling` (set to stop at `period_end`),
+    # `incomplete`, `ended`, or `no_news`: `active` or `past_due` past its
+    # grace, so its events were lost while Stripe may still bill it.
+    status: str
+    started_at: datetime | None
+    # When it renews while `active` or `past_due`, when it ends while
+    # `canceling`, the last date Stripe gave while `no_news`; null when
+    # `incomplete` or `ended`, since Stripe's period end is not when it ended.
+    period_end: datetime | None
+
+
+class ManualGrant(BaseModel):
+    period_end: datetime
+
+
 class AdminUserRow(BaseModel):
     id: uuid.UUID
     email: str
@@ -37,7 +56,13 @@ class AdminUserRow(BaseModel):
     created_at: datetime
     # The providers of their identities, sorted.
     sign_in: list[str]
+    # The effective plan, whatever its source.
     plan: AdminPlan
+    # The one in force, else the latest; null if they never subscribed. Shown
+    # apart from `manual_grant`: neither hides the other.
+    subscription: AdminSubscription | None
+    # The admin's grant still active, if any, so it can be ended (D8).
+    manual_grant: ManualGrant | None
     lists_owned: int
     photos: AdminPhotos
 
@@ -58,14 +83,8 @@ class AdminList(BaseModel):
     owner_count: int
 
 
-class ManualGrant(BaseModel):
-    period_end: datetime
-
-
 class AdminUserDetail(AdminUserRow):
     lists: list[AdminList]
-    # The admin's grant still active, if any, so it can be ended (D8).
-    manual_grant: ManualGrant | None
 
 
 class PremiumGrant(BaseModel):

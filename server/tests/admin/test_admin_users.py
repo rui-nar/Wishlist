@@ -281,6 +281,12 @@ def test_a_row_says_who_how_they_sign_in_their_plan_lists_and_photos(
             "source": "stripe",
             "until": end.isoformat().replace("+00:00", "Z"),
         },
+        "subscription": {
+            "status": "active",
+            "started_at": None,
+            "period_end": end.isoformat().replace("+00:00", "Z"),
+        },
+        "manual_grant": None,
         "lists_owned": 3,
         "photos": {
             "count": 2,
@@ -297,6 +303,8 @@ def test_a_new_user_is_free_with_nothing(client, admin, make_account):
     row = row_of(client, admin, target.id)
 
     assert row["plan"] == {"plan": "free", "source": None, "until": None}
+    assert row["subscription"] is None
+    assert row["manual_grant"] is None
     assert row["sign_in"] == []
     assert row["lists_owned"] == 0
     assert row["photos"] == {"count": 0, "bytes": 0, "measuring": False}
@@ -331,7 +339,7 @@ def test_one_user_shows_their_lists_as_counts_only(client, admin, make_account, 
     assert kept not in str(found)
     assert found["manual_grant"] is None
     row = dict(found)
-    del row["lists"], row["manual_grant"]
+    del row["lists"]
     assert row == row_of(client, admin, target.id)
 
 

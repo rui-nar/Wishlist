@@ -159,3 +159,34 @@ after the split.
 
 The branch was cut before the introduction screens reached master; master
 was merged in at integration (R4-1), with both sides kept.
+
+## Round 5 — 2026-11-11, review of the subscription follow-up, reviewed at fb12657
+
+Decisions approved by the owner ("as recommended", 2026-11-11).
+
+### R5-1 — An ended subscription shows the end of its paid period as its end date
+- Trigger: Stripe cancels a subscription past its last retry, or the owner cancels it at once → the admin reads "Ended on" a date up to a year ahead; an unpaid first invoice reads "Ends on" its period end.
+- Scores: trigger=concrete, impact=silent-wrong, detect=silent, later=cheap, fix=M/local, confidence=verified
+- Decision: Fix now (D3)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (a179eb0)
+
+### R5-2 — A subscription whose events were lost reads "Ended"
+- Trigger: the webhook is unreachable across a renewal → past the grace the panel says "Ended" while Stripe probably still charges.
+- Scores: trigger=plausible, impact=wrong-visible, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: —
+- Guard: —
+- Override: owner: Fix now — seeing what Stripe really does is the point of the request; "No news from Stripe since <date>" instead of "Ended"
+- Outcome: fixed (a179eb0)
+
+### R5-3 — The users list drops the effective plan beside a subscription or grant line
+- Trigger: a grant's date passes → the row reads only "Granted here until <past date>", never "Free".
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (a179eb0)

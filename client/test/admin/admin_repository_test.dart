@@ -40,6 +40,33 @@ void main() {
     expect(page.users[1].photos.measuring, isTrue);
   });
 
+  test('a row carries the Stripe subscription and the grant, apart',
+      () async {
+    admin.rows.first['subscription'] = stripeSubscription('past_due');
+    admin.grants[kBobId] = '2027-06-01T12:00:00Z';
+    final page = await repository.users();
+
+    final bob = page.users.first;
+    expect(bob.subscription?.status, 'past_due');
+    expect(bob.subscription?.startedAt, DateTime.utc(2026, 5, 2, 10, 5));
+    expect(bob.subscription?.periodEnd, DateTime.utc(2027, 3, 12, 12));
+    expect(bob.manualGrantEnd, DateTime.utc(2027, 6, 1, 12));
+    // Never subscribed, nothing granted.
+    final carol = page.users[1];
+    expect(carol.subscription, isNull);
+    expect(carol.manualGrantEnd, isNull);
+  });
+
+  test('a subscription without its dates still reads', () async {
+    admin.rows.first['subscription'] =
+        stripeSubscription('ended', startedAt: null, periodEnd: null);
+    final bob = (await repository.users()).users.first;
+
+    expect(bob.subscription?.status, 'ended');
+    expect(bob.subscription?.startedAt, isNull);
+    expect(bob.subscription?.periodEnd, isNull);
+  });
+
   test('sends the search and the cursor, and nothing when empty', () async {
     admin.pageSize = 1;
     final first = await repository.users(query: 'example');
@@ -61,7 +88,8 @@ void main() {
     expect(detail.lists.map((list) => list.title), ['Birthday', 'Wedding']);
     expect(detail.lists.last.giftCount, 12);
     expect(detail.lists.last.ownerCount, 2);
-    expect(detail.manualGrantEnd, DateTime.utc(2027, 1, 10, 12));
+    expect(detail.user.manualGrantEnd, DateTime.utc(2027, 1, 10, 12));
+    expect(detail.user.subscription?.status, 'active');
   });
 
   test('a grant sends its calendar day', () async {
@@ -81,7 +109,7 @@ void main() {
       'DELETE /api/admin/users/$kCarolId/premium',
       'GET /api/admin/users/$kCarolId',
     ]);
-    expect(detail.manualGrantEnd, isNull);
+    expect(detail.user.manualGrantEnd, isNull);
   });
 
   test('a deletion sends the address typed', () async {

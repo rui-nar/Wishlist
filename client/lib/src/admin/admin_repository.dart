@@ -71,6 +71,30 @@ class AdminPhotos {
   final bool measuring;
 }
 
+/// The person's Stripe subscription, shown apart from a grant by hand.
+class AdminSubscription {
+  const AdminSubscription({
+    required this.status,
+    this.startedAt,
+    this.periodEnd,
+  });
+
+  factory AdminSubscription.fromJson(Map<String, dynamic> json) =>
+      AdminSubscription(
+        status: json['status'] as String,
+        startedAt: _date(json['started_at']),
+        periodEnd: _date(json['period_end']),
+      );
+
+  /// `active`, `past_due`, `canceling` (set to stop at [periodEnd]),
+  /// `incomplete` or `ended`.
+  final String status;
+  final DateTime? startedAt;
+
+  /// When it renews while `active` or `past_due`, when it ends otherwise.
+  final DateTime? periodEnd;
+}
+
 /// A user as the users list shows them (D5).
 class AdminUserRow {
   const AdminUserRow({
@@ -80,20 +104,30 @@ class AdminUserRow {
     required this.createdAt,
     required this.signIn,
     required this.plan,
+    this.subscription,
+    this.manualGrantEnd,
     required this.listsOwned,
     required this.photos,
   });
 
-  factory AdminUserRow.fromJson(Map<String, dynamic> json) => AdminUserRow(
-        id: json['id'] as String,
-        email: json['email'] as String,
-        displayName: json['display_name'] as String,
-        createdAt: DateTime.parse(json['created_at'] as String),
-        signIn: (json['sign_in'] as List<dynamic>).cast<String>(),
-        plan: AdminPlan.fromJson(json['plan'] as Map<String, dynamic>),
-        listsOwned: (json['lists_owned'] as num).toInt(),
-        photos: AdminPhotos.fromJson(json['photos'] as Map<String, dynamic>),
-      );
+  factory AdminUserRow.fromJson(Map<String, dynamic> json) {
+    final subscription = json['subscription'] as Map<String, dynamic>?;
+    final grant = json['manual_grant'] as Map<String, dynamic>?;
+    return AdminUserRow(
+      id: json['id'] as String,
+      email: json['email'] as String,
+      displayName: json['display_name'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      signIn: (json['sign_in'] as List<dynamic>).cast<String>(),
+      plan: AdminPlan.fromJson(json['plan'] as Map<String, dynamic>),
+      subscription: subscription == null
+          ? null
+          : AdminSubscription.fromJson(subscription),
+      manualGrantEnd: grant == null ? null : _date(grant['period_end']),
+      listsOwned: (json['lists_owned'] as num).toInt(),
+      photos: AdminPhotos.fromJson(json['photos'] as Map<String, dynamic>),
+    );
+  }
 
   final String id;
   final String email;
@@ -102,7 +136,17 @@ class AdminUserRow {
 
   /// The providers: `google`, `apple`, `email`.
   final List<String> signIn;
+
+  /// The effective plan, whatever its source.
   final AdminPlan plan;
+
+  /// The one in force, else the latest; null if they never subscribed. Shown
+  /// apart from [manualGrantEnd]: neither hides the other.
+  final AdminSubscription? subscription;
+
+  /// When the admin's grant ends; null when there is none to end (D8).
+  final DateTime? manualGrantEnd;
+
   final int listsOwned;
   final AdminPhotos photos;
 }
@@ -149,31 +193,21 @@ class AdminList {
   final int ownerCount;
 }
 
-/// One user (D6), with the admin's grant still active, if any (D8).
+/// One user (D6): the row, with the lists they own.
 class AdminUserDetail {
-  const AdminUserDetail({
-    required this.user,
-    required this.lists,
-    required this.manualGrantEnd,
-  });
+  const AdminUserDetail({required this.user, required this.lists});
 
-  factory AdminUserDetail.fromJson(Map<String, dynamic> json) {
-    final grant = json['manual_grant'] as Map<String, dynamic>?;
-    return AdminUserDetail(
-      user: AdminUserRow.fromJson(json),
-      lists: [
-        for (final list in json['lists'] as List<dynamic>)
-          AdminList.fromJson(list as Map<String, dynamic>),
-      ],
-      manualGrantEnd: grant == null ? null : _date(grant['period_end']),
-    );
-  }
+  factory AdminUserDetail.fromJson(Map<String, dynamic> json) =>
+      AdminUserDetail(
+        user: AdminUserRow.fromJson(json),
+        lists: [
+          for (final list in json['lists'] as List<dynamic>)
+            AdminList.fromJson(list as Map<String, dynamic>),
+        ],
+      );
 
   final AdminUserRow user;
   final List<AdminList> lists;
-
-  /// When the admin's grant ends; null when there is none to end.
-  final DateTime? manualGrantEnd;
 }
 
 /// `/api/admin/users`. A change on a session over 12 hours old throws

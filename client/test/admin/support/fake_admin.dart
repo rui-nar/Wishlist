@@ -19,6 +19,7 @@ Map<String, Object?> adminRow({
     'source': null,
     'until': null,
   },
+  Map<String, Object?>? subscription,
   int listsOwned = 0,
   Map<String, Object?> photos = const {
     'count': 0,
@@ -33,14 +34,24 @@ Map<String, Object?> adminRow({
       'created_at': createdAt,
       'sign_in': signIn,
       'plan': plan,
+      'subscription': subscription,
       'lists_owned': listsOwned,
       'photos': photos,
     };
 
+/// A Stripe subscription as a row gives it.
+Map<String, Object?> stripeSubscription(
+  String status, {
+  String? startedAt = '2026-05-02T10:05:00Z',
+  String? periodEnd = '2027-03-12T12:00:00Z',
+}) =>
+    {'status': status, 'started_at': startedAt, 'period_end': periodEnd};
+
 const kBobId = '7b0c2f1e-0000-4000-8000-000000000002';
 const kCarolId = '7b0c2f1e-0000-4000-8000-000000000003';
 
-/// Bob: Premium through Stripe, two lists, three photos measured.
+/// Bob: Premium through an active Stripe subscription, two lists, three
+/// photos measured.
 Map<String, Object?> bobRow() => adminRow(
       id: kBobId,
       email: 'bob@example.com',
@@ -52,6 +63,7 @@ Map<String, Object?> bobRow() => adminRow(
         'source': 'stripe',
         'until': '2027-03-12T12:00:00Z',
       },
+      subscription: stripeSubscription('active'),
       listsOwned: 2,
       photos: const {'count': 3, 'bytes': 1500000, 'measuring': false},
     );
@@ -126,15 +138,20 @@ class FakeAdmin {
   Map<String, Object?>? _row(String id) =>
       rows.where((row) => row['id'] == id).firstOrNull;
 
-  Map<String, Object?> _detail(Map<String, Object?> row) {
-    final id = row['id'] as String;
-    final grant = grants[id];
+  /// [row] as the server gives it, with the admin's grant, on the list and
+  /// on the account's page.
+  Map<String, Object?> _withGrant(Map<String, Object?> row) {
+    final grant = grants[row['id']];
     return {
       ...row,
-      'lists': lists[id] ?? const [],
       'manual_grant': grant == null ? null : {'period_end': grant},
     };
   }
+
+  Map<String, Object?> _detail(Map<String, Object?> row) => {
+        ..._withGrant(row),
+        'lists': lists[row['id']] ?? const [],
+      };
 
   Future<http.Response?> _handle(
     http.Request request,
@@ -170,7 +187,11 @@ class FakeAdmin {
       final start = int.parse(request.url.queryParameters['cursor'] ?? '0');
       final end = start + pageSize;
       return json({
-        'users': matching.sublist(start, end.clamp(0, matching.length)),
+        'users': [
+          for (final row
+              in matching.sublist(start, end.clamp(0, matching.length)))
+            _withGrant(row),
+        ],
         'next_cursor': end < matching.length ? '$end' : null,
       });
     }
