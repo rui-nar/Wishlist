@@ -14,10 +14,10 @@ import 'package:image_picker_platform_interface/image_picker_platform_interface.
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:url_launcher_platform_interface/link.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
-import 'package:wishlist/main.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/shared/pending_join.dart';
+import 'package:shushgift/main.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/shared/pending_join.dart';
 
 import '../../support/fakes.dart';
 
@@ -1127,7 +1127,7 @@ Future<({ApiClient api, AuthController auth})> startApp(
     store: MemoryTokenStore(signedIn ? server.accounts.addSession() : null),
   );
   await tester.pumpWidget(
-    WishlistApp(api: api, auth: auth, pendingJoin: pendingJoin),
+    ShushGiftApp(api: api, auth: auth, pendingJoin: pendingJoin),
   );
   await auth.restore();
   if (settle) {

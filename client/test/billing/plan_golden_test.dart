@@ -5,9 +5,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/main.dart';
-import 'package:wishlist/src/billing/billing_repository.dart';
-import 'package:wishlist/src/billing/store.dart';
+import 'package:shushgift/main.dart';
+import 'package:shushgift/src/billing/billing_repository.dart';
+import 'package:shushgift/src/billing/store.dart';
 
 import '../support/fakes.dart';
 import 'support.dart';
@@ -108,7 +108,7 @@ void main() {
           await tester.pumpAndSettle();
 
           await expectLater(
-            find.byType(WishlistApp),
+            find.byType(ShushGiftApp),
             matchesGoldenFile('goldens/${screen}_$mode.png'),
           );
         }, tags: ['golden']);

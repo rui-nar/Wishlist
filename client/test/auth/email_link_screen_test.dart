@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wishlist/main.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/auth/email_link_screen.dart';
-import 'package:wishlist/src/auth/email_sign_up_screen.dart';
-import 'package:wishlist/src/auth/sign_in_screen.dart';
-import 'package:wishlist/src/home/home_screen.dart';
-import 'package:wishlist/src/intro/intro_seen.dart';
-import 'package:wishlist/src/shared/join_screen.dart';
-import 'package:wishlist/src/shared/pending_join.dart';
+import 'package:shushgift/main.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/auth/email_link_screen.dart';
+import 'package:shushgift/src/auth/email_sign_up_screen.dart';
+import 'package:shushgift/src/auth/sign_in_screen.dart';
+import 'package:shushgift/src/home/home_screen.dart';
+import 'package:shushgift/src/intro/intro_seen.dart';
+import 'package:shushgift/src/shared/join_screen.dart';
+import 'package:shushgift/src/shared/pending_join.dart';
 
 import '../support/fakes.dart';
 
@@ -52,7 +52,7 @@ void main() {
     addTearDown(tester.platformDispatcher.clearDefaultRouteNameTestValue);
     final api = ApiClient(server.client, baseUrl: kApiBase);
     final auth = AuthController(api: api, store: store ?? MemoryTokenStore());
-    await tester.pumpWidget(WishlistApp(
+    await tester.pumpWidget(ShushGiftApp(
       api: api,
       auth: auth,
       appVersion: 'v1.2.3',

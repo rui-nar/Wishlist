@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wishlist/src/shared/pending_join.dart';
+import 'package:shushgift/src/shared/pending_join.dart';
 
 void main() {
   group('joinTokenFrom', () {
@@ -170,7 +170,7 @@ void main() {
 
     test('an unreadable copy is the same as none', () async {
       SharedPreferences.setMockInitialValues({
-        'flutter.wishlist.join_handover': 'not json',
+        'flutter.shushgift.join_handover': 'not json',
       });
 
       final otherTab = pendingOf(null);

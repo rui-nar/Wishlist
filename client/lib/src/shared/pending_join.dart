@@ -18,7 +18,7 @@ const kJoinPath = '/join';
 /// (sign-in plan D19): as long as that link works.
 const kJoinHandoverLifetime = Duration(hours: 1);
 
-const _kHandoverKey = 'wishlist.join_handover';
+const _kHandoverKey = 'shushgift.join_handover';
 
 /// Where the pending token outlives a reload, and the address bar.
 abstract class JoinBrowser {

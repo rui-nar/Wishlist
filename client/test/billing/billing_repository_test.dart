@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/billing/billing_repository.dart';
-import 'package:wishlist/src/billing/store.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/billing/billing_repository.dart';
+import 'package:shushgift/src/billing/store.dart';
 
 import '../support/fakes.dart';
 import 'support.dart';

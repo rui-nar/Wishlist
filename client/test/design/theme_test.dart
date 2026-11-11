@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/design/theme.dart';
-import 'package:wishlist/src/design/wishlist_colors.dart';
+import 'package:shushgift/src/design/theme.dart';
+import 'package:shushgift/src/design/shushgift_colors.dart';
 
 void main() {
   // The D2 table, role by role. Hex values are written out here rather than
@@ -128,14 +128,14 @@ void main() {
         expect(theme.scaffoldBackgroundColor, Color(page));
       });
 
-      test('carries the WishlistColors extension', () {
-        final colors = theme.extension<WishlistColors>();
+      test('carries the ShushGiftColors extension', () {
+        final colors = theme.extension<ShushGiftColors>();
         expect(colors, isNotNull);
         expect(
           colors,
           brightness == Brightness.light
-              ? WishlistColors.light
-              : WishlistColors.dark,
+              ? ShushGiftColors.light
+              : ShushGiftColors.dark,
         );
         expect(colors!.pageBackground, Color(page));
         expect(colors.bodyText, Color(body));
@@ -168,15 +168,15 @@ void main() {
   }
 
   test('invitee activity is rose in both themes (D3)', () {
-    expect(WishlistColors.light.inviteeActivity, const Color(0xFFE11D48));
-    expect(WishlistColors.light.inviteeActivityContainer,
+    expect(ShushGiftColors.light.inviteeActivity, const Color(0xFFE11D48));
+    expect(ShushGiftColors.light.inviteeActivityContainer,
         const Color(0xFFFFE4E6));
-    expect(WishlistColors.light.onInviteeActivityContainer,
+    expect(ShushGiftColors.light.onInviteeActivityContainer,
         const Color(0xFF9F1239));
-    expect(WishlistColors.dark.inviteeActivity, const Color(0xFFFB7185));
-    expect(WishlistColors.dark.inviteeActivityContainer,
+    expect(ShushGiftColors.dark.inviteeActivity, const Color(0xFFFB7185));
+    expect(ShushGiftColors.dark.inviteeActivityContainer,
         const Color(0xFF4C0519));
-    expect(WishlistColors.dark.onInviteeActivityContainer,
+    expect(ShushGiftColors.dark.onInviteeActivityContainer,
         const Color(0xFFFFE4E6));
   });
 }

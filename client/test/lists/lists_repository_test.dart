@@ -4,8 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/lists/lists_repository.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/lists/lists_repository.dart';
 
 const _gift = {
   'id': 'g1',

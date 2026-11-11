@@ -8,7 +8,7 @@ import '../../l10n/app_localizations.dart';
 import '../design/tokens.dart';
 import '../design/widgets/backdrop.dart';
 import '../design/widgets/page_frame.dart';
-import '../design/wishlist_colors.dart';
+import '../design/shushgift_colors.dart';
 import 'intro_seen.dart';
 
 /// The introduction's location: shown once after sign-in by the router's
@@ -238,7 +238,7 @@ class _IntroPage extends StatelessWidget {
                     body,
                     style: textTheme.bodyLarge?.copyWith(
                       height: 1.5,
-                      color: context.wishlistColors.bodyText,
+                      color: context.shushGiftColors.bodyText,
                     ),
                     textAlign: TextAlign.center,
                   ),

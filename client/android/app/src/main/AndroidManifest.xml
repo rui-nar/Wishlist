@@ -2,8 +2,8 @@
     <!-- The app calls the server (sign-in, /api/config, /api/me). The debug and
          profile manifests add this for development tools only. -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- appLabel is set per flavour in build.gradle.kts: "Wishlist" or
-         "Wishlist VAL". -->
+    <!-- appLabel is set per flavour in build.gradle.kts: "Shush Gift" or
+         "Shush Gift VAL". -->
     <application
         android:label="${appLabel}"
         android:name="${applicationName}"

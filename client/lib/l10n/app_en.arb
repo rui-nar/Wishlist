@@ -1,6 +1,6 @@
 {
   "@@locale": "en",
-  "appTitle": "Wishlist",
+  "appTitle": "Shush Gift",
   "@appTitle": {
     "description": "The app's name, in the window or tab title and the app bar."
   },
@@ -978,8 +978,8 @@
   "@signInAppleFailed": {
     "description": "The sign-in screen: Apple's own sign-in flow failed before reaching the server."
   },
-  "whatIsWishlist": "What is Wishlist?",
-  "@whatIsWishlist": {
+  "whatIsShushGift": "What is Shush Gift?",
+  "@whatIsShushGift": {
     "description": "The sign-in screen: the link to the welcome page, which explains the app."
   },
   "imageViewerClose": "Close",
@@ -2210,7 +2210,7 @@
   "@introDone": {
     "description": "The introduction, opened from the account screen: the last page's button, going back to it."
   },
-  "howItWorks": "How Wishlist works",
+  "howItWorks": "How Shush Gift works",
   "@howItWorks": {
     "description": "The account screen: opens the introduction's pages again."
   },
@@ -2256,7 +2256,7 @@
   "@planPurchaseUnconfirmed": {
     "description": "The Premium page in the iOS app: the server could not record the purchase now; the app sends it again later."
   },
-  "planPurchaseOtherAccount": "This App Store purchase belongs to another Wishlist account. Sign in to that account to use it.",
+  "planPurchaseOtherAccount": "This App Store purchase belongs to another Shush Gift account. Sign in to that account to use it.",
   "@planPurchaseOtherAccount": {
     "description": "The Premium page in the iOS app: the purchase was made while signed in to another account."
   },
@@ -2348,7 +2348,7 @@
   "@planPurchaseUnconfirmedGoogle": {
     "description": "The Premium page in the Android app: the server could not record the purchase now; the app sends it again later."
   },
-  "planPurchaseOtherAccountGoogle": "This Google Play purchase belongs to another Wishlist account. Sign in to that account to use it.",
+  "planPurchaseOtherAccountGoogle": "This Google Play purchase belongs to another Shush Gift account. Sign in to that account to use it.",
   "@planPurchaseOtherAccountGoogle": {
     "description": "The Premium page in the Android app: the purchase was made while signed in to another account."
   },
@@ -2356,7 +2356,7 @@
   "@planPurchaseInvalidGoogle": {
     "description": "The Premium page in the Android app: the server refused the purchase as invalid, unknown or of another product."
   },
-  "planPurchaseRealRefused": "This test version of Wishlist only accepts test purchases. Google Play refunds this one within three days.",
+  "planPurchaseRealRefused": "This test version of Shush Gift only accepts test purchases. Google Play refunds this one within three days.",
   "@planPurchaseRealRefused": {
     "description": "The Premium page in the Android test app (VAL): a real purchase, refused by the test server and refunded by Google."
   },

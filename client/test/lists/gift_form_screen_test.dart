@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/lists/gift_form_screen.dart';
-import 'package:wishlist/src/lists/list_detail_screen.dart';
+import 'package:shushgift/src/lists/gift_form_screen.dart';
+import 'package:shushgift/src/lists/list_detail_screen.dart';
 
 import 'support/fake_lists_server.dart';
 

@@ -5,12 +5,12 @@ plugins {
 }
 
 // PROD's application id (ANDROID_RELEASE_PLAN D1), from the Gradle property
-// wishlistAppId (`-P wishlistAppId=…` on flutter build, or the environment
-// variable ORG_GRADLE_PROJECT_wishlistAppId). The committed default is the
+// shushgiftAppId (`-P shushgiftAppId=…` on flutter build, or the environment
+// variable ORG_GRADLE_PROJECT_shushgiftAppId). The committed default is the
 // placeholder, which the release workflow refuses to upload.
-val wishlistAppId: String =
-    providers.gradleProperty("wishlistAppId").orNull?.takeIf { it.isNotBlank() }
-        ?: "com.example.wishlist"
+val shushgiftAppId: String =
+    providers.gradleProperty("shushgiftAppId").orNull?.takeIf { it.isNotBlank() }
+        ?: "com.example.shushgift"
 
 // The upload key (D3), from the environment only: no key or password is ever
 // in a file of the repository. CI decodes ANDROID_UPLOAD_KEYSTORE_B64 into the
@@ -27,7 +27,7 @@ val hasUploadKey = missingUploadKeyVariables.isEmpty()
 
 // Set by the release workflow: a release build signed with the debug key is
 // refused instead of uploaded.
-val requireUploadKey = providers.gradleProperty("wishlistRequireUploadKey").orNull == "true"
+val requireUploadKey = providers.gradleProperty("shushgiftRequireUploadKey").orNull == "true"
 
 if (!hasUploadKey && missingUploadKeyVariables.size < uploadKeyVariables.size) {
     // Some are set and some are not: a mistake, not a dev machine.
@@ -35,13 +35,13 @@ if (!hasUploadKey && missingUploadKeyVariables.size < uploadKeyVariables.size) {
 }
 if (!hasUploadKey && requireUploadKey) {
     throw GradleException(
-        "wishlistRequireUploadKey is set but the upload key is not: ${missingUploadKeyVariables.joinToString()}",
+        "shushgiftRequireUploadKey is set but the upload key is not: ${missingUploadKeyVariables.joinToString()}",
     )
 }
 
 android {
     // The code's namespace, never the store id (D1). Both flavours share it.
-    namespace = "app.wishlist"
+    namespace = "app.shushgift"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -51,7 +51,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = wishlistAppId
+        applicationId = shushgiftAppId
         // Flutter's defaults (D5): its targetSdk is the level Play requires,
         // and a Flutter upgrade moves it.
         minSdk = flutter.minSdkVersion
@@ -71,11 +71,11 @@ android {
         create("val") {
             dimension = "environment"
             applicationIdSuffix = ".val"
-            manifestPlaceholders["appLabel"] = "Wishlist VAL"
+            manifestPlaceholders["appLabel"] = "Shush Gift VAL"
         }
         create("prod") {
             dimension = "environment"
-            manifestPlaceholders["appLabel"] = "Wishlist"
+            manifestPlaceholders["appLabel"] = "Shush Gift"
         }
     }
 
@@ -94,7 +94,7 @@ android {
         release {
             // Without the upload key, the debug key, so `flutter run --release`
             // works on a dev machine. Play refuses a debug-signed bundle, and
-            // the release workflow refuses to build one (wishlistRequireUploadKey).
+            // the release workflow refuses to build one (shushgiftRequireUploadKey).
             signingConfig = signingConfigs.getByName(if (hasUploadKey) "upload" else "debug")
         }
     }

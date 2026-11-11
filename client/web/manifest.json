@@ -1,11 +1,11 @@
 {
-    "name": "wishlist",
-    "short_name": "wishlist",
+    "name": "Shush Gift",
+    "short_name": "Shush Gift",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Wish lists for every occasion: share yours with family and friends, and every gift stays a surprise.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

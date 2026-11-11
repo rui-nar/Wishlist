@@ -5,8 +5,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/main.dart';
-import 'package:wishlist/src/shared/pending_join.dart';
+import 'package:shushgift/main.dart';
+import 'package:shushgift/src/shared/pending_join.dart';
 
 import '../lists/support/fake_lists_server.dart';
 
@@ -293,7 +293,7 @@ void main() {
           await then[screen]?.call(tester);
 
           await expectLater(
-            find.byType(WishlistApp),
+            find.byType(ShushGiftApp),
             matchesGoldenFile('goldens/${screen}_$mode.png'),
           );
         }, tags: ['golden']);

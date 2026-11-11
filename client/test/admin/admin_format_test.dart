@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/l10n/app_localizations.dart';
-import 'package:wishlist/src/admin/admin_format.dart';
-import 'package:wishlist/src/admin/admin_repository.dart';
+import 'package:shushgift/l10n/app_localizations.dart';
+import 'package:shushgift/src/admin/admin_format.dart';
+import 'package:shushgift/src/admin/admin_repository.dart';
 
 /// [read] in a context localised in [locale].
 Future<T> inLocale<T>(

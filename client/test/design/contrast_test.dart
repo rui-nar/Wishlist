@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/design/theme.dart';
-import 'package:wishlist/src/design/wishlist_colors.dart';
+import 'package:shushgift/src/design/theme.dart';
+import 'package:shushgift/src/design/shushgift_colors.dart';
 
 /// WCAG 2.x relative luminance of an opaque colour.
 double _luminance(Color c) {
@@ -34,7 +34,7 @@ void main() {
 
   for (final MapEntry(key: name, value: theme) in themes.entries) {
     final s = theme.colorScheme;
-    final w = theme.extension<WishlistColors>()!;
+    final w = theme.extension<ShushGiftColors>()!;
 
     // Foreground, background: the pairs of DESIGN_SYSTEM_PLAN U1.
     final pairs = <String, (Color, Color)>{

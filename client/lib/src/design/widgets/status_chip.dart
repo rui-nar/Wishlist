@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens.dart';
-import '../wishlist_colors.dart';
+import '../shushgift_colors.dart';
 
 /// Which colours a [StatusChip] wears.
 enum StatusChipVariant {
@@ -33,7 +33,7 @@ class StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final colors = context.wishlistColors;
+    final colors = context.shushGiftColors;
     final (background, foreground) = switch (variant) {
       StatusChipVariant.inviteeActivity => (
         colors.inviteeActivityContainer,

@@ -39,7 +39,7 @@ void main() {
   // The same for a mailed link: read here, and off the address bar at once.
   final emailLinkToken = captureEmailLinkToken(Uri.base, joinBrowser);
   unawaited(auth.restore());
-  runApp(WishlistApp(
+  runApp(ShushGiftApp(
     api: api,
     auth: auth,
     pendingJoin: pendingJoin,
@@ -47,8 +47,8 @@ void main() {
   ));
 }
 
-class WishlistApp extends StatefulWidget {
-  const WishlistApp({
+class ShushGiftApp extends StatefulWidget {
+  const ShushGiftApp({
     super.key,
     required this.api,
     required this.auth,
@@ -70,10 +70,10 @@ class WishlistApp extends StatefulWidget {
   final String? emailLinkToken;
 
   @override
-  State<WishlistApp> createState() => _WishlistAppState();
+  State<ShushGiftApp> createState() => _ShushGiftAppState();
 }
 
-class _WishlistAppState extends State<WishlistApp> {
+class _ShushGiftAppState extends State<ShushGiftApp> {
   late final PendingJoin _pendingJoin =
       widget.pendingJoin ?? PendingJoin(MemoryJoinBrowser());
   late final GoRouter _router = buildRouter(

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:wishlist/src/app_router.dart';
-import 'package:wishlist/src/auth/account_screen.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/auth/sign_in_screen.dart';
-import 'package:wishlist/src/home/home_screen.dart';
-import 'package:wishlist/src/version_screen.dart';
+import 'package:shushgift/src/app_router.dart';
+import 'package:shushgift/src/auth/account_screen.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/auth/sign_in_screen.dart';
+import 'package:shushgift/src/home/home_screen.dart';
+import 'package:shushgift/src/version_screen.dart';
 
 import 'support/fakes.dart';
 

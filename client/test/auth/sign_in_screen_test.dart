@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/auth/email_sign_up_screen.dart';
-import 'package:wishlist/src/auth/google_sign_in_init.dart';
-import 'package:wishlist/src/auth/sign_in_screen.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/auth/email_sign_up_screen.dart';
+import 'package:shushgift/src/auth/google_sign_in_init.dart';
+import 'package:shushgift/src/auth/sign_in_screen.dart';
 
 import '../support/fakes.dart';
 
@@ -215,7 +215,7 @@ void main() {
     // token for the server.
     expect(google.initCalls.single.serverClientId, 'test-client-id');
     expect(google.initCalls.single.clientId, isNull);
-    expect(find.text('Wishlist'), findsOneWidget);
+    expect(find.text('Shush Gift'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
   });
 
@@ -399,7 +399,7 @@ void main() {
       testWidgets('$at: the normal heading and prompt', (tester) async {
         await open(tester, at);
 
-        expect(find.text('Wishlist'), findsOneWidget);
+        expect(find.text('Shush Gift'), findsOneWidget);
         expect(find.text(signInPrompt), findsOneWidget);
         expect(find.text('Create your account'), findsNothing);
       });
@@ -408,14 +408,14 @@ void main() {
     testWidgets('without from: a link to the welcome page', (tester) async {
       await open(tester, '/sign-in');
 
-      expect(find.text('What is Wishlist?'), findsOneWidget);
+      expect(find.text('What is Shush Gift?'), findsOneWidget);
     });
 
     testWidgets('with from: no link, the visitor is mid-flow',
         (tester) async {
       await open(tester, '/sign-in?from=%2Faccount');
 
-      expect(find.text('What is Wishlist?'), findsNothing);
+      expect(find.text('What is Shush Gift?'), findsNothing);
     });
 
     for (final link in [
@@ -442,7 +442,7 @@ void main() {
       expect(find.byType(SignInScreen), findsOneWidget);
       expect(location(tester).path, '/sign-in');
       expect(location(tester).queryParameters, {'from': '/join'});
-      expect(find.text('What is Wishlist?'), findsNothing);
+      expect(find.text('What is Shush Gift?'), findsNothing);
     });
   });
 
@@ -463,7 +463,7 @@ void main() {
 
     expect(find.text('Créez votre compte'), findsOneWidget);
     expect(find.text('Votre compte Google suffit.'), findsOneWidget);
-    expect(find.text("Qu'est-ce que Wishlist ?"), findsOneWidget);
+    expect(find.text("Qu'est-ce que Shush Gift ?"), findsOneWidget);
   });
 
   // Anything else that initialised Google sign-in, such as main(), would load

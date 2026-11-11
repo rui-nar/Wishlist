@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/design/widgets/gift_card.dart';
-import 'package:wishlist/src/design/widgets/status_chip.dart';
-import 'package:wishlist/src/lists/list_detail_screen.dart';
-import 'package:wishlist/src/shared/shared_with_me_screen.dart';
+import 'package:shushgift/src/design/widgets/gift_card.dart';
+import 'package:shushgift/src/design/widgets/status_chip.dart';
+import 'package:shushgift/src/lists/list_detail_screen.dart';
+import 'package:shushgift/src/shared/shared_with_me_screen.dart';
 
 import '../lists/support/fake_lists_server.dart';
 

@@ -7,7 +7,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'pending_join.dart';
 
-const _kKey = 'wishlist.pending_join';
+const _kKey = 'shushgift.pending_join';
 
 JoinBrowser platformJoinBrowser() => WebJoinBrowser();
 

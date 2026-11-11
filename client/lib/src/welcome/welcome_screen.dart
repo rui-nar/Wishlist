@@ -8,7 +8,7 @@ import '../app_router.dart';
 import '../design/tokens.dart';
 import '../design/widgets/backdrop.dart';
 import '../design/widgets/page_frame.dart';
-import '../design/wishlist_colors.dart';
+import '../design/shushgift_colors.dart';
 
 /// What a signed-out visitor at `/` sees (WEB_LAYOUT_PLAN D6, D8): the app's
 /// name, a headline, its purpose and the Register and Log in buttons, three
@@ -119,7 +119,7 @@ class _Hero extends StatelessWidget {
             fontFamily: FontFamilies.text,
             fontWeight: FontWeight.w400,
             height: 1.5,
-            color: context.wishlistColors.bodyText,
+            color: context.shushGiftColors.bodyText,
           ),
         ),
         const SizedBox(height: Spacing.s32),

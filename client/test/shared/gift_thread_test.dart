@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:wishlist/l10n/app_localizations.dart';
-import 'package:wishlist/src/design/widgets/gift_card.dart';
-import 'package:wishlist/src/shared/gift_thread.dart';
+import 'package:shushgift/l10n/app_localizations.dart';
+import 'package:shushgift/src/design/widgets/gift_card.dart';
+import 'package:shushgift/src/shared/gift_thread.dart';
 
 import '../lists/support/fake_lists_server.dart';
 

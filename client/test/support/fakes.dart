@@ -9,13 +9,13 @@ import 'package:google_sign_in_platform_interface/google_sign_in_platform_interf
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sign_in_with_apple_platform_interface/sign_in_with_apple_platform_interface.dart';
-import 'package:wishlist/l10n/app_localizations.dart';
-import 'package:wishlist/main.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/auth/google_sign_in_init.dart';
-import 'package:wishlist/src/auth/token_store.dart';
-import 'package:wishlist/src/design/theme.dart';
+import 'package:shushgift/l10n/app_localizations.dart';
+import 'package:shushgift/main.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/auth/google_sign_in_init.dart';
+import 'package:shushgift/src/auth/token_store.dart';
+import 'package:shushgift/src/design/theme.dart';
 
 const kApiBase = 'http://api.test';
 
@@ -500,7 +500,7 @@ FakeAppleSignIn installFakeAppleSignIn() {
   return (
     api: api,
     auth: auth,
-    app: WishlistApp(api: api, auth: auth, appVersion: 'v1.2.3'),
+    app: ShushGiftApp(api: api, auth: auth, appVersion: 'v1.2.3'),
   );
 }
 
