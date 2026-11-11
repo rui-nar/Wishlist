@@ -1,10 +1,10 @@
-# ── Wishlist development launcher ─────────────────────────────────────────────
+# ── Shush Gift development launcher ───────────────────────────────────────────
 # Usage (see docs/DEVELOPMENT.md):
 #   .\dev.ps1                      — Postgres, migrations, then the API (:8000,
 #                                    reload) and the Flutter web client (:5500)
 #                                    in a new Windows Terminal tab
 #   .\dev.ps1 -Test                — Postgres, then the server tests against
-#                                    the wishlist_test database
+#                                    the shushgift_test database
 #   .\dev.ps1 -Reset               — drop the dev database volume (asks first),
 #                                    then start as above; combine with -Test
 #   .\dev.ps1 -Reset -Confirm:$false — the same without the prompt
@@ -29,7 +29,7 @@ if (-not (Import-DotEnv)) { exit 1 }
 
 # ── Reset: drop the volume; the next `up` boots Postgres on an empty one ──────
 if ($Reset) {
-    if (-not $PSCmdlet.ShouldProcess('volume wishlist-dev_pgdata (all dev and test data)', 'Delete')) {
+    if (-not $PSCmdlet.ShouldProcess('volume shushgift-dev_pgdata (all dev and test data)', 'Delete')) {
         Write-Host 'Reset cancelled.'
         exit 1
     }
@@ -103,10 +103,10 @@ $pwsh = (Get-Process -Id $PID).Path
 # a space (the titles, a path) needs its own quotes, or wt reads its second
 # word as the command to run.
 Start-Process wt -ArgumentList @(
-    'new-tab', '--title', '"Wishlist API"', '-d', "`"$root`"",
+    'new-tab', '--title', '"Shush Gift API"', '-d', "`"$root`"",
     "`"$pwsh`"", '-NoExit', '-EncodedCommand', (ConvertTo-Base64Command $apiCmd),
     ';',
-    'split-pane', '-H', '--title', '"Wishlist client"', '-d', "`"$root`"",
+    'split-pane', '-H', '--title', '"Shush Gift client"', '-d', "`"$root`"",
     "`"$pwsh`"", '-NoExit', '-EncodedCommand', (ConvertTo-Base64Command $clientCmd)
 )
 

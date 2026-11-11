@@ -6,9 +6,9 @@
 #
 # dev.ps1 does this for you; see docs/DEVELOPMENT.md.
 
-# A fixed project name, so the volume is always `wishlist-dev_pgdata` whatever
+# A fixed project name, so the volume is always `shushgift-dev_pgdata` whatever
 # the checkout's folder is called, and never collides with another project's.
-name: wishlist-dev
+name: shushgift-dev
 
 services:
   postgres:
@@ -47,7 +47,7 @@ configs:
   # never touches dev data. Owned by POSTGRES_USER, who runs the init scripts.
   create-test-database:
     content: |
-      CREATE DATABASE wishlist_test;
+      CREATE DATABASE shushgift_test;
 
 volumes:
   pgdata:

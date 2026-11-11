@@ -1,10 +1,10 @@
 #!/bin/sh
 # Nightly dump of PROD's database (plan D9). The entrypoint of the `backup`
 # service in deploy/prod/docker-compose.yml, which runs it as uid 999 in the
-# pinned Postgres image with /opt/wishlist/backups mounted at /backups.
+# pinned Postgres image with /opt/shushgift/backups mounted at /backups.
 #
 # Dumps once on start, then every day at 02:00 UTC, to
-# /backups/wishlist_<YYYY-MM-DD>.dump (custom format, for pg_restore), and
+# /backups/shushgift_<YYYY-MM-DD>.dump (custom format, for pg_restore), and
 # keeps the 30 newest. A failed dump is logged and the loop goes on: the
 # service's healthcheck (healthcheck.sh) reports it once no dump is recent.
 set -u
@@ -22,10 +22,10 @@ log() {
 
 dump() {
     day=$(date -u +%F)
-    final="$BACKUP_DIR/wishlist_$day.dump"
+    final="$BACKUP_DIR/shushgift_$day.dump"
     # A temporary name the healthcheck and the rotation never match, renamed
     # only once complete: a dump cut short never passes for a good one.
-    tmp="$BACKUP_DIR/.wishlist_$day.dump.partial"
+    tmp="$BACKUP_DIR/.shushgift_$day.dump.partial"
     # chmod as well as the umask: a default ACL on the host directory
     # replaces the umask for new files, which would then be world-readable.
     if PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -h db -U "$POSTGRES_USER" \
@@ -43,7 +43,7 @@ dump() {
 # Keeps the $KEEP newest dumps. ISO dates in the names sort by age.
 rotate() {
     # shellcheck disable=SC2012 # the names are ours, without newlines
-    ls -1 "$BACKUP_DIR"/wishlist_*.dump 2>/dev/null | sort -r | tail -n +"$((KEEP + 1))" |
+    ls -1 "$BACKUP_DIR"/shushgift_*.dump 2>/dev/null | sort -r | tail -n +"$((KEEP + 1))" |
         while read -r old; do
             rm -f "$old" && log "deleted $old"
         done
@@ -64,7 +64,7 @@ seconds_until_0200() {
 trap 'log "stopping"; exit 0' TERM INT
 
 # Leftovers of a dump interrupted by a stop or a crash.
-rm -f "$BACKUP_DIR"/.wishlist_*.dump.partial
+rm -f "$BACKUP_DIR"/.shushgift_*.dump.partial
 
 while true; do
     dump && rotate

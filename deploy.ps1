@@ -6,13 +6,13 @@
 
 .DESCRIPTION
     Nothing is built here: CI's "Build and publish Docker image" workflow
-    publishes ghcr.io/rui-nar/wishlist (plan D6). This script only makes the
+    publishes ghcr.io/rui-nar/shushgift (plan D6). This script only makes the
     VPS run it.
 
-    -Target Val  -> /opt/wishlist-val, :validation, DEPLOY_VAL_URL.
+    -Target Val  -> /opt/shushgift-val, :validation, DEPLOY_VAL_URL.
                     The webhook usually does this by itself; this is the manual
                     way, e.g. after the webhook failed.
-    -Target Prod -> /opt/wishlist, :latest, DEPLOY_PROD_URL. Asks for
+    -Target Prod -> /opt/shushgift, :latest, DEPLOY_PROD_URL. Asks for
                     confirmation first: the manual gate before PROD is
                     deliberate (plan D6).
 
@@ -44,7 +44,7 @@
     - deploy.env filled in.
     - OpenSSH (ssh on PATH) and key auth to DEPLOY_HOST as DEPLOY_USER.
     - Docker on the host logged in to GHCR, and docker-compose.yml plus .env
-      in /opt/wishlist and /opt/wishlist-val.
+      in /opt/shushgift and /opt/shushgift-val.
 
 .PARAMETER Target
     Val or Prod.
@@ -66,13 +66,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # The repository's image and the VPS layout, not host settings: plan D6, D7, D8.
-$Image = 'ghcr.io/rui-nar/wishlist'
+$Image = 'ghcr.io/rui-nar/shushgift'
 if ($Target -eq 'Prod') {
-    $Dir = '/opt/wishlist'
+    $Dir = '/opt/shushgift'
     $ImageRef = "${Image}:latest"
     $UrlKey = 'DEPLOY_PROD_URL'
 } else {
-    $Dir = '/opt/wishlist-val'
+    $Dir = '/opt/shushgift-val'
     $ImageRef = "${Image}:validation"
     $UrlKey = 'DEPLOY_VAL_URL'
 }
@@ -163,7 +163,7 @@ function Test-ExpectedVersion([string]$reported) {
 
 Write-Host ''
 Write-Host '--------------------------------------------' -ForegroundColor Green
-Write-Host "  Wishlist  -  deploy $Expected ($Target)" -ForegroundColor Green
+Write-Host "  Shush Gift  -  deploy $Expected ($Target)" -ForegroundColor Green
 Write-Host "  -> $ImageRef" -ForegroundColor Green
 Write-Host "  -> ${DeployHost}:$Dir  ($Url)" -ForegroundColor Green
 Write-Host '--------------------------------------------' -ForegroundColor Green

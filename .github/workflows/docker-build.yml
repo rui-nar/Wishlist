@@ -22,7 +22,7 @@ jobs:
       packages: write
 
     env:
-      IMAGE: ghcr.io/rui-nar/wishlist
+      IMAGE: ghcr.io/rui-nar/shushgift
       REF_NAME: ${{ github.ref_name }}
 
     steps:
