@@ -1,4 +1,5 @@
-/// Asks Apple who the user is, on the web and Android (sign-in plan D15, D16).
+/// Asks Apple who the user is, on the web, Android and iOS (sign-in plan D15,
+/// D16; IOS_APP_PLAN D4).
 library;
 
 import 'dart:convert';
@@ -41,7 +42,8 @@ const _webCancellations = [
   'user_trigger_new_signin_flow',
 ];
 
-/// Opens Apple's sign-in: a popup on the web, a custom tab on Android.
+/// Opens Apple's sign-in: a popup on the web, a custom tab on Android, and
+/// the system's sheet on iOS, which ignores [WebAuthenticationOptions].
 ///
 /// Returns null when the user cancelled, and throws for any other failure.
 /// On the web, a popup opens only within the tap that asked for it: call this

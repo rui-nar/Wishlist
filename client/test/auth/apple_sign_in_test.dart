@@ -130,6 +130,23 @@ void main() {
 
       expect(find.text('Continuer avec Apple'), findsOneWidget);
     });
+
+    // IOS_APP_PLAN D3, D4: an iOS build without Google's iOS client.
+    testWidgets('iOS without Google: Apple and email, and Apple signs in',
+        (tester) async {
+      server.emailSignIn = true;
+
+      await pumpSignIn(tester);
+
+      expect(find.text('Continue with Google'), findsNothing);
+      expect(find.text(button), findsOneWidget);
+      expect(find.text(usual), findsOneWidget);
+
+      await tapApple(tester);
+
+      expect(server.calls, contains('POST /api/auth/apple'));
+      expect(auth.status, AuthStatus.signedIn);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
   });
 
   group('the register prompt', () {
