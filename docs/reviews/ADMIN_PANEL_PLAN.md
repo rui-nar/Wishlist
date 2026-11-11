@@ -95,3 +95,23 @@ can see, with no instance-wide total.
 - Guard: —
 - Override: —
 - Outcome: fixed (8c3f279)
+
+## Round 3 — 2026-11-11, unit review of U2, reviewed at 60c4098
+
+### R3-1 — `lock_for_deletion` left behind, unused, still named as the deletion's lock
+- Trigger: a maintainer edits `lock_for_deletion` to change the deletion's locking → nothing changes, since both routes use `deletion._lock`.
+- Scores: trigger=concrete, impact=maintainability, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (7ecb4e1)
+
+### R3-2 — An admin deletion holds a session-row write across the Stripe calls
+- Trigger: the admin, idle over an hour, deletes a Stripe subscriber while Stripe is slow, and sends another request with the same token → that request waits until the deletion commits.
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=M/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: an admin request is seen waiting on a lock held by an admin deletion, a second admin is added, or the admin client sends requests in parallel during a deletion
+- Guard: —
+- Override: —
+- Outcome: open
