@@ -10,14 +10,16 @@ import '../billing/legal_links.dart';
 import '../billing/plan_screen.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
+import '../intro/intro_screen.dart';
 import 'auth_controller.dart';
 import 'preferences_repository.dart';
 
 /// The signed-in user's name and email, the email notifications switch
 /// (COMMENTS_NOTIFICATIONS_PLAN D20), their plan when there is one to show
-/// (PREMIUM_PLAN D18), the admin panel for the admin, the version screen,
-/// sign-out and account deletion (ACCOUNTS_PLAN D10). Signing out or deleting
-/// ends the session; the router's guard then shows the sign-in screen.
+/// (PREMIUM_PLAN D18), the admin panel for the admin, the introduction, the
+/// version screen, sign-out and account deletion (ACCOUNTS_PLAN D10). Signing
+/// out or deleting ends the session; the router's guard then shows the sign-in
+/// screen.
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
 
@@ -191,6 +193,12 @@ class _AccountScreenState extends State<AccountScreen> {
                       ),
                       const SizedBox(height: Spacing.s12),
                     ],
+                    OutlinedButton.icon(
+                      onPressed: () => context.push(kIntroPath),
+                      icon: const Icon(Icons.help_outline),
+                      label: Text(l10n.howItWorks),
+                    ),
+                    const SizedBox(height: Spacing.s12),
                     OutlinedButton.icon(
                       onPressed: () => context.push('/about'),
                       icon: const Icon(Icons.info_outline),

@@ -1983,5 +1983,71 @@
   "adminReauthAction": "Sign in again",
   "@adminReauthAction": {
     "description": "The admin panel: the button signing out to sign in again."
+  },
+  "introYourWishesTitle": "Your wishes, their surprise",
+  "@introYourWishesTitle": {
+    "description": "The introduction, first page: its title."
+  },
+  "introYourWishesBody": "Make a list of the things you'd love and share it for an occasion, with a link. The family and friends you invite see it and choose what to give.",
+  "@introYourWishesBody": {
+    "description": "The introduction, first page: its text."
+  },
+  "introHiddenActionsTitle": "Hidden actions",
+  "@introHiddenActionsTitle": {
+    "description": "The introduction, second page: its title."
+  },
+  "introHiddenActionsBody": "Reservations, purchases, group gifts and comments stay hidden from the person the list is for. Givers see each other's, so nobody buys the same gift twice. Nothing hints at them, not even after the occasion.",
+  "@introHiddenActionsBody": {
+    "description": "The introduction, second page: its text, on what givers do staying hidden."
+  },
+  "introHiddenGiftsTitle": "Hidden gifts",
+  "@introHiddenGiftsTitle": {
+    "description": "The introduction, third page: its title."
+  },
+  "introHiddenGiftsBody": "Givers can also add gifts that are not on the list, such as an idea of their own. They stay hidden from the person the list is for until the occasion has passed. Then only the ones bought are revealed, without saying who gave them.",
+  "@introHiddenGiftsBody": {
+    "description": "The introduction, third page: its text."
+  },
+  "introPageOf": "Page {page} of {count}",
+  "@introPageOf": {
+    "description": "The introduction: what the page dots say to a screen reader.",
+    "placeholders": {
+      "page": {
+        "type": "int",
+        "example": "1"
+      },
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "introNext": "Next",
+  "@introNext": {
+    "description": "The introduction: goes to the next page."
+  },
+  "introBack": "Back",
+  "@introBack": {
+    "description": "The introduction: goes to the previous page."
+  },
+  "introSkip": "Skip",
+  "@introSkip": {
+    "description": "The introduction, shown after sign-in: leaves it for the app."
+  },
+  "introGetStarted": "Get started",
+  "@introGetStarted": {
+    "description": "The introduction, shown after sign-in: the last page's button, leaving it for the app."
+  },
+  "introClose": "Close",
+  "@introClose": {
+    "description": "The introduction, opened from the account screen: goes back to it."
+  },
+  "introDone": "Done",
+  "@introDone": {
+    "description": "The introduction, opened from the account screen: the last page's button, going back to it."
+  },
+  "howItWorks": "How Wishlist works",
+  "@howItWorks": {
+    "description": "The account screen: opens the introduction's pages again."
   }
 }
