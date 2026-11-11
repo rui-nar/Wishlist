@@ -21,6 +21,7 @@ import 'src/billing/store.dart';
 import 'src/billing/store_purchases.dart';
 import 'src/config.dart';
 import 'src/design/theme.dart';
+import 'src/shared/app_links.dart';
 import 'src/shared/pending_join.dart';
 
 void main() {
@@ -39,22 +40,26 @@ void main() {
   // The same for a mailed link: read here, and off the address bar at once.
   final emailLinkToken = captureEmailLinkToken(Uri.base, joinBrowser);
   unawaited(auth.restore());
-  runApp(WishlistApp(
+  runApp(ShushGiftApp(
     api: api,
     auth: auth,
     pendingJoin: pendingJoin,
     emailLinkToken: emailLinkToken,
+    // Android and iOS: links open the app (Shush Gift plan D7). The web reads
+    // its address above, and its history comes back through the router.
+    openAppLinks: !kIsWeb,
   ));
 }
 
-class WishlistApp extends StatefulWidget {
-  const WishlistApp({
+class ShushGiftApp extends StatefulWidget {
+  const ShushGiftApp({
     super.key,
     required this.api,
     required this.auth,
     this.appVersion = kAppVersion,
     this.pendingJoin,
     this.emailLinkToken,
+    this.openAppLinks = false,
   });
 
   // Injectable so tests can give the client a MockClient
@@ -69,18 +74,29 @@ class WishlistApp extends StatefulWidget {
   /// The token of the mailed link the app was opened with; none when null.
   final String? emailLinkToken;
 
+  /// Whether the links the platform opens the app with go through
+  /// [AppLinkReceiver]: at start, the platform's initial route, and while it
+  /// runs, every pushed one. On Android and iOS, not on the web, whose
+  /// browser pushes its history the same way.
+  final bool openAppLinks;
+
   @override
-  State<WishlistApp> createState() => _WishlistAppState();
+  State<ShushGiftApp> createState() => _ShushGiftAppState();
 }
 
-class _WishlistAppState extends State<WishlistApp> {
+class _ShushGiftAppState extends State<ShushGiftApp> {
   late final PendingJoin _pendingJoin =
       widget.pendingJoin ?? PendingJoin(MemoryJoinBrowser());
+  late String? _emailLinkToken = widget.emailLinkToken;
+  AppLinkReceiver? _appLinks;
+  int _linksOpened = 0;
+  String? _initialLocation;
   late final GoRouter _router = buildRouter(
     auth: widget.auth,
     api: widget.api,
     appVersion: widget.appVersion,
-    emailLinkToken: widget.emailLinkToken,
+    emailLinkToken: () => _emailLinkToken,
+    initialLocation: _initialLocation,
   );
 
   /// The phone store's purchases (Apple IAP plan D3, Android release plan
@@ -91,6 +107,19 @@ class _WishlistAppState extends State<WishlistApp> {
   @override
   void initState() {
     super.initState();
+    if (widget.openAppLinks) {
+      _initialLocation = _receiveLink(
+        Uri.parse(WidgetsBinding.instance.platformDispatcher.defaultRouteName),
+      );
+      // Before the router's own listener, which the first build adds. Each
+      // link has its own extra, so one for the page already shown builds it
+      // again, for its own token: the router ignores a go() to the same
+      // location with the same extra.
+      _appLinks = AppLinkReceiver(
+        (link) => _router.go(_receiveLink(link), extra: ++_linksOpened),
+      );
+      WidgetsBinding.instance.addObserver(_appLinks!);
+    }
     if (deviceStore case final store?) {
       _purchases = StorePurchases(
         store: store,
@@ -99,6 +128,14 @@ class _WishlistAppState extends State<WishlistApp> {
       widget.auth.addListener(_followSession);
       _followSession();
     }
+  }
+
+  /// Keeps the tokens [link] carries, as the web does from its address, and
+  /// gives the location to open.
+  String _receiveLink(Uri link) {
+    _pendingJoin.receive(link);
+    _emailLinkToken = emailLinkTokenFrom(link) ?? _emailLinkToken;
+    return appLocationOf(link);
   }
 
   void _followSession() {
@@ -111,6 +148,9 @@ class _WishlistAppState extends State<WishlistApp> {
 
   @override
   void dispose() {
+    if (_appLinks case final appLinks?) {
+      WidgetsBinding.instance.removeObserver(appLinks);
+    }
     if (_purchases case final purchases?) {
       widget.auth.removeListener(_followSession);
       purchases.dispose();

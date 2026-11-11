@@ -7,7 +7,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Web: the browser's session storage and history. Android and iOS: memory,
-// since their links do not open the app yet (mobile app links, a later plan).
+// since a link reaches the running app there (app_links.dart) instead of
+// loading it again.
 import 'join_browser_stub.dart'
     if (dart.library.js_interop) 'join_browser_web.dart';
 
@@ -18,7 +19,7 @@ const kJoinPath = '/join';
 /// (sign-in plan D19): as long as that link works.
 const kJoinHandoverLifetime = Duration(hours: 1);
 
-const _kHandoverKey = 'wishlist.join_handover';
+const _kHandoverKey = 'shushgift.join_handover';
 
 /// Where the pending token outlives a reload, and the address bar.
 abstract class JoinBrowser {
@@ -105,6 +106,16 @@ class PendingJoin {
 
   /// The token waiting to be used, or null.
   String? get token => _token;
+
+  /// Takes the token of [link], a link that opened the running app on
+  /// Android or iOS (Shush Gift plan D7): as a new page load does on the web,
+  /// it replaces any pending token. A link without one changes nothing.
+  void receive(Uri link) {
+    final fresh = joinTokenFrom(link);
+    if (fresh == null) return;
+    _token = fresh;
+    _browser.write(fresh);
+  }
 
   /// Forgets the token: it was used.
   void clear() {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
 
 import '../support/fakes.dart';
 

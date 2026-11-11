@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/auth/account_screen.dart';
-import 'package:wishlist/src/design/tokens.dart';
-import 'package:wishlist/src/lists/list_detail_screen.dart';
-import 'package:wishlist/src/lists/list_form_screen.dart';
-import 'package:wishlist/src/lists/my_lists_screen.dart';
-import 'package:wishlist/src/shared/shared_with_me_screen.dart';
+import 'package:shushgift/src/auth/account_screen.dart';
+import 'package:shushgift/src/design/tokens.dart';
+import 'package:shushgift/src/lists/list_detail_screen.dart';
+import 'package:shushgift/src/lists/list_form_screen.dart';
+import 'package:shushgift/src/lists/my_lists_screen.dart';
+import 'package:shushgift/src/shared/shared_with_me_screen.dart';
 
 import '../lists/support/fake_lists_server.dart';
 

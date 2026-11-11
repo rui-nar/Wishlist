@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/auth/email_link.dart';
-import 'package:wishlist/src/shared/pending_join.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/auth/email_link.dart';
+import 'package:shushgift/src/shared/pending_join.dart';
 
 void main() {
   group('emailLinkTokenFrom', () {

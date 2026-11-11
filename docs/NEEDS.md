@@ -1,4 +1,4 @@
-# Wishlist — Need description
+# Shush Gift — Need description
 
 Status: converged on the first release's needs (2026-11-07), pending the
 owner's read-through. Remaining questions are under
@@ -316,8 +316,9 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
   iOS, decided 2026-11-11 (owner): built and signed by GitHub Actions on
   macOS and delivered through TestFlight; Premium bought on iPhone through
   Apple's in-app purchase from the first iOS release, and Premium bought on
-  the web works on iPhone too; the bundle identifier is decided later, before
-  the first TestFlight upload (the Android one waits for the same choice).
+  the web works on iPhone too. The iOS bundle identifier and the Android
+  application id are `com.shushgift.app`, and `com.shushgift.app.val` for VAL
+  (owner, 2026-11-11, see Name and domain).
 - **Sign-in:** Google, Apple (required on iOS alongside Google), email and
   password.
   Decided 2026-11-10 (owner's instruction to proceed silently):
@@ -329,7 +330,8 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
   - **Passwords:** 10 to 128 characters, no composition rules. Sign-in attempts
     and emails are rate limited.
   - **Apple:** on the web and Android now, on iOS with the iOS release. The
-    email link opens on the web, for now.
+    email link opens the installed app on a phone, and the web otherwise
+    (owner, 2026-11-11).
 - **Introduction:** three screens explain how the app works, namely the hidden
   actions and the hidden gifts (owner, 2026-11-10). Shown once, after the first
   sign-in on a device, and available again from the account screen. They are
@@ -348,11 +350,17 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
   next to TraxJourney.
 - **Name and domain** (owner, 2026-11-11): the app is called **Shush Gift**
   and has its own domain, `shushgift.com`: PROD at `shushgift.com`, VAL at
-  `val.shushgift.com`. The move happens as soon as the domain is live, before
+  `val.shushgift.com`. The rename goes all the way, internal identifiers
+  included (code, image, repository, servers, databases). The app ids are
+  `com.shushgift.app` and `com.shushgift.app.val`, and can never change once
+  in the stores. The repository is private. The move happens as soon as the domain is live, before
   the iOS and Android store releases, so no store build ships with the old
   hosts. Until then PROD and VAL are subdomains of TraxJourney's domain
-  (hostnames in the owner's VPS notes, not in this public repository); links
-  already shared on them keep working after the move.
+  (hostnames in the owner's VPS notes, not in this repository). The old hosts
+  are removed right after PROD has moved: PROD has no real users yet, so links
+  sent before the move may stop working. Emails come from
+  `hello@shushgift.com`. On a phone with the app installed, occasion links
+  and email links open the app instead of the browser (owner, 2026-11-11).
 - **Stack (agreed ahead of the needs, see
   [`plans/DEVOPS_FOUNDATION_PLAN.md`](plans/DEVOPS_FOUNDATION_PLAN.md)):**
   Flutter; FastAPI, Alembic, PostgreSQL.

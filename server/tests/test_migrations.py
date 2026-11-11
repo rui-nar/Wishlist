@@ -14,7 +14,7 @@ SERVER_DIR = Path(__file__).resolve().parent.parent
 @pytest.fixture
 def empty_database_url(database_url: str):
     """A freshly created database, dropped afterwards."""
-    name = f"wishlist_migrations_{uuid.uuid4().hex[:12]}"
+    name = f"shushgift_migrations_{uuid.uuid4().hex[:12]}"
     admin = create_engine(database_url, isolation_level="AUTOCOMMIT")
     try:
         with admin.connect() as connection:
@@ -508,7 +508,7 @@ def _insert_an_apple_token(connection, user: uuid.UUID) -> None:
     connection.execute(
         text(
             "INSERT INTO apple_tokens (user_id, client_id, refresh_token, updated_at)"
-            " VALUES (:user, 'com.example.wishlist', :token, now())"
+            " VALUES (:user, 'com.example.shushgift', :token, now())"
         ),
         {"user": user, "token": f"r{user.hex}"},
     )

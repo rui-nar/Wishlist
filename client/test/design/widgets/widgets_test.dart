@@ -4,15 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/api/api_image.dart';
-import 'package:wishlist/src/design/theme.dart';
-import 'package:wishlist/src/design/widgets/gift_card.dart';
-import 'package:wishlist/src/design/widgets/image_viewer.dart';
-import 'package:wishlist/src/design/widgets/privacy_banner.dart';
-import 'package:wishlist/src/design/widgets/status_chip.dart';
-import 'package:wishlist/src/design/wishlist_colors.dart';
-import 'package:wishlist/l10n/app_localizations.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/api/api_image.dart';
+import 'package:shushgift/src/design/theme.dart';
+import 'package:shushgift/src/design/widgets/gift_card.dart';
+import 'package:shushgift/src/design/widgets/image_viewer.dart';
+import 'package:shushgift/src/design/widgets/privacy_banner.dart';
+import 'package:shushgift/src/design/widgets/status_chip.dart';
+import 'package:shushgift/src/design/shushgift_colors.dart';
+import 'package:shushgift/l10n/app_localizations.dart';
 
 void main() {
   Future<void> pump(WidgetTester tester, Widget child, {ThemeData? theme}) {
@@ -39,8 +39,8 @@ void main() {
 
   group('StatusChip', () {
     for (final (name, theme, colors, scheme) in [
-      ('light', buildLightTheme(), WishlistColors.light, buildLightTheme()),
-      ('dark', buildDarkTheme(), WishlistColors.dark, buildDarkTheme()),
+      ('light', buildLightTheme(), ShushGiftColors.light, buildLightTheme()),
+      ('dark', buildDarkTheme(), ShushGiftColors.dark, buildDarkTheme()),
     ]) {
       testWidgets('each variant uses its colours in $name', (tester) async {
         final cs = scheme.colorScheme;

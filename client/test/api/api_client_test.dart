@@ -5,8 +5,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:wishlist/src/api/api_client.dart';
-import 'package:wishlist/src/api/config.dart';
+import 'package:shushgift/src/api/api_client.dart';
+import 'package:shushgift/src/api/config.dart';
 
 void main() {
   test('sends the bearer token when there is one, and JSON bodies', () async {
@@ -466,10 +466,10 @@ void main() {
       expect(
         (await fetchClientConfig(answering({
           'google_client_id': 'abc',
-          'public_base_url': 'https://wishlist.example',
+          'public_base_url': 'https://shushgift.example',
         })))
             .publicBaseUrl,
-        'https://wishlist.example',
+        'https://shushgift.example',
       );
       for (final none in [null, '']) {
         expect(
@@ -492,13 +492,13 @@ void main() {
       final config = await fetchClientConfig(answering({
         'google_client_id': 'abc',
         'apple_client_id': 'com.example.service',
-        'apple_redirect_uri': 'https://wishlist.example/api/auth/apple/callback',
+        'apple_redirect_uri': 'https://shushgift.example/api/auth/apple/callback',
         'email_sign_in': true,
       }));
 
       expect(config.appleClientId, 'com.example.service');
       expect(config.appleRedirectUri,
-          'https://wishlist.example/api/auth/apple/callback');
+          'https://shushgift.example/api/auth/apple/callback');
       expect(config.emailSignIn, isTrue);
     });
 

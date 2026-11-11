@@ -155,7 +155,7 @@ class StripeGateway:
                     "name": name,
                     "metadata": {"user_id": str(user_id), "app": APP_MARKER},
                 },
-                {"idempotency_key": f"wishlist-customer-{user_id}"},
+                {"idempotency_key": f"shushgift-customer-{user_id}"},
             )
         return customer.id
 

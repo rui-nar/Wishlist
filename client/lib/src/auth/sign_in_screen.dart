@@ -256,7 +256,7 @@ class _SignInScreenState extends State<SignInScreen> {
                           child: TextButton.icon(
                             onPressed: () => context.go(kWelcomePath),
                             icon: const Icon(Icons.help_outline),
-                            label: Text(l10n.whatIsWishlist),
+                            label: Text(l10n.whatIsShushGift),
                           ),
                         ),
                       ],

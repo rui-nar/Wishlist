@@ -1,4 +1,4 @@
-# Wishlist addition: the vendored package is upstream's code, kept as close to
+# Shush Gift addition: the vendored package is upstream's code, kept as close to
 # it as possible, so the client's lints (client/analysis_options.yaml, which
 # `flutter analyze` in client/ would otherwise apply here) do not apply to it.
 # The analyzer still reports errors and warnings. The exclusions are the ones

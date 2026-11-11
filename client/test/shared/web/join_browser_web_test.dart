@@ -10,8 +10,8 @@ import 'dart:ui_web' as ui_web;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
-import 'package:wishlist/src/shared/join_browser_web.dart';
-import 'package:wishlist/src/shared/pending_join.dart';
+import 'package:shushgift/src/shared/join_browser_web.dart';
+import 'package:shushgift/src/shared/pending_join.dart';
 
 /// Records what the browser's history is asked to do.
 class _RecordingUrlStrategy implements UrlStrategy {

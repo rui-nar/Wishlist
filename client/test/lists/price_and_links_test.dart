@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
-import 'package:wishlist/src/lists/currencies.dart';
-import 'package:wishlist/src/lists/gift_links.dart';
-import 'package:wishlist/src/lists/price.dart';
+import 'package:shushgift/src/lists/currencies.dart';
+import 'package:shushgift/src/lists/gift_links.dart';
+import 'package:shushgift/src/lists/price.dart';
 
 import 'support/fake_lists_server.dart';
 

@@ -46,16 +46,27 @@ no way to pay.
 premium"). `PUBLIC_BASE_URL` must be set too:
 
 ```bash
-grep -c -E '^(BILLING_|FREE_MAX_|STRIPE_|LEGAL_)' /opt/wishlist-val/.env /opt/wishlist/.env   # :15 for both
-grep -n '^PUBLIC_BASE_URL=' /opt/wishlist-val/.env /opt/wishlist/.env                         # each with its https:// origin
+grep -c -E '^(BILLING_|FREE_MAX_|STRIPE_|LEGAL_)' /opt/shushgift-val/.env /opt/shushgift/.env   # :15 for both
+grep -n '^PUBLIC_BASE_URL=' /opt/shushgift-val/.env /opt/shushgift/.env                         # each with its https:// origin
 ```
 
 ### 2. Choose the Stripe account
 
-**Use an account of its own for Wishlist** rather than TraxJourney's. It is safe
+**Use an account of its own for Shush Gift** rather than TraxJourney's. It is safe
 to share, because the app only ever cancels subscriptions it marked as its own.
 But the terms URL, the failed-payment rule, the portal and the name on card
-statements are per account, so Wishlist's buyers would get TraxJourney's.
+statements are per account, so Shush Gift's buyers would get TraxJourney's.
+
+**The marker `"wishlist"` stays.** Every subscription the app's checkout creates
+carries the Stripe metadata `app` = `"wishlist"`, the app's name before Shush
+Gift (`APP_MARKER`, [plan D4](plans/SHUSH_GIFT_PLAN.md)). The server recognises
+its own subscriptions by it, and Stripe keeps it on every subscription already
+sold: a new value would make the server ignore all of them, so the code keeps
+the old one for good. Do not change it in the dashboard, and give a
+subscription created by hand for a test the same `metadata[app]` of `"wishlist"` if
+the server is to treat it as its own. Renaming the app changes nothing else in
+Stripe's data: the name shown to buyers is the product's name and the public
+details, set in [step 4](#4-set-up-the-sandbox) and [Part 2](#2-activate-the-live-account).
 
 ### 3. Create a sandbox for VAL
 
@@ -72,8 +83,8 @@ no account for, so two environments on one sandbox would cancel each other's.
 
 | # | Where | What to set |
 |---|---|---|
-| 1 | [Product catalogue](https://dashboard.stripe.com/products) → Add product | One recurring **yearly** price (not 12 months) with **Include tax in price: yes**, not "auto". Any amount works for the test. Stripe does not let you change this later: a wrong price means a new price. Note the price id, `price_…` |
-| 2 | [Public details](https://dashboard.stripe.com/settings/public) → Terms of service | `https://<val-host>/legal/terms`. Every checkout fails without it |
+| 1 | [Product catalogue](https://dashboard.stripe.com/products) → Add product | A product named for the app, such as "Shush Gift Premium", with one recurring **yearly** price (not 12 months) with **Include tax in price: yes**, not "auto". Any amount works for the test. Stripe does not let you change this later: a wrong price means a new price. Note the price id, `price_…` |
+| 2 | [Public details](https://dashboard.stripe.com/settings/public) | The public business name `Shush Gift`, and under Terms of service `https://<val-host>/legal/terms`. Every checkout fails without the terms |
 | 3 | [Customer portal](https://dashboard.stripe.com/test/settings/billing/portal) | Cancel subscriptions on, **at the end of the billing period**. Payment methods on. Invoice history on. Switch plan **off**. Portal login link on. **Save**: the portal does not work until saved once |
 | 4 | [Checkout settings](https://dashboard.stripe.com/settings/checkout#subscriptions) | **Limit customers to one subscription**. It relies on the portal login link of the row above |
 | 5 | [Retries](https://dashboard.stripe.com/revenue_recovery/retries) | If all retries fail: **Cancel the subscription**. Never leave it past due, which keeps Premium for a card that never pays |
@@ -88,7 +99,7 @@ price is not in euros, also set `BILLING_PRICE_CURRENCY`. The legal variables
 stay empty: VAL shows placeholders.
 
 ```bash
-cd /opt/wishlist-val
+cd /opt/shushgift-val
 read -rs STRIPE_KEY                                # paste the secret key, then Enter
 sed -i "s|^STRIPE_SECRET_KEY=.*|STRIPE_SECRET_KEY=$STRIPE_KEY|" .env
 unset STRIPE_KEY
@@ -181,7 +192,7 @@ registration, Stripe collects no tax for that place.
 ### 4. Fill in PROD
 
 **[VPS]** The same `read -rs` and `sed` lines as [step 5](#5-fill-in-val), in
-`/opt/wishlist`, with `live` in the check instead of `test`:
+`/opt/shushgift`, with `live` in the check instead of `test`:
 
 ```bash
 grep -c -E '^(STRIPE_SECRET_KEY=(sk|rk)_live_|STRIPE_WEBHOOK_SECRET=whsec_)' .env   # 2
@@ -295,7 +306,7 @@ VAL, `<ios-bundle-id>` for PROD) for steps 7 and 9.
 
 **[Apple]** Users and Access → Integrations → In-App Purchase. The page shows
 the **Issuer ID**, `<apple-iap-issuer-id>`. Generate a key, named for the
-environment, such as "Wishlist VAL". Its **Key ID** is `<apple-iap-key-id>`.
+environment, such as "Shush Gift VAL". Its **Key ID** is `<apple-iap-key-id>`.
 Download `SubscriptionKey_<apple-iap-key-id>.p8` straight away: Apple allows
 the download once. It is a secret: keep it outside this repository, in your
 password manager.
@@ -356,12 +367,12 @@ with it.
 
 App Review buys Premium to review the PROD app, with Sandbox against the
 production server. The reviewer signs in with an account that you give in the
-App Review notes, so that account is a Wishlist account on PROD, and the only
+App Review notes, so that account is a Shush Gift account on PROD, and the only
 one whose Sandbox purchases PROD accepts.
 
 1. **[dev]** On `https://<prod-host>`, create the account for the reviewer,
    with an email address made for it. Never use your own account for it.
-2. **[VPS]** Find its id, in `/opt/wishlist`, with the `pg` function of
+2. **[VPS]** Find its id, in `/opt/shushgift`, with the `pg` function of
    [Billing with Stripe](DEPLOYMENT.md#billing-with-stripe), as
    [Admin](DEPLOYMENT.md#admin) does:
 
@@ -385,7 +396,7 @@ shell history, and written with `printf`, not `sed`, which would turn its `\n`
 into line breaks. `APPLE_APP_APPLE_ID` does not exist on VAL.
 
 ```bash
-cd /opt/wishlist-val
+cd /opt/shushgift-val
 grep -c -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|IAP_)' .env                      # 5
 sed -i 's|^APPLE_PRODUCT_ID=.*|APPLE_PRODUCT_ID=<apple-product-id>|' .env
 sed -i 's|^APPLE_BUNDLE_ID=.*|APPLE_BUNDLE_ID=<ios-bundle-id-val>|' .env
@@ -436,11 +447,11 @@ app and in the admin panel ([step 10](#10-what-the-admin-panel-shows)).
    documentation on testing refund requests says where: the option depends on
    the tool, and was not checked). Premium ends at once. Buying again grants
    it again, with no manual step.
-6. **Restore.** With the same Wishlist account, delete the app and install it
+6. **Restore.** With the same Shush Gift account, delete the app and install it
    again, or sign in on another iPhone. Premium is back for the account
    already, since the server holds it: Restore purchases then finds the
    subscription again without a second charge. Signed in with a *different*
-   Wishlist account, Restore is refused, since the purchase belongs to the
+   Shush Gift account, Restore is refused, since the purchase belongs to the
    first.
 7. **Deletion.** With a renewing subscription, the account deletion dialog
    warns that Apple's subscription is not cancelled by it, with a link to
@@ -454,13 +465,13 @@ signed payload.
 
 **[VPS]** Only after the test above, and once the PROD app is in App Store
 Connect with its subscription (step 2) and its URLs (step 4). The same lines as
-[step 7](#7-fill-in-val), in `/opt/wishlist` with the PROD app's bundle id,
+[step 7](#7-fill-in-val), in `/opt/shushgift` with the PROD app's bundle id,
 `<ios-bundle-id>`, and PROD's own key, plus two variables. `<apple-app-apple-id>`
 is the PROD app's **Apple ID** in App Store Connect (App Information), digits
 only: the server needs it to check Apple's production notifications.
 
 ```bash
-cd /opt/wishlist
+cd /opt/shushgift
 grep -c -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|APP_APPLE_ID|IAP_|SANDBOX_ACCOUNT_IDS)' .env   # 7
 sed -i 's|^APPLE_APP_APPLE_ID=.*|APPLE_APP_APPLE_ID=<apple-app-apple-id>|' .env
 sed -i 's|^APPLE_SANDBOX_ACCOUNT_IDS=.*|APPLE_SANDBOX_ACCOUNT_IDS=<demo-account-id>|' .env
@@ -476,7 +487,7 @@ Store release. Check PROD in two stages.
 
 **Before the release, [dev]:** on an iPhone with the PROD app from TestFlight
 and a Sandbox Apple Account of step 5 (Settings → Developer), sign in to
-Wishlist with the demo account of step 6, the one in
+Shush Gift with the demo account of step 6, the one in
 `APPLE_SANDBOX_ACCOUNT_IDS`. Buy Premium: it appears within seconds, which
 proves PROD's key, bundle id and Sandbox exception. Then cancel the Sandbox subscription (Settings → Apple Account → Subscriptions) and
 check, before submitting the app, that the demo account is free again: the
@@ -484,7 +495,7 @@ reviewer must find a purchase to make.
 
 **After the App Store release, [dev]:** install the PROD app from the App
 Store, sign out of the Sandbox Apple Account, and make one real purchase with
-your own Apple Account and your own Wishlist account. Check Premium, then
+your own Apple Account and your own Shush Gift account. Check Premium, then
 refund it from Apple's [report a problem](https://reportaproblem.apple.com)
 page.
 
@@ -509,7 +520,7 @@ the app offers no purchase while Premium is already in force from another.
 
 Each step says where it happens, as above, with **[Play]** for the Play
 Console (<https://play.google.com/console>) and **[Google Cloud]** for the
-Google Cloud console, in Wishlist's project. **The menu names below were
+Google Cloud console, in Shush Gift's project. **The menu names below were
 written from memory of Google's documentation and were not checked against the
 Play Console or Google Cloud on 2026-11-11**: Google renames its menus from
 time to time, so follow the meaning when a name differs. A detail that could
@@ -609,7 +620,7 @@ ones**, one per environment, as with the Apple keys:
   server, then never reaches PROD's customers.
 
 **[Google Cloud]** IAM & Admin → Service Accounts → Create service account,
-named for the environment, such as `wishlist-play-val`, with no project role.
+named for the environment, such as `shushgift-play-val`, with no project role.
 Keys → Add key → Create new key → **JSON**; the file is downloaded once. It
 is a secret: keep it outside this repository, in your password manager. Make
 sure the Google Play Android Developer API is enabled in the project
@@ -643,17 +654,17 @@ pushes it to the server. Make one topic and one subscription **per
 environment**: the server of one app refuses another app's notifications (it
 logs `a notification for another app`).
 
-**[Google Cloud]** In Wishlist's project:
+**[Google Cloud]** In Shush Gift's project:
 
 1. APIs & Services → Library: enable the **Cloud Pub/Sub API**, once. Pub/Sub
    may need a billing account on the project even when its free quota covers
-   Wishlist (unconfirmed).
+   Shush Gift (unconfirmed).
 2. IAM & Admin → Service Accounts → Create service account, named for the
-   environment, such as `wishlist-play-push-val`, with **no role**. Its email
+   environment, such as `shushgift-play-push-val`, with **no role**. Its email
    address, `<pubsub-push-service-account-email>`, is what the push signs as:
    it is `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT`. It is not the account of
    step 3.
-3. Pub/Sub → Topics → Create topic: an id such as `wishlist-play-val`, with
+3. Pub/Sub → Topics → Create topic: an id such as `shushgift-play-val`, with
    no schema. Its name is `projects/<gcp-project-id>/topics/<pubsub-topic>`.
    Add no default subscription.
 4. The topic → Permissions → Add principal
@@ -664,7 +675,7 @@ logs `a notification for another app`).
 
    | Field | Value |
    |---|---|
-   | Subscription ID | such as `wishlist-play-val-push` |
+   | Subscription ID | such as `shushgift-play-val-push` |
    | Topic | the one of point 3 |
    | Delivery type | **Push** |
    | Endpoint URL | `https://<val-host>/api/billing/google/notifications` (VAL), `https://<prod-host>/api/billing/google/notifications` (PROD) |
@@ -709,7 +720,7 @@ purchases as test purchases, the only ones VAL accepts.
 app's; unconfirmed): add the Google accounts of the testers, as the accounts
 on their phones, to a list, and save. The setting applies to **every app of
 the developer account**, so a tester's purchase in the PROD app is a test
-purchase too: that is why PROD refuses them unless the tester's Wishlist
+purchase too: that is why PROD refuses them unless the tester's Shush Gift
 account is in `GOOGLE_PLAY_TEST_ACCOUNT_IDS` (step 9). Never commit the
 addresses.
 
@@ -725,7 +736,7 @@ steps](DEPLOYMENT.md#release-specific-steps), "The release with Android and
 Google purchases").
 
 ```bash
-cd /opt/wishlist-val
+cd /opt/shushgift-val
 grep -c '^GOOGLE_PLAY_' .env                                                # 5
 sed -i 's|^GOOGLE_PLAY_PRODUCT_ID=.*|GOOGLE_PLAY_PRODUCT_ID=<google-product-id>|' .env
 sed -i 's|^GOOGLE_PLAY_PACKAGE_NAME=.*|GOOGLE_PLAY_PACKAGE_NAME=<android-application-id-val>|' .env
@@ -753,7 +764,7 @@ the line looks right, suspect that first. Use `up -d` after every change to
 **[dev]** On an Android phone, with the VAL app installed from Play
 ([DEPLOYMENT](DEPLOYMENT.md#first-android-build-from-the-validation-tag)), a Google
 account that is a license tester (step 6) and an internal tester, and signed
-in to Wishlist with a free account on VAL. Play speeds subscriptions up for
+in to Shush Gift with a free account on VAL. Play speeds subscriptions up for
 license testers: a yearly one renews about every half hour, for a few renewals
 only (Google's documented test timings, from memory; unconfirmed), so each
 result below arrives within minutes or the hour. Check each one in the app and
@@ -784,10 +795,10 @@ in the admin panel ([step 10](#10-what-the-admin-panel-shows-for-google)).
    the server asks Google again and Google's state decides, by design. Whether
    Play lets a test order be refunded was not checked; if it does not, cancel
    and revoke it.
-6. **Restore.** With the same Wishlist account, delete the app and install it
+6. **Restore.** With the same Shush Gift account, delete the app and install it
    again, or sign in on another phone. Premium is back for the account
    already, since the server holds it: Restore then finds the subscription
-   again without a second charge. Signed in with a *different* Wishlist
+   again without a second charge. Signed in with a *different* Shush Gift
    account, Restore is refused, since the purchase belongs to the first.
 7. **Deletion.** With a renewing subscription, delete the account. The server
    cancels the Google subscription before deleting: the Play Store shows it
@@ -808,18 +819,18 @@ purchase token.
 **[VPS]** Only after the test above, and once the PROD app is in the Play
 Console with its subscription (step 2), its topic and subscription (step 4)
 and its notification setting (step 5). The same lines as [step
-7](#7-fill-in-val-for-android), in `/opt/wishlist`, with the PROD app's
+7](#7-fill-in-val-for-android), in `/opt/shushgift`, with the PROD app's
 application id, `<android-application-id>`, PROD's own service account key,
 PROD's audience (`https://<prod-host>/api/billing/google/notifications`) and
 PROD's push account, plus one more variable, so the count is 6:
 
 ```bash
-cd /opt/wishlist
+cd /opt/shushgift
 grep -c '^GOOGLE_PLAY_' .env                                                # 6
 sed -i 's|^GOOGLE_PLAY_TEST_ACCOUNT_IDS=.*|GOOGLE_PLAY_TEST_ACCOUNT_IDS=<owner-account-id>|' .env
 ```
 
-`GOOGLE_PLAY_TEST_ACCOUNT_IDS` lists the Wishlist account ids (never
+`GOOGLE_PLAY_TEST_ACCOUNT_IDS` lists the Shush Gift account ids (never
 addresses; found as in [Part 3, step
 6](#6-create-the-app-review-demo-account)) whose test purchases PROD accepts.
 Because license testing covers every app of the developer account (step 6),
@@ -881,10 +892,10 @@ Logs are in `docker compose logs app`, in the environment's directory.
 | `selling on iPhone is off; missing or invalid: X` | Set X. `APPLE_IAP_PRIVATE_KEY` here also means a key that does not load: it must be one line, each line break written `\n` |
 | `apple: a notification failed its check` | If every notification does: `APPLE_BUNDLE_ID`, `APPLE_APP_APPLE_ID` (PROD) or the URL's environment in [step 4 of Part 3](#4-set-the-notification-urls) is wrong |
 | `apple: Sandbox transaction … refused for account …` | A Sandbox purchase on PROD from an account that is not in `APPLE_SANDBOX_ACCOUNT_IDS`. Expected for testers; for the review's demo account, see [step 6](#6-create-the-app-review-demo-account) |
-| Bought on iPhone, but Premium does not appear | `docker compose logs app \| grep 'apple:'`. A transaction `of another product` is a wrong `APPLE_PRODUCT_ID`; `names another account` is a purchase made under a different Wishlist account than the signed-in one |
+| Bought on iPhone, but Premium does not appear | `docker compose logs app \| grep 'apple:'`. A transaction `of another product` is a wrong `APPLE_PRODUCT_ID`; `names another account` is a purchase made under a different Shush Gift account than the signed-in one |
 | `selling on Android is off; missing or invalid: X` | Set X. `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` here also means a key that does not load: it must be the JSON key on one line |
 | `google: a push failed its check` | If every push does: `GOOGLE_PLAY_PUBSUB_AUDIENCE` (it must be the push subscription's audience, the environment's notifications URL) or `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT` is wrong ([step 4 of Part 4](#4-create-the-pubsub-topic-and-the-push-subscription)) |
 | `google: purchase … refused for account … (real_refused)` | A real purchase on VAL, which accepts test purchases only. Expected for anyone who is not a license tester |
 | `google: purchase … refused for account … (test_refused)` | A test purchase on PROD from an account that is not in `GOOGLE_PLAY_TEST_ACCOUNT_IDS`. Expected for testers ([step 9](#9-fill-in-prod-for-android)) |
-| Bought on Android, but Premium does not appear | `docker compose logs app \| grep 'google:'`. `of another product` is a wrong `GOOGLE_PLAY_PRODUCT_ID`; `names another account` is a purchase made under a different Wishlist account than the signed-in one; `could not be acknowledged` can be a service account without the permission to manage orders and subscriptions ([step 3](#3-create-the-servers-service-account)) |
+| Bought on Android, but Premium does not appear | `docker compose logs app \| grep 'google:'`. `of another product` is a wrong `GOOGLE_PLAY_PRODUCT_ID`; `names another account` is a purchase made under a different Shush Gift account than the signed-in one; `could not be acknowledged` can be a service account without the permission to manage orders and subscriptions ([step 3](#3-create-the-servers-service-account)) |
 | An account deletion refused with 409 | [Account deletion refused with 409](DEPLOYMENT.md#account-deletion-refused-with-409) |

@@ -1,6 +1,6 @@
 # gen-l10n (DESIGN_SYSTEM_PLAN D8). `flutter pub get` and every build generate
 # AppLocalizations next to the ARB files, as lib/l10n/app_localizations*.dart,
-# imported as package:wishlist/l10n/app_localizations.dart. Those files are
+# imported as package:shushgift/l10n/app_localizations.dart. Those files are
 # generated, not committed (root .gitignore).
 arb-dir: lib/l10n
 template-arb-file: app_en.arb

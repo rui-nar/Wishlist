@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/app_router.dart';
-import 'package:wishlist/src/auth/account_screen.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/billing/billing_repository.dart';
-import 'package:wishlist/src/billing/plan_screen.dart';
-import 'package:wishlist/src/legal/legal_placeholder_screen.dart';
-import 'package:wishlist/src/lists/price.dart';
+import 'package:shushgift/src/app_router.dart';
+import 'package:shushgift/src/auth/account_screen.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/billing/billing_repository.dart';
+import 'package:shushgift/src/billing/plan_screen.dart';
+import 'package:shushgift/src/legal/legal_placeholder_screen.dart';
+import 'package:shushgift/src/lists/price.dart';
 
 import '../support/fakes.dart';
 import 'support.dart';

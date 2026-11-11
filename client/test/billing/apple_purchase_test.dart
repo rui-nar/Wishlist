@@ -3,12 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/billing/billing_repository.dart';
-import 'package:wishlist/src/billing/plan_screen.dart';
-import 'package:wishlist/src/billing/store.dart';
-import 'package:wishlist/src/billing/store_purchases.dart';
-import 'package:wishlist/src/legal/legal_placeholder_screen.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/billing/billing_repository.dart';
+import 'package:shushgift/src/billing/plan_screen.dart';
+import 'package:shushgift/src/billing/store.dart';
+import 'package:shushgift/src/billing/store_purchases.dart';
+import 'package:shushgift/src/legal/legal_placeholder_screen.dart';
 
 import '../support/fakes.dart';
 import 'support.dart';
@@ -296,7 +296,7 @@ void main() {
     });
 
     const refusals = {
-      'other_account': 'This App Store purchase belongs to another Wishlist '
+      'other_account': 'This App Store purchase belongs to another Shush Gift '
           'account. Sign in to that account to use it.',
       'sandbox_refused': 'Test purchases are not accepted here.',
       'invalid_transaction':
@@ -525,7 +525,7 @@ void main() {
 
       await tap(tester, _kRestore);
 
-      expect(find.textContaining('belongs to another Wishlist account'),
+      expect(find.textContaining('belongs to another Shush Gift account'),
           findsOneWidget);
       expect(find.textContaining('No subscription to restore'), findsNothing);
     });

@@ -1,18 +1,18 @@
 /// Lagoon light and dark themes (DESIGN_SYSTEM_PLAN D2, D5, D6).
 ///
 /// Both are built by [_buildTheme] from a hand-written [ColorScheme] and the
-/// [WishlistColors] extension, so the component themes are written once.
+/// [ShushGiftColors] extension, so the component themes are written once.
 /// `main.dart` passes both to `MaterialApp` with [ThemeMode.system] (D9).
 library;
 
 import 'package:flutter/material.dart';
 
 import 'tokens.dart';
-import 'wishlist_colors.dart';
+import 'shushgift_colors.dart';
 
-ThemeData buildLightTheme() => _buildTheme(_lightScheme, WishlistColors.light);
+ThemeData buildLightTheme() => _buildTheme(_lightScheme, ShushGiftColors.light);
 
-ThemeData buildDarkTheme() => _buildTheme(_darkScheme, WishlistColors.dark);
+ThemeData buildDarkTheme() => _buildTheme(_darkScheme, ShushGiftColors.dark);
 
 // Written out field by field, not seeded: `ColorScheme.fromSeed` would shift
 // the chosen teal and slates to its own tonal palette (D2). Roles left out
@@ -90,7 +90,7 @@ const double _minTapHeight = 44;
 /// Material's default minimum button width.
 const double _minButtonWidth = 64;
 
-ThemeData _buildTheme(ColorScheme scheme, WishlistColors colors) {
+ThemeData _buildTheme(ColorScheme scheme, ShushGiftColors colors) {
   final border = BorderSide(color: scheme.outline);
   const buttonShape = RoundedRectangleBorder(
     borderRadius: BorderRadius.all(Radius.circular(Radii.md)),
@@ -189,7 +189,7 @@ ThemeData _buildTheme(ColorScheme scheme, WishlistColors colors) {
 /// The type scale of D5. Space Grotesk for display, headline and title
 /// styles, Inter for body and label styles. Styles D5 does not list keep
 /// Material's sizes and weights, which ThemeData merges underneath.
-TextTheme _textTheme(ColorScheme scheme, WishlistColors colors) {
+TextTheme _textTheme(ColorScheme scheme, ShushGiftColors colors) {
   const display = TextStyle(fontFamily: FontFamilies.display);
   const text = TextStyle(fontFamily: FontFamilies.text);
 

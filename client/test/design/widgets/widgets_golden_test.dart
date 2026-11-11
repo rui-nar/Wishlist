@@ -6,12 +6,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/l10n/app_localizations.dart';
-import 'package:wishlist/src/design/theme.dart';
-import 'package:wishlist/src/design/widgets/gift_card.dart';
-import 'package:wishlist/src/design/widgets/image_viewer.dart';
-import 'package:wishlist/src/design/widgets/privacy_banner.dart';
-import 'package:wishlist/src/design/widgets/status_chip.dart';
+import 'package:shushgift/l10n/app_localizations.dart';
+import 'package:shushgift/src/design/theme.dart';
+import 'package:shushgift/src/design/widgets/gift_card.dart';
+import 'package:shushgift/src/design/widgets/image_viewer.dart';
+import 'package:shushgift/src/design/widgets/privacy_banner.dart';
+import 'package:shushgift/src/design/widgets/status_chip.dart';
 
 // Goldens render on Linux only (DESIGN_SYSTEM_PLAN D10): .\goldens.ps1
 // regenerates them there.

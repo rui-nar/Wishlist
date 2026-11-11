@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/auth/account_screen.dart';
-import 'package:wishlist/src/auth/auth_controller.dart';
-import 'package:wishlist/src/auth/sign_in_screen.dart';
-import 'package:wishlist/src/billing/billing_repository.dart';
-import 'package:wishlist/src/billing/plan_screen.dart';
-import 'package:wishlist/src/intro/intro_screen.dart';
+import 'package:shushgift/src/auth/account_screen.dart';
+import 'package:shushgift/src/auth/auth_controller.dart';
+import 'package:shushgift/src/auth/sign_in_screen.dart';
+import 'package:shushgift/src/billing/billing_repository.dart';
+import 'package:shushgift/src/billing/plan_screen.dart';
+import 'package:shushgift/src/intro/intro_screen.dart';
 
 import '../billing/support.dart';
 import '../support/fakes.dart';
@@ -37,13 +37,13 @@ void main() {
     expect(find.text('alice@example.com'), findsOneWidget);
   });
 
-  testWidgets('How Wishlist works opens the introduction and comes back',
+  testWidgets('How Shush Gift works opens the introduction and comes back',
       (tester) async {
     await pumpAccount(tester);
 
     Future<void> openIntro() async {
-      await tester.ensureVisible(find.text('How Wishlist works'));
-      await tester.tap(find.text('How Wishlist works'));
+      await tester.ensureVisible(find.text('How Shush Gift works'));
+      await tester.tap(find.text('How Shush Gift works'));
       await tester.pumpAndSettle();
       expect(find.byType(IntroScreen), findsOneWidget);
       expect(find.text('Your wishes, their surprise'), findsOneWidget);

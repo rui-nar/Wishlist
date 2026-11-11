@@ -2,18 +2,18 @@
 # Seeds VAL with PROD's newest nightly dump and PROD's uploaded files (plan D9,
 # D18). It is also the test that PROD's dumps restore.
 #
-# Installed as /opt/wishlist-val/seed-from-prod.sh; run on the VPS as the
+# Installed as /opt/shushgift-val/seed-from-prod.sh; run on the VPS as the
 # deploy user (in the docker group, never root), from any directory:
 #
-#   /opt/wishlist-val/seed-from-prod.sh
+#   /opt/shushgift-val/seed-from-prod.sh
 #
 # Replaces VAL's database: everything written to VAL since the last seed is
 # lost. VAL's app is down from the moment its database is dropped until the end.
 set -euo pipefail
 
-val_dir=/opt/wishlist-val
-prod_backups=/opt/wishlist/backups
-media_root=/opt/wishlist-media
+val_dir=/opt/shushgift-val
+prod_backups=/opt/shushgift/backups
+media_root=/opt/shushgift-media
 
 compose() {
     docker compose -f "$val_dir/docker-compose.yml" "$@"
@@ -32,9 +32,9 @@ prod_dumps() {
 }
 
 # 1. Find the dump before touching VAL: no dump, nothing changed.
-newest=$(prod_dumps sh -c 'cd /prod-backups && ls -1 wishlist_*.dump 2>/dev/null | sort | tail -n 1')
+newest=$(prod_dumps sh -c 'cd /prod-backups && ls -1 shushgift_*.dump 2>/dev/null | sort | tail -n 1')
 if [ -z "$newest" ]; then
-    log "no wishlist_*.dump in $prod_backups; VAL left as it was"
+    log "no shushgift_*.dump in $prod_backups; VAL left as it was"
     exit 1
 fi
 log "seeding VAL from $newest"
@@ -88,7 +88,7 @@ log "PROD's purchases and Apple tokens removed"
 # 5. PROD's files, hard-linked into VAL's directory: no extra disk, and safe
 # because a media file is never modified (D18). Files VAL already has are kept.
 # As uid 10001, the files' owner: Debian's fs.protected_hardlinks forbids the
-# deploy user to link files it does not own. With /opt/wishlist-media mounted
+# deploy user to link files it does not own. With /opt/shushgift-media mounted
 # once: links across two mounts fail even on one filesystem.
 compose run --rm --no-deps -T --user 10001:10001 \
     -v "$media_root:/media" --entrypoint cp app \

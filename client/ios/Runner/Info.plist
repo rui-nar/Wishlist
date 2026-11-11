@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>$(WISHLIST_DISPLAY_NAME)</string>
+	<string>$(SHUSHGIFT_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -22,7 +22,7 @@
 		<string>fr</string>
 	</array>
 	<key>CFBundleName</key>
-	<string>wishlist</string>
+	<string>$(SHUSHGIFT_DISPLAY_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -44,6 +44,10 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- A link that opens the app reaches its router, whole, fragment
+	     included (SHUSH_GIFT_PLAN D7), as on Android. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
 	<!-- HTTPS only: no export compliance documents (IOS_APP_PLAN D6). -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
@@ -53,9 +57,9 @@
 	     InfoPlist.strings. The app picks from the library only, but the
 	     picker can open the camera, so the App Store requires both. -->
 	<key>NSCameraUsageDescription</key>
-	<string>Wishlist uses the camera so you can take a picture for a gift.</string>
+	<string>Shush Gift uses the camera so you can take a picture for a gift.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Wishlist opens your photos so you can choose a picture for a gift.</string>
+	<string>Shush Gift opens your photos so you can choose a picture for a gift.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -2,8 +2,8 @@
     <!-- The app calls the server (sign-in, /api/config, /api/me). The debug and
          profile manifests add this for development tools only. -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- appLabel is set per flavour in build.gradle.kts: "Wishlist" or
-         "Wishlist VAL". -->
+    <!-- appLabel is set per flavour in build.gradle.kts: "Shush Gift" or
+         "Shush Gift VAL". -->
     <application
         android:label="${appLabel}"
         android:name="${applicationName}"
@@ -24,6 +24,14 @@
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
+              />
+            <!-- A link that opens the app reaches its router, whole, fragment
+                 included (Shush Gift plan D7). The links it opens are claimed
+                 by an intent filter build.gradle.kts adds when the build sets
+                 shushgiftAppLinkHost. -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="true"
               />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>

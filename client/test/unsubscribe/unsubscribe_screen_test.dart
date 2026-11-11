@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:wishlist/src/auth/account_screen.dart';
-import 'package:wishlist/src/auth/sign_in_screen.dart';
-import 'package:wishlist/src/unsubscribe/unsubscribe_screen.dart';
+import 'package:shushgift/src/auth/account_screen.dart';
+import 'package:shushgift/src/auth/sign_in_screen.dart';
+import 'package:shushgift/src/unsubscribe/unsubscribe_screen.dart';
 
 import '../support/fakes.dart';
 

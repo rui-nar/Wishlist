@@ -1,4 +1,4 @@
-# ── Wishlist golden tests, rendered in a Linux container ──────────────────────
+# ── Shush Gift golden tests, rendered in a Linux container ────────────────────
 # Usage (see docs/DEVELOPMENT.md, "Golden tests"):
 #   .\goldens.ps1          — regenerate the golden images (flutter test
 #                            --update-goldens --tags golden in client/)
@@ -30,7 +30,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 # ── Image: the Dockerfile's web stage base and packages, without the SDK ──────
 # Built locally and cached by Docker, so later runs skip apt. One RUN line: the
 # Dockerfile arrives on stdin, where line continuations would carry CRLFs.
-$image = 'wishlist-goldens'
+$image = 'shushgift-goldens'
 $dockerfile = @(
     'FROM debian:bookworm-slim'
     'RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git unzip xz-utils zip && rm -rf /var/lib/apt/lists/*'
@@ -76,10 +76,10 @@ Invoke-Native 'flutter test --tags golden' {
         --env "FLUTTER_TAG=$flutterTag" `
         --env PUB_CACHE=/pub-cache `
         --volume "${root}:/repo" `
-        --volume wishlist-goldens-flutter:/opt/flutter `
-        --volume wishlist-goldens-pub-cache:/pub-cache `
-        --volume wishlist-goldens-dart-tool:/repo/client/.dart_tool `
-        --volume wishlist-goldens-build:/repo/client/build `
+        --volume shushgift-goldens-flutter:/opt/flutter `
+        --volume shushgift-goldens-pub-cache:/pub-cache `
+        --volume shushgift-goldens-dart-tool:/repo/client/.dart_tool `
+        --volume shushgift-goldens-build:/repo/client/build `
         --tmpfs /repo/client/android `
         --tmpfs /repo/client/ios `
         $image bash -c $script goldens @testArgs

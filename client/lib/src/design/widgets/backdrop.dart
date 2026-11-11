@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../wishlist_colors.dart';
+import '../shushgift_colors.dart';
 
 /// How strongly [Backdrop] draws its motif (WEB_LAYOUT_PLAN D4).
 enum BackdropIntensity {
@@ -16,7 +16,7 @@ enum BackdropIntensity {
 
 /// The page background with an abstract motif behind [child]
 /// (WEB_LAYOUT_PLAN D4): large, soft, overlapping curved shapes in the motif
-/// colours of [WishlistColors], anchored to the top-right and bottom-left
+/// colours of [ShushGiftColors], anchored to the top-right and bottom-left
 /// corners so the centre, where content sits, stays calm.
 ///
 /// Fills its constraints, which must be bounded. Pages get it through
@@ -33,7 +33,7 @@ class Backdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.wishlistColors;
+    final colors = context.shushGiftColors;
 
     return CustomPaint(
       painter: BackdropPainter(

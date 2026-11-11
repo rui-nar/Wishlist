@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
-import 'package:wishlist/src/billing/billing_repository.dart';
-import 'package:wishlist/src/billing/store.dart';
-import 'package:wishlist/src/legal/legal_placeholder_screen.dart';
+import 'package:shushgift/src/billing/billing_repository.dart';
+import 'package:shushgift/src/billing/store.dart';
+import 'package:shushgift/src/legal/legal_placeholder_screen.dart';
 
 import '../support/fakes.dart';
 import 'support.dart';
@@ -307,7 +307,7 @@ void main() {
       'unknown_purchase': invalid,
       'other_product': invalid,
       'test_refused': 'Test purchases are not accepted here.',
-      'real_refused': 'This test version of Wishlist only accepts test '
+      'real_refused': 'This test version of Shush Gift only accepts test '
           'purchases. Google Play refunds this one within three days.',
     };
     for (final MapEntry(key: code, value: message) in refusals.entries) {
@@ -335,7 +335,7 @@ void main() {
 
       expect(play.finishedForOtherAccount, ['GPA.0001']);
       expect(
-        find.text('This Google Play purchase belongs to another Wishlist '
+        find.text('This Google Play purchase belongs to another Shush Gift '
             'account. Sign in to that account to use it.'),
         findsOneWidget,
       );

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wishlist/src/billing/google_store.dart';
-import 'package:wishlist/src/billing/store.dart';
+import 'package:shushgift/src/billing/google_store.dart';
+import 'package:shushgift/src/billing/store.dart';
 
 import 'support.dart';
 

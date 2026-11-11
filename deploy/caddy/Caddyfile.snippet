@@ -1,4 +1,4 @@
-# Wishlist's sites, appended to /etc/caddy/Caddyfile on the VPS, which also
+# Shush Gift's sites, appended to /etc/caddy/Caddyfile on the VPS, which also
 # serves TraxJourney. Replace <prod-host> and <val-host> with the real
 # hostnames (plan D13), and run
 #   caddy validate --config /etc/caddy/Caddyfile
@@ -8,6 +8,13 @@
 
 <prod-host> {
 	reverse_proxy 127.0.0.1:8010
+}
+
+# www goes to the apex, path and query kept (Shush Gift plan D1). The target's
+# host is fixed here: {uri} is the request's path and query only, never its
+# host, so no request can choose where it is sent.
+www.<prod-host> {
+	redir https://<prod-host>{uri} permanent
 }
 
 <val-host> {

@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
-import 'package:wishlist/src/api/api_image.dart';
-import 'package:wishlist/src/design/widgets/gift_card.dart';
-import 'package:wishlist/src/design/widgets/image_viewer.dart';
-import 'package:wishlist/src/design/widgets/privacy_banner.dart';
-import 'package:wishlist/src/lists/list_detail_screen.dart';
-import 'package:wishlist/src/shared/shared_with_me_screen.dart';
+import 'package:shushgift/src/api/api_image.dart';
+import 'package:shushgift/src/design/widgets/gift_card.dart';
+import 'package:shushgift/src/design/widgets/image_viewer.dart';
+import 'package:shushgift/src/design/widgets/privacy_banner.dart';
+import 'package:shushgift/src/lists/list_detail_screen.dart';
+import 'package:shushgift/src/shared/shared_with_me_screen.dart';
 
 import '../lists/support/fake_lists_server.dart';
 

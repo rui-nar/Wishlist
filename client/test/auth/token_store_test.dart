@@ -1,7 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wishlist/src/auth/token_store.dart';
+import 'package:shushgift/src/auth/token_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

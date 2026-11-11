@@ -40,7 +40,9 @@ _STATUSES = {
 FINISHED = frozenset({"canceled", "incomplete_expired"})
 
 # `metadata.app` on what our checkout creates, at Stripe for as long as the
-# subscriptions sold: later releases must keep reading it.
+# subscriptions sold: later releases must keep reading it. It keeps the app's
+# former name (Shush Gift plan D4): Stripe stores it on every subscription
+# already sold, and a new value would make the server ignore all of them.
 APP_MARKER = "wishlist"
 
 
@@ -105,7 +107,7 @@ def is_finished(subscription: dict[str, Any]) -> bool:
 
 
 def is_ours(subscription: dict[str, Any]) -> bool:
-    """Whether Wishlist's checkout sold it: the proof an automatic cancel
+    """Whether Shush Gift's checkout sold it: the proof an automatic cancel
     needs, since a Stripe account can hold another app's subscriptions."""
     return _mapping(subscription.get("metadata")).get("app") == APP_MARKER
 

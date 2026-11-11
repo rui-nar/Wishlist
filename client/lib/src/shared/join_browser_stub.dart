@@ -1,4 +1,5 @@
-/// Android and iOS: no address bar, and no link opens the app yet.
+/// Android and iOS: no address bar, and a link reaches the running app
+/// (app_links.dart) instead of loading it again.
 library;
 
 import 'pending_join.dart';

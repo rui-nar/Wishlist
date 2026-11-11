@@ -9,8 +9,8 @@ import 'tokens.dart';
 /// only appear where invitee activity is shown, so that a rose element on a
 /// recipient's screen is a visible bug.
 @immutable
-class WishlistColors extends ThemeExtension<WishlistColors> {
-  const WishlistColors({
+class ShushGiftColors extends ThemeExtension<ShushGiftColors> {
+  const ShushGiftColors({
     required this.inviteeActivity,
     required this.inviteeActivityContainer,
     required this.onInviteeActivityContainer,
@@ -43,7 +43,7 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
   final Color motifB;
   final Color motifC;
 
-  static const light = WishlistColors(
+  static const light = ShushGiftColors(
     inviteeActivity: LightColors.inviteeActivity,
     inviteeActivityContainer: LightColors.inviteeActivityContainer,
     onInviteeActivityContainer: LightColors.onInviteeActivityContainer,
@@ -54,7 +54,7 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
     motifC: LightColors.motifC,
   );
 
-  static const dark = WishlistColors(
+  static const dark = ShushGiftColors(
     inviteeActivity: DarkColors.inviteeActivity,
     inviteeActivityContainer: DarkColors.inviteeActivityContainer,
     onInviteeActivityContainer: DarkColors.onInviteeActivityContainer,
@@ -66,7 +66,7 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
   );
 
   @override
-  WishlistColors copyWith({
+  ShushGiftColors copyWith({
     Color? inviteeActivity,
     Color? inviteeActivityContainer,
     Color? onInviteeActivityContainer,
@@ -76,7 +76,7 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
     Color? motifB,
     Color? motifC,
   }) {
-    return WishlistColors(
+    return ShushGiftColors(
       inviteeActivity: inviteeActivity ?? this.inviteeActivity,
       inviteeActivityContainer:
           inviteeActivityContainer ?? this.inviteeActivityContainer,
@@ -91,9 +91,9 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
   }
 
   @override
-  WishlistColors lerp(WishlistColors? other, double t) {
+  ShushGiftColors lerp(ShushGiftColors? other, double t) {
     if (other == null) return this;
-    return WishlistColors(
+    return ShushGiftColors(
       inviteeActivity: Color.lerp(inviteeActivity, other.inviteeActivity, t)!,
       inviteeActivityContainer: Color.lerp(
           inviteeActivityContainer, other.inviteeActivityContainer, t)!,
@@ -108,8 +108,8 @@ class WishlistColors extends ThemeExtension<WishlistColors> {
   }
 }
 
-/// `context.wishlistColors`: the [WishlistColors] of the current theme.
-extension WishlistColorsContext on BuildContext {
-  WishlistColors get wishlistColors =>
-      Theme.of(this).extension<WishlistColors>()!;
+/// `context.shushGiftColors`: the [ShushGiftColors] of the current theme.
+extension ShushGiftColorsContext on BuildContext {
+  ShushGiftColors get shushGiftColors =>
+      Theme.of(this).extension<ShushGiftColors>()!;
 }

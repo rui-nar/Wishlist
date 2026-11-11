@@ -1,7 +1,7 @@
 /// Lagoon design tokens: the only place colours, spacing, radii and type sizes
 /// are written (DESIGN_SYSTEM_PLAN D1).
 ///
-/// Screens read these through [Theme.of] or `context.wishlistColors`, never
+/// Screens read these through [Theme.of] or `context.shushGiftColors`, never
 /// as literals.
 library;
 

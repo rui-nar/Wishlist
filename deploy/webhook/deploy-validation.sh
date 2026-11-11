@@ -1,5 +1,5 @@
 #!/bin/bash
-# Triggered by the `wishlist-webhook` service (hooks.yaml) whenever the
+# Triggered by the `shushgift-webhook` service (hooks.yaml) whenever the
 # "Build and publish Docker image" workflow finishes successfully off the
 # `validation` tag (plan D6). Runs locally on the VPS as the deploy user: the
 # same pull and up -d that deploy.ps1 -Target Val does over SSH, minus the
@@ -7,10 +7,10 @@
 #
 #   deploy-validation.sh <workflow_run.head_sha>
 #
-# Installed as /opt/wishlist-val/webhook/deploy-validation.sh (plan D7).
+# Installed as /opt/shushgift-val/webhook/deploy-validation.sh (plan D7).
 set -euo pipefail
 
-VAL_DIR=/opt/wishlist-val
+VAL_DIR=/opt/shushgift-val
 HOOK_DIR="$VAL_DIR/webhook"
 LOG_FILE="$HOOK_DIR/deploy.log"
 LOCK_FILE="$HOOK_DIR/deploy.lock"

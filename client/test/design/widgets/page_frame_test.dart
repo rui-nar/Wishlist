@@ -1,10 +1,10 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/design/theme.dart';
-import 'package:wishlist/src/design/tokens.dart';
-import 'package:wishlist/src/design/widgets/backdrop.dart';
-import 'package:wishlist/src/design/widgets/page_frame.dart';
+import 'package:shushgift/src/design/theme.dart';
+import 'package:shushgift/src/design/tokens.dart';
+import 'package:shushgift/src/design/widgets/backdrop.dart';
+import 'package:shushgift/src/design/widgets/page_frame.dart';
 
 void main() {
   const content = Key('content');

@@ -48,14 +48,14 @@ _EN = {
     "unsubscribe": "Stop email notifications",
     "account": "Email settings",
     "link_line": "{label}: {url}",
-    "sign_in_create_subject": "Create your Wishlist account",
+    "sign_in_create_subject": "Create your Shush Gift account",
     "sign_in_create_intro": (
-        "To finish creating your Wishlist account, choose a password."
+        "To finish creating your Shush Gift account, choose a password."
     ),
     "sign_in_create_action": "Create my account",
-    "sign_in_reset_subject": "Reset your Wishlist password",
+    "sign_in_reset_subject": "Reset your Shush Gift password",
     "sign_in_reset_intro": (
-        "To choose a new password for your Wishlist account, use the link below."
+        "To choose a new password for your Shush Gift account, use the link below."
     ),
     "sign_in_reset_action": "Choose a new password",
     "sign_in_lifetime": "This link works once and expires in 1 hour.",
@@ -68,7 +68,7 @@ _EN = {
     ),
     "sign_in_why": (
         "You are receiving this email because this address was entered on "
-        "Wishlist. If it was not you, you can ignore it."
+        "Shush Gift. If it was not you, you can ignore it."
     ),
 }
 
@@ -102,15 +102,15 @@ _FR = {
     ),
     "unsubscribe": "Arrêter les notifications par e-mail",
     "account": "Réglages des e-mails",
-    "sign_in_create_subject": "Créez votre compte Wishlist",
+    "sign_in_create_subject": "Créez votre compte Shush Gift",
     "sign_in_create_intro": (
-        "Pour terminer la création de votre compte Wishlist, choisissez un mot "
+        "Pour terminer la création de votre compte Shush Gift, choisissez un mot "
         "de passe."
     ),
     "sign_in_create_action": "Créer mon compte",
-    "sign_in_reset_subject": "Réinitialisez votre mot de passe Wishlist",
+    "sign_in_reset_subject": "Réinitialisez votre mot de passe Shush Gift",
     "sign_in_reset_intro": (
-        "Pour choisir un nouveau mot de passe pour votre compte Wishlist, "
+        "Pour choisir un nouveau mot de passe pour votre compte Shush Gift, "
         "utilisez le lien ci-dessous."
     ),
     "sign_in_reset_action": "Choisir un nouveau mot de passe",
@@ -125,7 +125,7 @@ _FR = {
     ),
     "sign_in_why": (
         "Vous recevez cet e-mail parce que cette adresse a été saisie sur "
-        "Wishlist. Si ce n'était pas vous, vous pouvez l'ignorer."
+        "Shush Gift. Si ce n'était pas vous, vous pouvez l'ignorer."
     ),
     "link_line": "{label} : {url}",
 }

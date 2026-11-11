@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Runner.entitlements, plus the app links (SHUSH_GIFT_PLAN D7): the
+	     build that sets SHUSHGIFT_APP_LINK_HOST signs with this file
+	     (Identity.xcconfig, ios-release.yml). Keep the rest the same as
+	     Runner.entitlements. -->
+	<!-- Apple sign-in through the system's sheet (IOS_APP_PLAN D4). -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!-- iOS checks the host's /.well-known/apple-app-site-association
+	     (server/app/app_links.py) and opens the paths it lists here. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:$(SHUSHGIFT_APP_LINK_HOST)</string>
+	</array>
+</dict>
+</plist>

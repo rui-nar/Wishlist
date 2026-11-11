@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/src/design/theme.dart';
-import 'package:wishlist/src/design/widgets/backdrop.dart';
-import 'package:wishlist/src/design/wishlist_colors.dart';
+import 'package:shushgift/src/design/theme.dart';
+import 'package:shushgift/src/design/widgets/backdrop.dart';
+import 'package:shushgift/src/design/shushgift_colors.dart';
 
 void main() {
   Future<void> pump(
@@ -36,11 +36,11 @@ void main() {
   }
 
   final themes = {
-    'light': (buildLightTheme(), WishlistColors.light),
-    'dark': (buildDarkTheme(), WishlistColors.dark),
+    'light': (buildLightTheme(), ShushGiftColors.light),
+    'dark': (buildDarkTheme(), ShushGiftColors.dark),
   };
   final rose = [
-    for (final c in [WishlistColors.light, WishlistColors.dark]) ...[
+    for (final c in [ShushGiftColors.light, ShushGiftColors.dark]) ...[
       c.inviteeActivity,
       c.inviteeActivityContainer,
       c.onInviteeActivityContainer,
@@ -83,7 +83,7 @@ void main() {
   });
 
   test('repaints only when a colour or the intensity changes', () {
-    const colors = WishlistColors.light;
+    const colors = ShushGiftColors.light;
     BackdropPainter make({
       Color? motifA,
       BackdropIntensity intensity = BackdropIntensity.subtle,
@@ -98,7 +98,7 @@ void main() {
 
     expect(make().shouldRepaint(make()), isFalse);
     expect(
-      make().shouldRepaint(make(motifA: WishlistColors.dark.motifA)),
+      make().shouldRepaint(make(motifA: ShushGiftColors.dark.motifA)),
       isTrue,
     );
     expect(

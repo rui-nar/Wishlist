@@ -5,7 +5,7 @@ library;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Where the flag is stored in shared preferences.
-const kIntroSeenKey = 'wishlist.intro_seen';
+const kIntroSeenKey = 'shushgift.intro_seen';
 
 /// The device's "introduction seen" flag, read once from shared preferences
 /// and kept in memory afterwards.

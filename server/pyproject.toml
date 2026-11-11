@@ -1,8 +1,8 @@
 [project]
-name = "wishlist-server"
+name = "shushgift-server"
 # Placeholder: the release version lives in the git tag (APP_VERSION), not here.
 version = "0.0.0"
-description = "Wishlist server (FastAPI)"
+description = "Shush Gift server (FastAPI)"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.1",

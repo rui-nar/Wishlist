@@ -27,3 +27,4 @@ the plan.
 | [IOS_APP_PLAN](IOS_APP_PLAN.md) | — | feat/ios-app |
 | [APPLE_IAP_PLAN](APPLE_IAP_PLAN.md) | — | feat/ios-app |
 | [ANDROID_RELEASE_PLAN](ANDROID_RELEASE_PLAN.md) | — | feat/android-release |
+| [SHUSH_GIFT_PLAN](SHUSH_GIFT_PLAN.md) | — | feat/shush-gift |

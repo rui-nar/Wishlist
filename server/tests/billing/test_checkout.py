@@ -23,7 +23,7 @@ from app.billing.stripe_gateway import (
 LOGGER = "app.billing.router"
 TIMEOUT = 10
 NOW = sessions.utc_now()
-BASE = "https://wishlist.example.test"
+BASE = "https://shushgift.example.test"
 
 
 @pytest.fixture

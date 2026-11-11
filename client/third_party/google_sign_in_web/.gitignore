@@ -1,4 +1,4 @@
-# Wishlist addition: what `flutter test --platform chrome` writes here. A
+# Shush Gift addition: what `flutter test --platform chrome` writes here. A
 # package's lockfile is not committed; the client's pubspec.lock pins it.
 /build/
 /pubspec.lock

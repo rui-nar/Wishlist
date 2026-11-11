@@ -312,7 +312,7 @@ def gone_user(engine, account):
 
 
 def add_ours(fake, account, **fields):
-    """A subscription with the marker Wishlist's checkout writes."""
+    """A subscription with the marker Shush Gift's checkout writes."""
     fake.add_subscription("sub_1", account.id, **fields)["metadata"]["app"] = "wishlist"
 
 

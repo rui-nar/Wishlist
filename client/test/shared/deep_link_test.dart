@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:wishlist/src/auth/sign_in_screen.dart';
-import 'package:wishlist/src/lists/list_detail_screen.dart';
-import 'package:wishlist/src/shared/occasion_screen.dart';
+import 'package:shushgift/src/auth/sign_in_screen.dart';
+import 'package:shushgift/src/lists/list_detail_screen.dart';
+import 'package:shushgift/src/shared/occasion_screen.dart';
 
 import '../lists/support/fake_lists_server.dart';
 import '../support/fakes.dart';

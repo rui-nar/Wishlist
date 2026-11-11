@@ -17,8 +17,9 @@ enum _Stage { loading, confirm, joining, invalid, failed }
 /// joining (LISTS_GIFTS_SHARING_PLAN D5, D6; the review envelope's "Joining
 /// is explicit").
 ///
-/// The token is the one [PendingJoin] captured at start: the router never
-/// sees the link's fragment. An owner is taken to the list, a member to the
+/// The token is the one [PendingJoin] captured at start, or from the link
+/// that last opened the app on a phone: the router never sees the link's
+/// fragment. An owner is taken to the list, a member to the
 /// occasion; anyone else is asked, and joins with "Join". The token is
 /// cleared as soon as it is used, whatever the outcome, and the next page
 /// takes this one's place in the browser's history, so going back never

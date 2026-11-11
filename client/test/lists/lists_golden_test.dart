@@ -5,8 +5,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wishlist/main.dart';
-import 'package:wishlist/src/billing/billing_repository.dart';
+import 'package:shushgift/main.dart';
+import 'package:shushgift/src/billing/billing_repository.dart';
 
 import 'support/fake_lists_server.dart';
 
@@ -109,7 +109,7 @@ void main() {
       return '/lists/$list/gifts/new';
     },
     'list_occasions': (server) {
-      server.accounts.publicBaseUrl = 'https://wishlist.example';
+      server.accounts.publicBaseUrl = 'https://shushgift.example';
       final list = server.addList('Christmas', recipientName: 'Léa');
       server.addGift(list, 'Wool socks');
       server.addOccasion(
@@ -234,7 +234,7 @@ void main() {
           await after[screen]?.call(tester);
 
           await expectLater(
-            find.byType(WishlistApp),
+            find.byType(ShushGiftApp),
             matchesGoldenFile('goldens/$name.png'),
           );
         }, tags: ['golden']);

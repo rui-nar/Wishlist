@@ -1,15 +1,15 @@
 # adnanh/webhook config: redeploys VAL the moment the "Build and publish
 # Docker image" workflow finishes publishing a new :validation image (plan D6).
-# Wishlist's own instance (plan D7): copied to
-# /opt/wishlist-val/webhook/hooks.yaml on the VPS and read by the
-# wishlist-webhook unit on 127.0.0.1:9998, never TraxJourney's hooks file.
+# Shush Gift's own instance (plan D7): copied to
+# /opt/shushgift-val/webhook/hooks.yaml on the VPS and read by the
+# shushgift-webhook unit on 127.0.0.1:9998, never TraxJourney's hooks file.
 #
 # The secret below lives inline, so the filled-in hooks.yaml exists only on the
-# VPS and is never committed (the repository is public). The example ships
+# VPS and is never committed, even to the private repository. The example ships
 # with an EMPTY secret on purpose. webhook refuses to check a signature against
 # an empty secret, so a copy nobody filled in rejects every delivery (HTTP 500)
 # instead of accepting payloads signed with a placeholder anyone can read here.
-# Use a secret of Wishlist's own, never TraxJourney's.
+# Use a secret of Shush Gift's own, never TraxJourney's.
 #
 # Rule semantics follow TraxJourney's hooks, checked against the webhook 2.8.0
 # source (the version Debian 12 and 13 ship; payload-hmac-sha256 needs 2.8.0
@@ -20,8 +20,8 @@
 # release would remove the manual gate of `deploy.ps1 -Target Prod` (plan D6).
 
 - id: deploy-validation
-  execute-command: "/opt/wishlist-val/webhook/deploy-validation.sh"
-  command-working-directory: "/opt/wishlist-val"
+  execute-command: "/opt/shushgift-val/webhook/deploy-validation.sh"
+  command-working-directory: "/opt/shushgift-val"
   response-message: "Deploying validation..."
   # The script checks /api/version against the commit that was built.
   pass-arguments-to-command:
@@ -70,7 +70,7 @@
       # until this value follows it.
       - match:
           type: value
-          value: "rui-nar/Wishlist"
+          value: "rui-nar/shushgift"
           parameter:
             source: payload
             name: repository.full_name

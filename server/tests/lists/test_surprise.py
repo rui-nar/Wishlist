@@ -1069,7 +1069,7 @@ def assert_shows_no_activity(answers: Iterable[Answer]) -> None:
 
 
 EMAIL = EmailConfig(
-    public_base_url="https://wishlist.example.test",
+    public_base_url="https://shushgift.example.test",
     notification_secret="a-test-notification-secret",
     allowed_addresses=None,
     missing=(),
