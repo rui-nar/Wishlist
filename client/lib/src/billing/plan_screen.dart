@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -172,9 +174,11 @@ class _PlanScreenState extends State<PlanScreen> {
   /// A checkout is being opened: no second one starts meanwhile.
   bool _buying = false;
 
-  /// The iOS app's purchases through Apple (Apple IAP plan D3): reported to
-  /// the server while this page is open. Null elsewhere.
-  StorePurchases? _purchases;
+  /// The iOS app's purchases through Apple (Apple IAP plan D3), the app's
+  /// one listener: this page buys and restores through it, and says what
+  /// they came to while it is open. Null elsewhere.
+  late final StorePurchases? _purchases = context.read<StorePurchases?>();
+  StreamSubscription<StoreOutcome>? _outcomes;
 
   /// Apple's product, once the server sells it and the App Store priced it.
   StoreProduct? _product;
@@ -193,19 +197,13 @@ class _PlanScreenState extends State<PlanScreen> {
   @override
   void initState() {
     super.initState();
-    if (deviceStore case final store?) {
-      _purchases = StorePurchases(
-        store: store,
-        report: _repository.reportAppleTransaction,
-        onOutcome: _onOutcome,
-      )..start();
-    }
+    _outcomes = _purchases?.outcomes.listen(_onOutcome);
     _waiting ? _waitForPayment() : _load();
   }
 
   @override
   void dispose() {
-    _purchases?.dispose();
+    _outcomes?.cancel();
     super.dispose();
   }
 

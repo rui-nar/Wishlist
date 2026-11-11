@@ -134,8 +134,14 @@ class ApiClient {
   /// A PUT whose answer has no body (204).
   Future<void> put(String path) => _send('PUT', path);
 
-  /// A POST whose answer has no body (204).
-  Future<void> post(String path) => _send('POST', path);
+  /// A POST whose answer has no body (204, 202), with a JSON [body] for the
+  /// routes that read one (a mailed link's address, a store's transaction).
+  Future<void> post(
+    String path, {
+    Map<String, dynamic>? body,
+    Duration timeout = _kTimeout,
+  }) =>
+      _send('POST', path, body: body, timeout: timeout);
 
   /// A DELETE whose answer has no body (204), with a JSON [body] for the
   /// route that reads one (an admin's deletion names the address, admin

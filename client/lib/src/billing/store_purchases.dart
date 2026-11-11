@@ -44,19 +44,23 @@ const _kDefinitive = {
 };
 
 /// Listens to [store] while started, one purchase at a time, in order.
+///
+/// One for the app, started while someone is signed in, whatever page is
+/// shown: a purchase approved later, a renewal or a refund is reported and
+/// finished as it comes. The plan page buys and restores through it.
 class StorePurchases {
-  StorePurchases({
-    required this.store,
-    required this.report,
-    required this.onOutcome,
-  });
+  StorePurchases({required this.store, required this.report});
 
   final Store store;
 
   /// Sends a signed transaction to the server: completes on its 204, throws
   /// as [ApiClient] does otherwise.
   final Future<void> Function(String signedTransaction) report;
-  final void Function(StoreOutcome outcome) onOutcome;
+
+  /// What each purchase came to, for the plan page while it is open. Sync,
+  /// so an outcome is out by the time [buy] or [restore] completes.
+  Stream<StoreOutcome> get outcomes => _outcomes.stream;
+  final _outcomes = StreamController<StoreOutcome>.broadcast(sync: true);
 
   StreamSubscription<List<StorePurchase>>? _subscription;
   Future<void> _queue = Future.value();
@@ -64,14 +68,32 @@ class StorePurchases {
   /// Restored purchases seen since [restore] began.
   int _restored = 0;
 
+  bool get isListening => _subscription != null;
+
   /// Listens first, so nothing the store sends is missed, then picks up what
-  /// an earlier run left unfinished.
+  /// an earlier run left unfinished. Nothing when already listening.
   void start() {
+    if (_subscription != null) return;
     _subscription = store.purchases.listen(_enqueue);
     _enqueue(null);
   }
 
-  Future<void> dispose() async => _subscription?.cancel();
+  /// Stops listening, at sign-out: what the store sends meanwhile stays
+  /// unfinished, and comes back with the next [start].
+  Future<void> stop() async {
+    final subscription = _subscription;
+    _subscription = null;
+    await subscription?.cancel();
+  }
+
+  Future<void> dispose() async {
+    await stop();
+    await _outcomes.close();
+  }
+
+  void _onOutcome(StoreOutcome outcome) {
+    if (!_outcomes.isClosed) _outcomes.add(outcome);
+  }
 
   /// Buys [product] for [accountId]; done once its outcome is out. Throws
   /// when the store could not open its sheet.
@@ -111,13 +133,13 @@ class StorePurchases {
   Future<void> _handle(StorePurchase purchase) async {
     switch (purchase.status) {
       case StorePurchaseStatus.pending:
-        onOutcome(StoreOutcome.pending);
+        _onOutcome(StoreOutcome.pending);
         return;
       case StorePurchaseStatus.cancelled:
-        onOutcome(StoreOutcome.cancelled);
+        _onOutcome(StoreOutcome.cancelled);
         return;
       case StorePurchaseStatus.failed:
-        onOutcome(StoreOutcome.failed);
+        _onOutcome(StoreOutcome.failed);
         return;
       case StorePurchaseStatus.restored:
         _restored++;
@@ -129,7 +151,7 @@ class StorePurchases {
     if (outcome == null) return;
     if (outcome == StoreOutcome.unconfirmed) {
       // Left unfinished: the store sends it again.
-      onOutcome(outcome);
+      _onOutcome(outcome);
       return;
     }
     try {
@@ -137,7 +159,7 @@ class StorePurchases {
     } catch (_) {
       // Sent again later, and the server takes it again as it is.
     }
-    onOutcome(outcome);
+    _onOutcome(outcome);
   }
 
   /// The server's answer: accepted, refused for good, or [StoreOutcome.unconfirmed] for
@@ -147,7 +169,7 @@ class StorePurchases {
       await report(purchase.signedTransaction!);
       return StoreOutcome.accepted;
     } on UnauthorizedException {
-      // Reported once someone signs in and comes back here.
+      // Signed out, which stops the listener: reported at the next sign-in.
       return null;
     } on ApiException catch (error) {
       final definitive = error.statusCode == 400 || error.statusCode == 409;

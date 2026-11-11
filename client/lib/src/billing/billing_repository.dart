@@ -2,12 +2,10 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
 import 'package:flutter/widgets.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -206,45 +204,12 @@ class BillingRepository {
   /// Reports a purchase or a restore made in the iOS app (Apple IAP plan D3):
   /// completes on the server's 204, and throws the [ApiClient] errors, a
   /// refusal's `code` in [ApiException.body].
-  ///
-  /// Not through [ApiClient.postJson], which decodes the answer as JSON, as
-  /// `startEmailLink` does: the route answers 204 with no body. The session
-  /// is sent, and a 401 signs out, as [ApiClient] does.
-  Future<void> reportAppleTransaction(String signedTransaction) async {
-    final sentToken = _api.token;
-    final http.Response response;
-    try {
-      response = await _api.httpClient
-          .post(
-            Uri.parse('${_api.baseUrl}$_kPath/apple/transactions'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': ?(sentToken == null ? null : 'Bearer $sentToken'),
-            },
-            body: jsonEncode({'signed_transaction': signedTransaction}),
-          )
-          // The server asks Apple: as long as a call to Stripe.
-          .timeout(_kStripeTimeout);
-    } on http.ClientException {
-      throw const ApiUnreachableException();
-    } on TimeoutException {
-      throw const ApiUnreachableException();
-    }
-    if (response.statusCode == 401) {
-      if (sentToken != null) _api.onUnauthorized?.call(sentToken);
-      throw const UnauthorizedException();
-    }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      Map<String, dynamic>? body;
-      try {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) body = decoded;
-      } catch (_) {
-        // Not a refusal the server documents.
-      }
-      throw ApiException(response.statusCode, body);
-    }
-  }
+  Future<void> reportAppleTransaction(String signedTransaction) => _api.post(
+        '$_kPath/apple/transactions',
+        body: {'signed_transaction': signedTransaction},
+        // The server asks Apple: as long as a call to Stripe.
+        timeout: _kStripeTimeout,
+      );
 
   Future<String> _stripeUrl(String path) async =>
       (await _api.postJson(path, const {}, timeout: _kStripeTimeout))['url']

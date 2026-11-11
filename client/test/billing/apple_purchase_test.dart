@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
+import 'package:wishlist/src/auth/auth_controller.dart';
 import 'package:wishlist/src/billing/billing_repository.dart';
+import 'package:wishlist/src/billing/plan_screen.dart';
 import 'package:wishlist/src/billing/store.dart';
+import 'package:wishlist/src/billing/store_purchases.dart';
 import 'package:wishlist/src/legal/legal_placeholder_screen.dart';
 
 import '../support/fakes.dart';
@@ -34,13 +39,17 @@ void main() {
     appStore = installFakeStore();
   });
 
-  Future<void> pump(WidgetTester tester, {String location = kPlanPath}) async {
+  Future<AuthController> pump(
+    WidgetTester tester, {
+    String location = kPlanPath,
+  }) async {
     tester.platformDispatcher.defaultRouteNameTestValue = location;
     addTearDown(tester.platformDispatcher.clearDefaultRouteNameTestValue);
     final app = buildApp(server, store: store);
     await tester.pumpWidget(app.app);
     await app.auth.restore();
     await tester.pumpAndSettle();
+    return app.auth;
   }
 
   Future<void> tap(WidgetTester tester, String text) async {
@@ -357,6 +366,114 @@ void main() {
 
       expect(appStore.finished, isEmpty);
       expect(appStore.unfinishedPurchases, hasLength(1));
+    });
+  });
+
+  group('listened to from launch, while signed in', () {
+    /// The app's one listener, as the widgets read it.
+    StorePurchases? listener(WidgetTester tester) =>
+        tester.element(find.byType(Navigator).first).read<StorePurchases?>();
+
+    testWidgets('listens while signed in, on any page; stops at sign-out',
+        (tester) async {
+      final auth = await pump(tester, location: '/account');
+
+      expect(appStore.listening, isTrue);
+      expect(listener(tester)!.isListening, isTrue);
+
+      await auth.signOut();
+      await tester.pumpAndSettle();
+
+      expect(appStore.listening, isFalse);
+      expect(listener(tester)!.isListening, isFalse);
+    });
+
+    testWidgets('not before someone signs in', (tester) async {
+      store = MemoryTokenStore();
+      final auth = await pump(tester, location: '/');
+
+      expect(appStore.listening, isFalse);
+
+      store.token = server.addSession();
+      await auth.restore();
+      await tester.pumpAndSettle();
+
+      expect(appStore.listening, isTrue);
+    });
+
+    testWidgets('a purchase approved while another page is shown: reported '
+        'and finished at once', (tester) async {
+      await pump(tester, location: '/account');
+
+      appStore.send([applePurchase(id: '2000003')]);
+      await tester.pumpAndSettle();
+
+      expect(server.appleTransactions, ['jws-2000003']);
+      expect(appStore.finished, ['2000003']);
+    });
+
+    testWidgets('what an earlier run left unfinished: reported at sign-in, '
+        'whatever the page', (tester) async {
+      appStore.unfinishedPurchases = [applePurchase(id: '2000009')];
+      await pump(tester, location: '/account');
+
+      expect(server.appleTransactions, ['jws-2000009']);
+      expect(appStore.finished, ['2000009']);
+    });
+
+    testWidgets('signed out: left unfinished for the next sign-in',
+        (tester) async {
+      final auth = await pump(tester, location: '/account');
+      await auth.signOut();
+      await tester.pumpAndSettle();
+
+      // StoreKit keeps it unfinished, and lists it at the next start.
+      final renewal = applePurchase(id: '2000004');
+      appStore.unfinishedPurchases = [renewal];
+      appStore.send([renewal]);
+      await tester.pumpAndSettle();
+      expect(server.appleTransactions, isEmpty);
+
+      store.token = server.addSession();
+      await auth.restore();
+      await tester.pumpAndSettle();
+
+      expect(server.appleTransactions, ['jws-2000004']);
+      expect(appStore.finished, ['2000004']);
+    });
+
+    testWidgets('the plan page shares the listener: one report a purchase, '
+        'and listening goes on once it closes', (tester) async {
+      await pump(tester);
+      final shared = listener(tester);
+      expect(
+        tester.element(find.byType(PlanScreen)).read<StorePurchases?>(),
+        same(shared),
+      );
+
+      appStore.send([applePurchase(id: '2000002')]);
+      await tester.pumpAndSettle();
+      expect(server.appleTransactions, ['jws-2000002']);
+      expect(find.text(_kThanks), findsOneWidget);
+
+      GoRouter.of(tester.element(find.byType(PlanScreen))).go('/account');
+      await tester.pumpAndSettle();
+      expect(find.byType(PlanScreen), findsNothing);
+
+      appStore.send([applePurchase(id: '2000003')]);
+      await tester.pumpAndSettle();
+      expect(server.appleTransactions, ['jws-2000002', 'jws-2000003']);
+      expect(appStore.finished, ['2000002', '2000003']);
+      expect(listener(tester), same(shared));
+    });
+
+    testWidgets('no store, as on the web: no listener', (tester) async {
+      debugStore = null;
+      debugOnIos = false;
+      await pump(tester, location: '/account');
+
+      expect(listener(tester), isNull);
+      expect(appStore.listening, isFalse);
     });
   });
 
