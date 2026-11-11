@@ -2892,9 +2892,15 @@ for k in APP_LINKS_ EMAIL_SENDER_NAME=; do
 done
 sed -i -e 's|^APP_LINKS_APPLE_APP_IDS=.*|APP_LINKS_APPLE_APP_IDS=<apple-team-id>.<ios-bundle-id-val>|' \
        -e 's|^APP_LINKS_ANDROID_PACKAGE=.*|APP_LINKS_ANDROID_PACKAGE=<android-application-id-val>|' .env
+# VAL's LEGAL_* URLs: any that point at the old VAL host move to the new one
+# (empty ones stay empty: VAL shows placeholders)
+sed -i "s|^\(LEGAL_[A-Z_]*_URL=https://\)<old-val-host>|<val-host>|" .env
+grep -c '<old-val-host>' .env                              # 0: nothing points at the old host any more
+grep -n '^LEGAL_' .env                                     # empty, or on <val-host> or another host that is not the old one
 ```
 
-The loop adds the `APP_LINKS_` keys, and `EMAIL_SENDER_NAME` when the old
+The `LEGAL_*` check must read 0 before part 7 removes the old VAL host; the
+way back is the old `.env` in `/opt/$OLD-val`, untouched. The loop adds the `APP_LINKS_` keys, and `EMAIL_SENDER_NAME` when the old
 `.env` had no such line, from the example. Check: the keys are the old ones plus the three `APP_LINKS_` keys (names
 only; no value is printed), and the file is `600`:
 
@@ -3078,6 +3084,11 @@ git push origin <release>
 **[GitHub]** "Build and publish Docker image" for `<release>` succeeds.
 **[VPS]** `docker pull ghcr.io/rui-nar/shushgift:latest` works.
 
+Check: both. The way back: the tag only builds and pushes an image, and
+nothing is deployed before cut-over step 7, so PROD still runs the old stack.
+To undo it, delete the tag (`git push origin :refs/tags/<release>`, and
+locally) and the package version in GitHub, or simply do not proceed.
+
 Then part 3 in PROD's form; Caddy and DNS are done. D8's cut-over steps:
 
 **Cut-over step 2: stop and take the final dump**, kept as `before-move.dump`: a name
@@ -3240,6 +3251,14 @@ PROD's `.env`; and the PROD values tied to the app ids. Then the tests of part
 5 with a real address, and, **instead of a purchase**, a subscription created
 before the move: its account keeps Premium, since the marker is unchanged.
 
+Check: the commands above give the answers in their comments, each console's
+check is the one of part 4, and the part 5 tests pass. The way back: each
+console entry and `.env` value is added beside the old one, so take the new one
+out again (and the previous `DEPLOY_PROD_URL`, `API_BASE_URL_PROD` and
+`LEGAL_*` values back, then `docker compose up -d` in `/opt/shushgift`); for
+the whole of PROD, take the ways back of cut-over steps 7, 5 and 4 above and
+start the old project. Nothing is removed before part 7.
+
 ### 7. Removing the old hosts
 
 Right after PROD and its consoles are repointed and checked, the two old
@@ -3274,25 +3293,35 @@ docker compose -f /opt/shushgift/docker-compose.yml ps     # backup (healthy)
 docker compose -f /opt/shushgift/docker-compose.yml logs app | grep 'media purge:' | tail -n 1   # horizon=...
 ```
 
-Check: all four. This is the point of no return, and its way back is the
-nightly dump just proved: restore it as in [Restoring PROD from a
-dump](#restoring-prod-from-a-dump). Then:
+Check: all four. This is the point of no return. Each deletion below has the
+same way back, the nightly dump just proved: restore it as in [Restoring PROD
+from a dump](#restoring-prod-from-a-dump) (the old project itself cannot be
+started again). Then:
 
 ```bash
 sudo rm /opt/shushgift/backups/before-move.dump             # or it holds the purge's horizon at the move day for good (R3-1)
+                                                            # way back: the nightly dump holds the same data, newer
 cd /opt/$OLD && docker compose down --volumes
 cd /opt/$OLD-val && docker compose down --volumes
+                                                            # way back: the nightly dump (PROD); VAL is re-seeded from it
 sudo rm -r /opt/$OLD /opt/$OLD-val
+                                                            # way back: the nightly dump; the compose and .env files are
+                                                            # copies of /opt/shushgift* and the repository's deploy/
 sudo rmdir /opt/$OLD-media                                  # only succeeds when empty: both media moved
+                                                            # way back: none needed, it is empty
 sudo rm /etc/systemd/system/$OLD-webhook.service && sudo systemctl daemon-reload
+                                                            # way back: the new unit is its copy (cut-over step 8)
 sudo rm /etc/caddy/Caddyfile.before-shushgift /etc/caddy/Caddyfile.before-old-hosts-removal
+                                                            # way back: the live Caddyfile is the reference
 docker volume ls | grep "^local *$OLD"                      # nothing
 ls -d /opt/$OLD* 2>/dev/null                                # nothing
 ```
 
 `rmdir` stops the command if media remain in the old parent: look before
 anything else is deleted. **[GitHub]** Delete the old GHCR package (the one of
-the former name); **[VPS]** `docker image rm` its tags.
+the former name); **[VPS]** `docker image rm` its tags. The way back of both:
+the new package holds the same code, and any old tag is rebuilt by pushing it
+again.
 
 Last, the repository: a search for the old name shows only the Stripe marker
 ([Billing](BILLING.md#2-choose-the-stripe-account)) and the files under
