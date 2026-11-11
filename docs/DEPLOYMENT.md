@@ -2894,7 +2894,7 @@ sed -i -e 's|^APP_LINKS_APPLE_APP_IDS=.*|APP_LINKS_APPLE_APP_IDS=<apple-team-id>
        -e 's|^APP_LINKS_ANDROID_PACKAGE=.*|APP_LINKS_ANDROID_PACKAGE=<android-application-id-val>|' .env
 # VAL's LEGAL_* URLs: any that point at the old VAL host move to the new one
 # (empty ones stay empty: VAL shows placeholders)
-sed -i "s|^\(LEGAL_[A-Z_]*_URL=https://\)<old-val-host>|<val-host>|" .env
+sed -i "s|^\(LEGAL_[A-Z_]*_URL=https://\)<old-val-host>|\1<val-host>|" .env
 grep -c '<old-val-host>' .env                              # 0: nothing points at the old host any more
 grep -n '^LEGAL_' .env                                     # empty, or on <val-host> or another host that is not the old one
 ```
