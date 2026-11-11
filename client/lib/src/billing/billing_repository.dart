@@ -1,8 +1,13 @@
 /// The user's plan, and the server-made links to Stripe (PREMIUM_PLAN D11).
 library;
 
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
 import 'package:flutter/widgets.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -21,8 +26,32 @@ const _kStripeTimeout = Duration(seconds: 45);
 @visibleForTesting
 bool? debugOnTheWeb;
 
-/// Purchases and their links exist on the web only (PREMIUM_PLAN D18).
+/// Stripe's purchases and links exist on the web only (PREMIUM_PLAN D18).
 bool get onTheWeb => debugOnTheWeb ?? kIsWeb;
+
+/// Stands in for the platform in tests.
+@visibleForTesting
+bool? debugOnIos;
+
+/// The iOS app, which sells through Apple (Apple IAP plan D7, D8).
+bool get onIos =>
+    debugOnIos ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+
+/// Where an Apple subscription is managed or cancelled; the server cannot
+/// (D9).
+const kAppleSubscriptionsUrl = 'https://apps.apple.com/account/subscriptions';
+
+/// Apple's standard licence: the terms of a purchase in the iOS app when the
+/// server names none (D8).
+const kAppleStandardEulaUrl =
+    'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+
+/// What the iOS app sells (D7); its price is the App Store's.
+class AppleOffer {
+  const AppleOffer({required this.productId});
+
+  final String productId;
+}
 
 /// What is on sale. `amount` is the server's decimal string.
 class BillingOffer {
@@ -64,6 +93,8 @@ class BillingStatus {
     required this.maxGiftsPerList,
     required this.enforced,
     required this.offer,
+    this.appleOffer,
+    this.appleRenewing = false,
     required this.canManage,
     required this.legal,
   });
@@ -71,6 +102,7 @@ class BillingStatus {
   factory BillingStatus.fromJson(Map<String, dynamic> json) {
     final limits = json['limits'] as Map<String, dynamic>?;
     final offer = json['offer'] as Map<String, dynamic>?;
+    final appleOffer = json['apple_offer'] as Map<String, dynamic>?;
     return BillingStatus(
       isPremium: json['plan'] == 'premium',
       source: json['source'] as String?,
@@ -81,6 +113,10 @@ class BillingStatus {
       maxGiftsPerList: (limits?['max_gifts_per_list'] as num?)?.toInt(),
       enforced: json['enforced'] as bool,
       offer: offer == null ? null : BillingOffer.fromJson(offer),
+      appleOffer: appleOffer == null
+          ? null
+          : AppleOffer(productId: appleOffer['product_id'] as String),
+      appleRenewing: json['apple_renewing'] as bool,
       canManage: json['can_manage'] as bool,
       legal: LegalUrls.fromJson(json['legal'] as Map<String, dynamic>),
     );
@@ -108,8 +144,15 @@ class BillingStatus {
   final int? maxGiftsPerList;
   final bool enforced;
 
-  /// Null unless the server is selling.
+  /// Stripe's, for the web; null unless the server sells through Stripe.
   final BillingOffer? offer;
+
+  /// Apple's, for the iOS app; null unless the server sells through Apple.
+  final AppleOffer? appleOffer;
+
+  /// An Apple subscription of the account is set to renew, whatever the plan
+  /// says: deleting the account does not stop it (Apple IAP plan D9).
+  final bool appleRenewing;
 
   /// A Stripe customer exists and the portal would serve.
   final bool canManage;
@@ -117,9 +160,30 @@ class BillingStatus {
 
   bool get isPastDue => status == 'past_due';
 
-  /// Free, nothing on sale and no limit applied: the account screen stays as
-  /// it was before plans existed (D18).
-  bool get nothingToShow => !isPremium && offer == null && !enforced;
+  /// Premium through Apple, or an Apple subscription that may still charge:
+  /// Apple's page manages it (D8).
+  bool get managedAtApple => source == 'apple' || appleRenewing;
+
+  /// Something is on sale on this platform: Stripe's on the web, Apple's in
+  /// the iOS app (D7).
+  bool get offeredHere => onIos ? appleOffer != null : onTheWeb && offer != null;
+
+  /// Stripe's portal is offered: on the web, and in the iOS app unless
+  /// Premium is Apple's (D8).
+  bool get offersStripePortal =>
+      canManage && (onTheWeb || (onIos && source != 'apple'));
+
+  /// Apple's subscriptions page is offered: in the iOS app (D8).
+  bool get offersAppleManagement => onIos && managedAtApple;
+
+  /// Free, nothing on sale, no limit applied and nothing at Apple to manage:
+  /// the account screen stays as it was before plans existed (D18).
+  bool get nothingToShow =>
+      !isPremium &&
+      offer == null &&
+      appleOffer == null &&
+      !enforced &&
+      !appleRenewing;
 }
 
 class BillingRepository {
@@ -138,6 +202,49 @@ class BillingRepository {
 
   /// A Stripe Customer Portal page for this user.
   Future<String> openPortal() => _stripeUrl('$_kPath/portal');
+
+  /// Reports a purchase or a restore made in the iOS app (Apple IAP plan D3):
+  /// completes on the server's 204, and throws the [ApiClient] errors, a
+  /// refusal's `code` in [ApiException.body].
+  ///
+  /// Not through [ApiClient.postJson], which decodes the answer as JSON, as
+  /// `startEmailLink` does: the route answers 204 with no body. The session
+  /// is sent, and a 401 signs out, as [ApiClient] does.
+  Future<void> reportAppleTransaction(String signedTransaction) async {
+    final sentToken = _api.token;
+    final http.Response response;
+    try {
+      response = await _api.httpClient
+          .post(
+            Uri.parse('${_api.baseUrl}$_kPath/apple/transactions'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': ?(sentToken == null ? null : 'Bearer $sentToken'),
+            },
+            body: jsonEncode({'signed_transaction': signedTransaction}),
+          )
+          // The server asks Apple: as long as a call to Stripe.
+          .timeout(_kStripeTimeout);
+    } on http.ClientException {
+      throw const ApiUnreachableException();
+    } on TimeoutException {
+      throw const ApiUnreachableException();
+    }
+    if (response.statusCode == 401) {
+      if (sentToken != null) _api.onUnauthorized?.call(sentToken);
+      throw const UnauthorizedException();
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      Map<String, dynamic>? body;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) body = decoded;
+      } catch (_) {
+        // Not a refusal the server documents.
+      }
+      throw ApiException(response.statusCode, body);
+    }
+  }
 
   Future<String> _stripeUrl(String path) async =>
       (await _api.postJson(path, const {}, timeout: _kStripeTimeout))['url']

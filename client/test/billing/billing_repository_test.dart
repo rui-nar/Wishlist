@@ -65,5 +65,79 @@ void main() {
       expect(free(offer: kBillingOffer).nothingToShow, isFalse);
       expect(free(enforced: true).nothingToShow, isFalse);
     });
+
+    test("Apple's offer, or an Apple subscription that renews, too", () {
+      expect(
+        BillingStatus.fromJson(billingStatus(appleOffer: kAppleOffer))
+            .nothingToShow,
+        isFalse,
+      );
+      expect(
+        BillingStatus.fromJson(billingStatus(appleRenewing: true))
+            .nothingToShow,
+        isFalse,
+      );
+    });
+  });
+
+  test("reads Apple's offer and renewal (Apple IAP plan D7, D9)", () {
+    final status = BillingStatus.fromJson(kAppleSubscribed);
+
+    expect(status.appleOffer!.productId, kAppleProductId);
+    expect(status.appleRenewing, isTrue);
+    expect(status.source, 'apple');
+    expect(status.managedAtApple, isTrue);
+    expect(BillingStatus.fromJson(billingStatus()).appleOffer, isNull);
+    expect(BillingStatus.fromJson(billingStatus()).managedAtApple, isFalse);
+  });
+
+  group('what each platform offers (D7, D8)', () {
+    tearDown(() {
+      debugOnTheWeb = null;
+      debugOnIos = null;
+    });
+    final both = BillingStatus.fromJson(
+      billingStatus(offer: kBillingOffer, appleOffer: kAppleOffer),
+    );
+
+    test("the web sells Stripe's offer, the iOS app Apple's, Android none",
+        () {
+      debugOnTheWeb = true;
+      debugOnIos = false;
+      expect(both.offeredHere, isTrue);
+      expect(
+        BillingStatus.fromJson(billingStatus(appleOffer: kAppleOffer))
+            .offeredHere,
+        isFalse,
+      );
+      debugOnTheWeb = false;
+      debugOnIos = true;
+      expect(both.offeredHere, isTrue);
+      expect(
+        BillingStatus.fromJson(billingStatus(offer: kBillingOffer))
+            .offeredHere,
+        isFalse,
+      );
+      debugOnIos = false;
+      expect(both.offeredHere, isFalse);
+    });
+
+    test("in the iOS app, Stripe's portal unless Premium is Apple's", () {
+      debugOnTheWeb = false;
+      debugOnIos = true;
+      final stripe = BillingStatus.fromJson(
+        billingStatus(plan: 'premium', canManage: true),
+      );
+      final apple = BillingStatus.fromJson(
+        {...kAppleSubscribed, 'can_manage': true},
+      );
+      expect(stripe.offersStripePortal, isTrue);
+      expect(stripe.offersAppleManagement, isFalse);
+      expect(apple.offersStripePortal, isFalse);
+      expect(apple.offersAppleManagement, isTrue);
+      debugOnIos = false;
+      expect(stripe.offersStripePortal, isFalse);
+      expect(apple.offersAppleManagement, isFalse);
+    });
   });
 }

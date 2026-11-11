@@ -98,6 +98,91 @@ void main() {
     expect(find.byType(AccountScreen), findsOneWidget);
   });
 
+  group('an Apple subscription at deletion (Apple IAP plan D9)', () {
+    const renewing = 'Your App Store subscription keeps renewing: deleting '
+        'your account does not cancel it. Cancel it in your Apple '
+        'subscriptions first.';
+    const unknown = 'If you subscribed on iPhone, deleting your account does '
+        'not cancel that subscription: cancel it in your Apple '
+        'subscriptions.';
+    const link = 'Open Apple subscriptions';
+
+    for (final web in [true, false]) {
+      testWidgets('renewing: warned, with the way to Apple '
+          '(${web ? 'web' : 'Android'})', (tester) async {
+        debugOnTheWeb = web;
+        addTearDown(() => debugOnTheWeb = null);
+        final launcher = installRecordingUrlLauncher();
+        await pumpAccount(tester);
+        // Bought after the screen opened: read again at deletion.
+        server.billing = billingStatus(appleRenewing: true);
+
+        await tester.tap(find.text('Delete account'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(renewing), findsOneWidget);
+        expect(find.text(unknown), findsNothing);
+        await tester.tap(find.text(link));
+        await tester.pumpAndSettle();
+        expect(launcher.launched.single.url, kAppleSubscriptionsUrl);
+
+        // The deletion still goes ahead (guideline 5.1.1(v)).
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+        expect(server.deleted, isTrue);
+      });
+    }
+
+    testWidgets('none renewing: no warning', (tester) async {
+      server.billing = billingStatus(
+        plan: 'premium',
+        source: 'apple',
+        status: 'canceling',
+        endsAt: '2027-03-12T12:00:00Z',
+        limits: null,
+      );
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete your account?'), findsOneWidget);
+      expect(find.text(renewing), findsNothing);
+      expect(find.text(unknown), findsNothing);
+      expect(find.text(link), findsNothing);
+    });
+
+    testWidgets('the plan cannot be read: the warning, as a condition',
+        (tester) async {
+      await pumpAccount(tester);
+      server.status['GET /api/billing'] = 500;
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(unknown), findsOneWidget);
+      expect(find.text(link), findsOneWidget);
+    });
+
+    testWidgets('in French', (tester) async {
+      tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+      addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+      server.billing = billingStatus(appleRenewing: true);
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('Supprimer le compte'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Votre abonnement App Store continue de se renouveler : '
+            'supprimer votre compte ne le résilie pas. Résiliez-le '
+            "d'abord dans vos abonnements Apple."),
+        findsOneWidget,
+      );
+      expect(find.text('Ouvrir les abonnements Apple'), findsOneWidget);
+    });
+  });
+
   testWidgets('the confirmation is in French on a French device',
       (tester) async {
     tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];

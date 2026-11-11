@@ -27,6 +27,13 @@ void main() {
     'admin_delete_dialog': (
       '/admin/users/$kBobId',
       (tester) async {
+        // Below the plan's blocks, past what the list builds at first.
+        await tester.scrollUntilVisible(
+          find.text('Delete this account'),
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Delete this account'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), 'bob@example.com');
@@ -68,11 +75,20 @@ void main() {
           adminClock = () => DateTime(2026, 11, 11, 10);
           addTearDown(() => adminClock = DateTime.now);
           final server = FakeServer();
-          // Bob's Stripe subscription with a grant beside it; Carol's grant
-          // whose day has passed.
-          FakeAdmin(server).grants
+          // Bob's Stripe subscription, an Apple one in its grace period
+          // (Apple IAP plan D9) and a grant beside them; Carol's grant whose
+          // day has passed.
+          final admin = FakeAdmin(server);
+          admin.grants
             ..[kBobId] = '2027-06-01T12:00:00Z'
             ..[kCarolId] = '2026-10-01T12:00:00Z';
+          admin.rows.first
+            ..['apple_subscription'] = stripeSubscription(
+              'past_due',
+              startedAt: '2026-08-01T09:00:00Z',
+              periodEnd: '2026-11-20T12:00:00Z',
+            )
+            ..['apple_renewing'] = true;
           final app = buildApp(
             server,
             store: MemoryTokenStore(server.addSession()),

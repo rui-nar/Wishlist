@@ -61,6 +61,9 @@ Map<String, Object?> billingStatus({
   },
   bool enforced = false,
   Map<String, Object?>? offer,
+  // Apple's (Apple IAP plan D7, D9).
+  Map<String, Object?>? appleOffer,
+  bool appleRenewing = false,
   bool canManage = false,
   Map<String, Object?> legal = const {
     'terms_url': null,
@@ -77,12 +80,30 @@ Map<String, Object?> billingStatus({
       'limits': limits,
       'enforced': enforced,
       'offer': offer,
+      'apple_offer': appleOffer,
+      'apple_renewing': appleRenewing,
       'can_manage': canManage,
       'legal': legal,
     };
 
 /// The offer of a server that is selling, as in `GET /api/billing`.
 const kBillingOffer = {'amount': '49.00', 'currency': 'EUR', 'interval': 'year'};
+
+/// What a server selling through Apple gives as `apple_offer` (D7).
+const kAppleProductId = 'test.premium.yearly';
+const kAppleOffer = {'product_id': kAppleProductId};
+
+/// Premium through Apple, renewing, as the server reads it once a purchase
+/// is recorded.
+final kAppleSubscribed = billingStatus(
+  plan: 'premium',
+  source: 'apple',
+  status: 'active',
+  renewsAt: '2027-11-11T12:00:00Z',
+  limits: const {'max_lists': null, 'max_gifts_per_list': null},
+  appleOffer: kAppleOffer,
+  appleRenewing: true,
+);
 
 /// The server's account endpoints (ACCOUNTS_PLAN D7), preferences and
 /// unsubscribing (COMMENTS_NOTIFICATIONS_PLAN D18), billing (PREMIUM_PLAN
@@ -141,6 +162,15 @@ class FakeServer {
   Map<String, Object?> billing = billingStatus();
   String checkoutUrl = 'https://checkout.stripe.test/session';
   String portalUrl = 'https://billing.stripe.test/session';
+
+  /// The `signed_transaction` of every `POST /api/billing/apple/transactions`,
+  /// oldest first, and the refusal `code` it answers with: 204 when null.
+  final appleTransactions = <String>[];
+  String? appleRefusal;
+
+  /// What `POST /api/billing/apple/transactions` does to [billing] once it
+  /// accepts: Premium through Apple, unless set otherwise.
+  Map<String, Object?>? billingAfterApple;
   int _next = 0;
 
   /// `is_admin` in `/api/me` for Alice (admin panel plan D2).
@@ -255,6 +285,21 @@ class FakeServer {
         return user == null ? unauthorized : json(billing);
       case 'POST /api/billing/checkout':
         return user == null ? unauthorized : json({'url': checkoutUrl});
+      case 'POST /api/billing/apple/transactions':
+        if (user == null) return unauthorized;
+        appleTransactions.add(
+          (jsonDecode(request.body) as Map<String, dynamic>)['signed_transaction']
+              as String,
+        );
+        if (appleRefusal case final code?) {
+          final status = code == 'invalid_transaction' ? 400 : 409;
+          return http.Response(
+            jsonEncode({'detail': code, 'code': code}),
+            status,
+          );
+        }
+        billing = billingAfterApple ?? kAppleSubscribed;
+        return http.Response('', 204);
       case 'POST /api/billing/portal':
         return user == null ? unauthorized : json({'url': portalUrl});
     }
