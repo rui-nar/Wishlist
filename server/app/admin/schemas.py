@@ -31,10 +31,11 @@ class AdminPhotos(BaseModel):
 
 
 class AdminSubscription(BaseModel):
-    """The person's Stripe or Apple subscription, apart from a grant by hand:
-    no id, no customer and no amount. An Apple one in billing retry, which
+    """The person's Stripe, Apple or Google subscription, apart from a grant by
+    hand: no id, no customer and no amount. An Apple one in billing retry, which
     grants nothing but which Apple may still charge (Apple IAP plan D9), reads
-    `past_due` with no date."""
+    `past_due` with no date, as does a Google one on hold or paused (Android
+    release plan D6)."""
 
     # `active`, `past_due`, `canceling` (set to stop at `period_end`),
     # `incomplete`, `ended`, or `no_news`: `active` or `past_due` past its
@@ -69,6 +70,11 @@ class AdminUserRow(BaseModel):
     # Any Apple subscription of theirs that Apple may still charge, whichever
     # the block shows: the admin's deletion warns of it (review R2-2).
     apple_renewing: bool
+    # The same for Google Play, in its own block (Android release plan D8):
+    # deleting the account cancels it first.
+    google_subscription: AdminSubscription | None
+    # Any Google subscription of theirs that Google may still charge.
+    google_renewing: bool
     # The admin's grant still active, if any, so it can be ended (D8).
     manual_grant: ManualGrant | None
     lists_owned: int

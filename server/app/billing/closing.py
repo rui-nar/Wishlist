@@ -1,4 +1,5 @@
-"""Stopping an account's billing before the account goes (premium plan D15)."""
+"""Stopping an account's billing before the account goes (premium plan D15;
+Android release plan D6 for Google Play)."""
 
 import logging
 import uuid
@@ -9,7 +10,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.billing.models import ENDED, STRIPE, BillingCustomer, Entitlement
+from app.billing import google_events
+from app.billing.google_gateway import GoogleError, GoogleGateway, MissingAtGoogle
+from app.billing.models import ENDED, GOOGLE, STRIPE, BillingCustomer, Entitlement
 from app.billing.stripe_gateway import GatewayError, StripeGateway
 
 _log = logging.getLogger(__name__)
@@ -19,7 +22,11 @@ WITHDRAWAL = timedelta(days=14)
 
 
 def stop_billing(
-    db: Session, gateway: StripeGateway | None, user_id: uuid.UUID, now: datetime
+    db: Session,
+    gateway: StripeGateway | None,
+    google: GoogleGateway | None,
+    user_id: uuid.UUID,
+    now: datetime,
 ) -> set[str] | JSONResponse:
     """The subscriptions dealt with, once nothing can charge this account any
     more, for `report_late_purchases`; else the refusal to answer, with nothing
@@ -31,10 +38,23 @@ def stop_billing(
     can say that nothing bills. A failure to find the customer is a failure
     like any other (review R1-5): a key for another Stripe account answers the
     same.
+
+    Google, unlike Apple, lets the server cancel (Android release plan D6):
+    each Google subscription our rows say may renew is read back from Google,
+    and cancelled when Google says it may still charge, with the same
+    refusals as Stripe's when Google cannot be asked.
     """
     # Before Stripe is called: a row that appears after this was not dealt with.
     billable = _billable(db, user_id)
+    google_billable = google_events.renewing(db, user_id)
     cancelled: list[str] = []
+    if google_billable and google is None:
+        _log.error(
+            "billing: account %s not deleted: a Google purchase may still bill"
+            " and selling on Android is not configured",
+            user_id,
+        )
+        return _refusal(status.HTTP_409_CONFLICT)
     if gateway is None:
         if billable:
             _log.error(
@@ -61,17 +81,34 @@ def stop_billing(
                     cancelled.append(external_id)
         except GatewayError:
             return _refusal(status.HTTP_502_BAD_GATEWAY)
+    if google is not None:
+        try:
+            _cancel_google(google, google_billable)
+        except GoogleError:
+            return _refusal(status.HTTP_502_BAD_GATEWAY)
     _warn_of_refunds(db, user_id, cancelled, now)
-    return set(cancelled)
+    return set(cancelled) | set(google_billable)
+
+
+def _cancel_google(google: GoogleGateway, tokens: list[str]) -> None:
+    """Cancels each of these Google subscriptions that Google says may still
+    charge. One Google no longer knows charges nothing."""
+    for token in tokens:
+        try:
+            purchase = google.subscription(token)
+        except MissingAtGoogle:
+            continue
+        if google_events.can_charge(purchase, google.product_id):
+            google.cancel(token)
 
 
 def report_late_purchases(
     db: Session, user_id: uuid.UUID, dealt_with: set[str]
 ) -> None:
     """Names each subscription recorded between `stop_billing` and the user's
-    lock (review R6-1), which no Stripe call covered. Run under that lock, so
-    every webhook that found the user has committed. The deletion goes on: the
-    owner cancels by hand."""
+    lock (review R6-1), which no Stripe or Google call covered. Run under that
+    lock, so every webhook that found the user has committed. The deletion
+    goes on: the owner cancels by hand."""
     for external_id in _billable(db, user_id):
         if external_id not in dealt_with:
             _log.error(
@@ -80,6 +117,24 @@ def report_late_purchases(
                 external_id,
                 user_id,
             )
+    # By our id: a purchase token is never logged.
+    for entitlement_id in db.scalars(
+        select(Entitlement.id)
+        .where(
+            Entitlement.user_id == user_id,
+            Entitlement.source == GOOGLE,
+            Entitlement.cancel_at_period_end.is_(False),
+            Entitlement.external_id.not_in(dealt_with),
+        )
+        .order_by(Entitlement.id)
+    ):
+        _log.error(
+            "billing: Google subscription (entitlement %s) of account %s was"
+            " recorded during its deletion and not cancelled: cancel it in the"
+            " Play Console",
+            entitlement_id,
+            user_id,
+        )
 
 
 def _billable(db: Session, user_id: uuid.UUID) -> list[str]:

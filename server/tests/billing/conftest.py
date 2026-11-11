@@ -5,6 +5,7 @@ to head once per test run and emptied after each test. Users are created
 directly in the database with a session each.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -17,8 +18,17 @@ from typing import Any
 import pytest
 from apple_fakes import APP_APPLE_ID, BUNDLE_ID, PRODUCT_ID, FakeApple, build_apple_pki
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from fastapi.testclient import TestClient
+from google_fakes import (
+    AUDIENCE,
+    PACKAGE,
+    PUSH_ACCOUNT,
+    FakeGoogle,
+    GoogleKeys,
+    private_pem,
+)
+from google_fakes import PRODUCT_ID as GOOGLE_PRODUCT_ID
 from sqlalchemy import Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 
@@ -145,6 +155,58 @@ def make_apple_client(
             client.app.state.apple_gateway = FakeApple(
                 apple_pki, (PRODUCTION, SANDBOX) if production else (SANDBOX,)
             )
+        return client
+
+    return make
+
+
+@pytest.fixture(scope="session")
+def google_keys() -> GoogleKeys:
+    return GoogleKeys()
+
+
+@pytest.fixture(scope="session")
+def google_service_account_json() -> str:
+    """A service account's JSON key, for settings: generated, never Google's.
+    Loading it reaches nothing."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return json.dumps(
+        {
+            "type": "service_account",
+            "project_id": "example-project",
+            "private_key_id": "0123456789abcdef",
+            "private_key": private_pem(key),
+            "client_email": "play-api@example-project.iam.gserviceaccount.com",
+            "client_id": "123456789",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
+    )
+
+
+@pytest.fixture
+def google_on(google_service_account_json: str) -> dict[str, Any]:
+    """Settings values that make the Google gateway (Android release plan
+    D6), for `make_client`. Placeholders, and a generated key."""
+    return {
+        "google_play_product_id": GOOGLE_PRODUCT_ID,
+        "google_play_package_name": PACKAGE,
+        "google_play_service_account_json": google_service_account_json,
+        "google_play_pubsub_audience": AUDIENCE,
+        "google_play_pubsub_service_account": PUSH_ACCOUNT,
+    }
+
+
+@pytest.fixture
+def make_google_client(
+    make_client: Callable[..., TestClient], google_on: dict[str, Any], google_keys
+) -> Callable[..., TestClient]:
+    """A client whose Google gateway is a `FakeGoogle`: no test reaches
+    Google."""
+
+    def make(**overrides: Any) -> TestClient:
+        client = make_client(**google_on | overrides)
+        if client.app.state.google_gateway is not None:
+            client.app.state.google_gateway = FakeGoogle(google_keys)
         return client
 
     return make

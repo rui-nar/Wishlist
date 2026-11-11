@@ -579,3 +579,73 @@ def test_deleting_an_account_deletes_its_apple_tokens_and_no_others(
             assert list(owners) == [kept]
     finally:
         engine.dispose()
+
+
+def test_the_google_tokens_revision_widens_external_id_with_rows_present(
+    empty_database_url,
+):
+    """Android release plan, Boundaries crossed: a purchase made before the
+    revision stays through it, a Google purchase token longer than 255
+    characters fits after it, and a downgrade deletes only the rows that no
+    longer fit, so the narrower column holds again."""
+    before = alembic(empty_database_url, "upgrade", "a6e1c3f9d257")
+    assert before.returncode == 0, before.stderr
+    user = uuid.uuid4()
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        _insert_user(connection, user)
+        _insert_a_purchase(connection, user)
+    engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+
+    long_token = "t" * 600
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.begin() as connection:
+            for token in (long_token, "short-token"):
+                connection.execute(
+                    text(
+                        "INSERT INTO entitlements (id, user_id, source,"
+                        " external_id, status, cancel_at_period_end, read_at)"
+                        " VALUES (:id, :user, 'google', :token, 'active', false,"
+                        " now())"
+                    ),
+                    {"id": uuid.uuid4(), "user": user, "token": token},
+                )
+            assert (
+                connection.scalar(
+                    text("SELECT count(*) FROM entitlements WHERE external_id = :t"),
+                    {"t": long_token},
+                )
+                == 1
+            )
+    finally:
+        engine.dispose()
+
+    downgrade = alembic(empty_database_url, "downgrade", "a6e1c3f9d257")
+    assert downgrade.returncode == 0, downgrade.stderr
+
+    engine = create_engine(empty_database_url)
+    try:
+        with engine.connect() as connection:
+            kept = connection.scalars(
+                text("SELECT external_id FROM entitlements ORDER BY external_id")
+            )
+            assert list(kept) == ["short-token", f"sub_{user}"]
+            length = connection.scalar(
+                text(
+                    "SELECT character_maximum_length FROM information_schema.columns"
+                    " WHERE table_name = 'entitlements'"
+                    " AND column_name = 'external_id'"
+                )
+            )
+            assert length == 255
+    finally:
+        engine.dispose()
+
+    upgrade = alembic(empty_database_url, "upgrade", "head")
+    assert upgrade.returncode == 0, upgrade.stderr
+    check = alembic(empty_database_url, "check")
+    assert check.returncode == 0, check.stderr
