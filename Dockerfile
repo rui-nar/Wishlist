@@ -4,7 +4,7 @@
 # uv, pinned to an exact version so every build installs with the same tool.
 # Dependabot's docker updates move this tag; the setup-uv `version:` in the CI
 # workflows must move with it.
-FROM ghcr.io/astral-sh/uv:0.13.4 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
 
 # --- Web client -------------------------------------------------------------
 # The Flutter SDK is cloned at a git tag rather than taken from
