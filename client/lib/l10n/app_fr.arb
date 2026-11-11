@@ -467,6 +467,7 @@
   "adminAppleCheck": "Vérifiez-le dans App Store Connect.",
   "adminDeleteAppleRenewing": "Son abonnement App Store continue de se renouveler : supprimer le compte ne le résilie pas. Seule la personne peut le faire, dans ses abonnements Apple.",
   "planManageGoogle": "Gérer dans Google Play",
+  "planManagedOnWebsite": "Votre Premium a été acheté sur le site web et se gère là-bas.",
   "planGoogleRenewal": "Se renouvelle automatiquement chaque année jusqu'à ce que vous le résiliiez dans vos abonnements Google Play. Le paiement est débité sur votre compte Google Play.",
   "planGoogleStoreUnavailable": "Google Play est injoignable pour le moment. Réessayez plus tard.",
   "planPurchaseUnconfirmedGoogle": "Google Play a bien votre achat, mais il n'a pas encore pu être confirmé. Il le sera à votre prochaine visite sur cette page.",

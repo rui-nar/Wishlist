@@ -230,13 +230,14 @@ class BillingStatus {
       ? storeProductId != null
       : onTheWeb && offer != null;
 
-  /// Stripe's portal is offered: on the web, and in the phone apps unless
-  /// Premium is the phone store's (D8).
-  bool get offersStripePortal =>
-      canManage &&
-      (onTheWeb ||
-          (onIos && source != 'apple') ||
-          (onAndroid && source != 'google'));
+  /// Stripe's portal is offered: on the web only. Apple's and Google Play's
+  /// rules forbid steering to a payment page outside the store, so the phone
+  /// apps link to none.
+  bool get offersStripePortal => canManage && onTheWeb;
+
+  /// Premium bought through Stripe, seen in a phone app: one plain line says
+  /// it is managed on the website, with no link and no address.
+  bool get managedOnTheWebsite => !onTheWeb && source == 'stripe';
 
   /// Apple's subscriptions page is offered: in the iOS app (D8).
   bool get offersAppleManagement => onIos && managedAtApple;

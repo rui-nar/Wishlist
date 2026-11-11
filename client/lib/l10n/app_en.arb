@@ -2332,6 +2332,10 @@
   "@planManageGoogle": {
     "description": "The button opening Google Play's subscriptions page, where a Google Play subscription is managed or cancelled."
   },
+  "planManagedOnWebsite": "Your Premium was bought on the website and is managed there.",
+  "@planManagedOnWebsite": {
+    "description": "The iOS and Android apps, for Premium bought on the website: a plain line, with no link and no address, as the stores' payment rules require."
+  },
   "planGoogleRenewal": "Renews automatically every year until you cancel it in your Google Play subscriptions. Payment is charged to your Google Play account.",
   "@planGoogleRenewal": {
     "description": "The Premium page in the Android app: how the subscription renews and is cancelled."

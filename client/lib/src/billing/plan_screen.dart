@@ -115,8 +115,8 @@ class StoreSubscriptionsButton extends StatelessWidget {
   }
 }
 
-/// "Manage subscription": the Customer Portal (D14), in this tab on the web,
-/// in the browser from the iOS app (Apple IAP plan D8).
+/// "Manage subscription": the Customer Portal (D14), in this tab, on the web
+/// only: the phone apps link to no payment page outside their store.
 class ManageSubscriptionButton extends StatefulWidget {
   const ManageSubscriptionButton({super.key, required this.onStale});
 
@@ -139,7 +139,7 @@ class _ManageSubscriptionButtonState extends State<ManageSubscriptionButton> {
     setState(() => _busy = true);
     try {
       final url = await _repository.openPortal();
-      if (!await (onTheWeb ? openInThisTab(url) : openGiftLink(url))) fail();
+      if (!await openInThisTab(url)) fail();
     } catch (error) {
       // A 401 signs the user out: the sign-in screen says enough.
       if (error is! UnauthorizedException) fail();
@@ -512,6 +512,10 @@ class _PlanScreenState extends State<PlanScreen> {
       if (status.offersStripePortal) ...[
         const SizedBox(height: Spacing.s12),
         ManageSubscriptionButton(onStale: _load),
+      ],
+      if (status.managedOnTheWebsite) ...[
+        const SizedBox(height: Spacing.s12),
+        Text(l10n.planManagedOnWebsite),
       ],
       if (onTheWeb || appStore != null) ...[
         const SizedBox(height: Spacing.s8),

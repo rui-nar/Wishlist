@@ -125,26 +125,39 @@ void main() {
       expect(both.offeredHere, isFalse);
     });
 
-    test("in the iOS app, Stripe's portal unless Premium is Apple's", () {
-      debugOnTheWeb = false;
-      debugOnIos = true;
+    test("Stripe's portal on the web only; the iOS app says where Stripe's "
+        'Premium is managed', () {
       final stripe = BillingStatus.fromJson(
         billingStatus(plan: 'premium', canManage: true),
       );
       final apple = BillingStatus.fromJson(
         {...kAppleSubscribed, 'can_manage': true},
       );
+      final granted = BillingStatus.fromJson(
+        billingStatus(plan: 'premium', source: 'manual', canManage: true),
+      );
+      debugOnTheWeb = true;
+      debugOnIos = false;
       expect(stripe.offersStripePortal, isTrue);
+      expect(stripe.managedOnTheWebsite, isFalse);
+
+      debugOnTheWeb = false;
+      debugOnIos = true;
+      expect(stripe.offersStripePortal, isFalse);
+      expect(stripe.managedOnTheWebsite, isTrue);
       expect(stripe.offersAppleManagement, isFalse);
       expect(apple.offersStripePortal, isFalse);
+      expect(apple.managedOnTheWebsite, isFalse);
       expect(apple.offersAppleManagement, isTrue);
+      expect(granted.offersStripePortal, isFalse);
+      expect(granted.managedOnTheWebsite, isFalse);
       debugOnIos = false;
       expect(stripe.offersStripePortal, isFalse);
       expect(apple.offersAppleManagement, isFalse);
     });
 
-    test("in the Android app, Google Play's offer, and Stripe's portal unless "
-        "Premium is Google's (Android release plan D8)", () {
+    test("in the Android app, Google Play's offer, and never Stripe's portal "
+        '(Android release plan D8)', () {
       debugOnTheWeb = false;
       debugOnIos = false;
       debugOnAndroid = true;
@@ -163,9 +176,11 @@ void main() {
       final google = BillingStatus.fromJson(
         {...kGoogleSubscribed, 'can_manage': true},
       );
-      expect(stripe.offersStripePortal, isTrue);
+      expect(stripe.offersStripePortal, isFalse);
+      expect(stripe.managedOnTheWebsite, isTrue);
       expect(stripe.offersGoogleManagement, isFalse);
       expect(google.offersStripePortal, isFalse);
+      expect(google.managedOnTheWebsite, isFalse);
       expect(google.offersGoogleManagement, isTrue);
       expect(google.offersAppleManagement, isFalse);
 

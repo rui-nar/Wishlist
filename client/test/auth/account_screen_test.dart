@@ -472,6 +472,7 @@ void main() {
       expect(find.text(renews), findsOneWidget);
       expect(find.text('Manage subscription'), findsOneWidget);
       expect(find.text('See Premium'), findsNothing);
+      expect(find.textContaining('bought on the website'), findsNothing);
     });
 
     testWidgets('premium, canceling: the end date', (tester) async {
@@ -577,6 +578,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Manage subscription'), findsNothing);
+      expect(
+        find.text(
+          'Your Premium was bought on the website and is managed there.',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('in French on a French device', (tester) async {

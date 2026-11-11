@@ -106,6 +106,8 @@ void main() {
       expect(find.text('Premium: unlimited lists and gifts'), findsOneWidget);
       expect(find.text('Continue to payment'), findsNothing);
       expect(find.text('Manage subscription'), findsOneWidget);
+      // The phone apps' line, never the web's.
+      expect(find.textContaining('bought on the website'), findsNothing);
     });
 
     testWidgets('granted by the admin: its end, and no renewal or Manage',

@@ -249,6 +249,7 @@ class _AccountScreenState extends State<AccountScreen> {
 /// "Your plan": what it is, and the way to Premium or to manage it: through
 /// Stripe on the web, through Apple in the iOS app (Apple IAP plan D8, review
 /// R1-8), through Google Play in the Android app (Android release plan D8).
+/// The apps never link to Stripe: Premium bought there gets a plain line.
 class _PlanSection extends StatelessWidget {
   const _PlanSection({
     required this.status,
@@ -291,6 +292,10 @@ class _PlanSection extends StatelessWidget {
         if (status.offersStripePortal) ...[
           const SizedBox(height: Spacing.s12),
           ManageSubscriptionButton(onStale: onStale),
+        ],
+        if (status.managedOnTheWebsite) ...[
+          const SizedBox(height: Spacing.s12),
+          Text(l10n.planManagedOnWebsite),
         ],
         if (onTheWeb || appStore != null) ...[
           const SizedBox(height: Spacing.s8),

@@ -18,6 +18,8 @@ const _kPrice = '€49.99 per year';
 const _kManageGoogle = 'Manage in Google Play';
 const _kUnavailable = 'Subscriptions are not available in the app yet.';
 const _kFailed = 'That did not work. Try again in a moment.';
+const _kManagedOnWebsite =
+    'Your Premium was bought on the website and is managed there.';
 const _kThanks = 'You are on Premium. Thank you.';
 const _kUnconfirmed = 'Google Play has your purchase, but it could not be '
     'confirmed yet. It will be the next time you open this page.';
@@ -100,8 +102,9 @@ void main() {
       expect(find.text(_kRestore), findsOneWidget);
     });
 
-    testWidgets('already Premium through Stripe: no purchase, the portal',
-        (tester) async {
+    testWidgets('already Premium through Stripe: no purchase, no link to '
+        'Stripe, a plain line', (tester) async {
+      final launcher = installRecordingUrlLauncher();
       server.billing = billingStatus(
         plan: 'premium',
         status: 'active',
@@ -115,8 +118,14 @@ void main() {
       expect(find.text('Premium'), findsOneWidget);
       expect(find.text(_kSubscribe), findsNothing);
       expect(find.text(_kRestore), findsNothing);
-      expect(find.text('Manage subscription'), findsOneWidget);
+      expect(find.text('Manage subscription'), findsNothing);
       expect(find.text(_kManageGoogle), findsNothing);
+      expect(find.text(_kManagedOnWebsite), findsOneWidget);
+      expect(find.byType(OutlinedButton), findsNothing);
+      await tester.tap(find.text(_kManagedOnWebsite));
+      await tester.pumpAndSettle();
+      expect(launcher.launched, isEmpty);
+      expect(server.calls, isNot(contains('POST /api/billing/portal')));
     });
 
     testWidgets('already Premium as a grant: no purchase',
@@ -415,6 +424,28 @@ void main() {
       expect(find.text(_kManageGoogle), findsOneWidget);
       expect(find.text('Manage subscription'), findsNothing);
       expect(find.text('See Premium'), findsNothing);
+      expect(find.text(_kManagedOnWebsite), findsNothing);
+    });
+
+    testWidgets('Premium through Stripe: a plain line, no link to Stripe',
+        (tester) async {
+      final launcher = installRecordingUrlLauncher();
+      server.billing = billingStatus(
+        plan: 'premium',
+        status: 'active',
+        renewsAt: '2027-03-12T12:00:00Z',
+        limits: const {'max_lists': null, 'max_gifts_per_list': null},
+        canManage: true,
+      );
+      await pump(tester, location: '/account');
+
+      expect(find.text('Manage subscription'), findsNothing);
+      expect(find.text(_kManageGoogle), findsNothing);
+      expect(find.text(_kManagedOnWebsite), findsOneWidget);
+      await tester.tap(find.text(_kManagedOnWebsite));
+      await tester.pumpAndSettle();
+      expect(launcher.launched, isEmpty);
+      expect(server.calls, isNot(contains('POST /api/billing/portal')));
     });
 
     testWidgets('deleting with a renewing Google subscription: says the '

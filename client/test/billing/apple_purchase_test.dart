@@ -22,6 +22,8 @@ const _kPrice = '€49.99 per year';
 const _kManageApple = 'Manage in the App Store';
 const _kUnavailable = 'Subscriptions are not available in the app yet.';
 const _kFailed = 'That did not work. Try again in a moment.';
+const _kManagedOnWebsite =
+    'Your Premium was bought on the website and is managed there.';
 const _kThanks = 'You are on Premium. Thank you.';
 const _kUnconfirmed = 'Apple has your purchase, but it could not be '
     'confirmed yet. It will be the next time you open this page.';
@@ -106,8 +108,9 @@ void main() {
       expect(find.text(_kRestore), findsOneWidget);
     });
 
-    testWidgets('already Premium through Stripe: no purchase, the portal',
-        (tester) async {
+    testWidgets('already Premium through Stripe: no purchase, no link to '
+        'Stripe, a plain line', (tester) async {
+      final launcher = installRecordingUrlLauncher();
       server.billing = billingStatus(
         plan: 'premium',
         status: 'active',
@@ -121,8 +124,14 @@ void main() {
       expect(find.text('Premium'), findsOneWidget);
       expect(find.text(_kSubscribe), findsNothing);
       expect(find.text(_kRestore), findsNothing);
-      expect(find.text('Manage subscription'), findsOneWidget);
+      expect(find.text('Manage subscription'), findsNothing);
       expect(find.text(_kManageApple), findsNothing);
+      expect(find.text(_kManagedOnWebsite), findsOneWidget);
+      expect(find.byType(OutlinedButton), findsNothing);
+      await tester.tap(find.text(_kManagedOnWebsite));
+      await tester.pumpAndSettle();
+      expect(launcher.launched, isEmpty);
+      expect(server.calls, isNot(contains('POST /api/billing/portal')));
     });
 
     testWidgets('already Premium as a grant: no purchase', (tester) async {
@@ -546,7 +555,7 @@ void main() {
       expect(find.text('See Premium'), findsNothing);
     });
 
-    testWidgets('Premium through Stripe: its portal, in the browser',
+    testWidgets('Premium through Stripe: a plain line, no link to Stripe',
         (tester) async {
       final launcher = installRecordingUrlLauncher();
       server.billing = billingStatus(
@@ -558,13 +567,12 @@ void main() {
       );
       await pump(tester, location: '/account');
 
-      await tap(tester, 'Manage subscription');
-
-      expect(launcher.launched.single.url, server.portalUrl);
-      expect(
-        launcher.launched.single.options.mode,
-        PreferredLaunchMode.externalApplication,
-      );
+      expect(find.text('Manage subscription'), findsNothing);
+      expect(find.text(_kManagedOnWebsite), findsOneWidget);
+      await tester.tap(find.text(_kManagedOnWebsite));
+      await tester.pumpAndSettle();
+      expect(launcher.launched, isEmpty);
+      expect(server.calls, isNot(contains('POST /api/billing/portal')));
     });
   });
 }
