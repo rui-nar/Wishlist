@@ -647,8 +647,9 @@ def google_purchase(
 async def google_notification(request: Request, db: DbSession) -> Response:
     """Play's real-time developer notifications, pushed by Pub/Sub (D6): the
     push's token verified, then the notification trusted only as a pointer
-    to the purchase, read back from Google. Answered 200 whenever Pub/Sub's
-    retrying would change nothing."""
+    to the purchase, read back from Google. An accepted purchase not yet
+    acknowledged is acknowledged here too (review R2-1). Answered 200
+    whenever Pub/Sub's retrying would change nothing."""
     gateway: GoogleGateway | None = request.app.state.google_gateway
     if gateway is None:
         raise not_found()
@@ -718,6 +719,12 @@ def _handle_google_notification(
     if facts is None:
         _log.error("google: purchase %s could not be read", order)
         return _ok()
+    # A Play Store resubscription involves no app to report it: unless
+    # acknowledged here, Google refunds it on the third day (review R2-1).
+    # Before `apply`, so no lock is held across the call; on failure nothing
+    # is written and Pub/Sub retries.
+    if not _acknowledged(gateway, purchase, token, order):
+        return _refusal(BILLING_UNAVAILABLE)
     if apply(db, facts, read_at) is Applied.USER_GONE:
         return _cancel_google_orphan(gateway, purchase, token, order, product)
     google_events.end_replaced(db, google_events.linked_token(purchase), read_at)

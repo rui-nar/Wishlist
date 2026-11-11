@@ -99,9 +99,81 @@ def test_a_renewal_is_recorded(client, fake, account, engine):
     assert fake.calls == [("subscription", (TOKEN,))]
 
 
-def test_a_notification_acknowledges_nothing(client, fake, account, engine):
-    """Only the client's report acknowledges (review R1-3, deferred)."""
+def test_a_notification_acknowledges_an_accepted_purchase(
+    client, fake, account, engine
+):
+    """Review R2-1: a Play Store resubscription involves no app, so the
+    notification acknowledges it, or Google refunds it on the third day."""
+    fake.add(
+        "old-token",
+        account.id,
+        state=google_events.EXPIRED,
+        auto_renew=False,
+        acknowledged=True,
+    )
+    notify(client, fake, "old-token")
+    fake.add(TOKEN, None, expired_token="old-token")
+
+    notify(client, fake)
+
+    assert fake.called("acknowledge") == [(TOKEN,)]
+    assert fake.purchases[TOKEN]["acknowledgementState"] == (
+        "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED"
+    )
+    found = {entry.external_id: entry for entry in rows(engine)}
+    assert (found[TOKEN].status, found[TOKEN].user_id) == ("active", account.id)
+
+
+def test_a_notification_acknowledges_before_writing_and_retries(
+    client, fake, account, engine
+):
     fake.add(TOKEN, account.id)
+    fake.failures["acknowledge"] = GoogleUnavailable()
+
+    response = deliver(client, fake.keys)
+
+    assert answer(response) == (
+        502,
+        {"detail": "Billing is unavailable", "code": "billing_unavailable"},
+    )
+    assert rows(engine) == []
+    del fake.failures["acknowledge"]
+    notify(client, fake)
+    assert row(engine).status == "active"
+    assert fake.called("acknowledge") == [(TOKEN,), (TOKEN,)]
+
+
+@pytest.mark.parametrize(
+    "fields, env",
+    [
+        ({"product": "example.other"}, "dev"),
+        ({"test": False}, "validation"),
+        ({"test": True}, "production"),
+    ],
+    ids=["another product", "a real purchase on VAL", "an unlisted test on PROD"],
+)
+def test_a_refused_purchase_is_not_acknowledged(
+    make_google_client, account, engine, fields, env
+):
+    client = make_google_client(app_env=env)
+    fake = client.app.state.google_gateway
+    fake.add(TOKEN, account.id, **fields)
+
+    notify(client, fake)
+
+    assert rows(engine) == []
+    assert fake.called("acknowledge") == []
+
+
+def test_a_purchase_of_no_known_account_is_not_acknowledged(client, fake, engine):
+    fake.add(TOKEN, None)
+    notify(client, fake)
+    assert rows(engine) == []
+    assert fake.called("acknowledge") == []
+
+
+def test_an_acknowledged_purchase_is_left_alone(client, fake, account, engine):
+    fake.add(TOKEN, account.id, acknowledged=True)
     notify(client, fake)
     assert row(engine).status == "active"
     assert fake.called("acknowledge") == []
