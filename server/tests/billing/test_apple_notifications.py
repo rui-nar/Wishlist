@@ -210,7 +210,7 @@ def test_a_notification_about_no_subscription_is_acknowledged(client, fake):
             "signedDate": apple_ms(sessions.utc_now()),
             "summary": {
                 "environment": "Sandbox",
-                "bundleId": "com.example.wishlist",
+                "bundleId": "com.example.shushgift",
             },
         },
     )

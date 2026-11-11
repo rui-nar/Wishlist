@@ -27,7 +27,7 @@ SERVER_DIR = Path(__file__).resolve().parents[2]
 @pytest.fixture(scope="session")
 def media_database_url() -> Iterator[str]:
     base_url = os.environ["DATABASE_URL"]
-    name = f"wishlist_media_{uuid.uuid4().hex[:12]}"
+    name = f"shushgift_media_{uuid.uuid4().hex[:12]}"
     admin = create_engine(base_url, isolation_level="AUTOCOMMIT")
     try:
         with admin.connect() as connection:

@@ -27,9 +27,9 @@ from app.accounts import sessions
 from app.billing import google_events
 from app.billing.google_gateway import MissingAtGoogle, PushVerifier
 
-PACKAGE = "com.example.wishlist"
+PACKAGE = "com.example.shushgift"
 PRODUCT_ID = "premium_yearly"
-AUDIENCE = "https://wishlist.example.test/api/billing/google/notifications"
+AUDIENCE = "https://shushgift.example.test/api/billing/google/notifications"
 PUSH_ACCOUNT = "play-push@example-project.iam.gserviceaccount.com"
 TOKEN = "token-1.AO-J1Oa"
 ORDER = "GPA.3301-1234-5678-90123"

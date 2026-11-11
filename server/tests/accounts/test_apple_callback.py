@@ -7,7 +7,7 @@ from urllib.parse import parse_qsl, urlencode
 import pytest
 from sqlalchemy import text
 
-PACKAGE = "com.example.wishlist"
+PACKAGE = "com.example.shushgift"
 CALLBACK = "/api/auth/apple/callback"
 FRAGMENT = f"Intent;package={PACKAGE};scheme=signinwithapple;end"
 BAD_CALLBACK = {"detail": "Malformed Apple callback"}

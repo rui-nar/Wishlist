@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.billing.models import BillingCustomer
 from app.billing.stripe_gateway import GatewayUnavailable
 
-BASE = "https://wishlist.example.test"
+BASE = "https://shushgift.example.test"
 
 
 @pytest.fixture

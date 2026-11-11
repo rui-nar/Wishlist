@@ -1095,7 +1095,7 @@ def apple_client(make_client, billing_on):
     return make_client(
         **billing_on,
         apple_product_id="example.premium.yearly",
-        apple_bundle_id="com.example.wishlist",
+        apple_bundle_id="com.example.shushgift",
         apple_iap_issuer_id="issuer-placeholder",
         apple_iap_key_id="KEYPLACEHOLDER",
         apple_iap_private_key=key.decode(),
@@ -1170,9 +1170,9 @@ def google_client(make_client, billing_on):
     return make_client(
         **billing_on,
         google_play_product_id="premium_yearly",
-        google_play_package_name="com.example.wishlist",
+        google_play_package_name="com.example.shushgift",
         google_play_service_account_json=json.dumps(account),
-        google_play_pubsub_audience="https://wishlist.example.test/notifications",
+        google_play_pubsub_audience="https://shushgift.example.test/notifications",
         google_play_pubsub_service_account="push@example.iam.gserviceaccount.com",
     )
 
@@ -1210,7 +1210,7 @@ def test_google_notifications_by_role(client, google_client, scenario, actor):
     before = owners_view(client, scenario)
     headers = scenario.headers(actor)
     notification = {
-        "packageName": "com.example.wishlist",
+        "packageName": "com.example.shushgift",
         "subscriptionNotification": {"purchaseToken": "token-1"},
     }
     data = base64.b64encode(json.dumps(notification).encode()).decode()

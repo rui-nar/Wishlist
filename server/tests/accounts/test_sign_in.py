@@ -47,11 +47,11 @@ def test_config_gives_the_apple_client_id(make_client):
 
 
 def test_config_gives_the_apple_redirect_uri(make_client):
-    client = make_client(public_base_url=" https://wishlist.example.com/ ")
+    client = make_client(public_base_url=" https://shushgift.example.com/ ")
 
     assert (
         client.get("/api/config").json()["apple_redirect_uri"]
-        == "https://wishlist.example.com/api/auth/apple/callback"
+        == "https://shushgift.example.com/api/auth/apple/callback"
     )
 
 
@@ -78,7 +78,7 @@ EMAIL_ON = {
     "brevo_api_key": "a-key",
     "email_sender_address": "sender@example.test",
     "notification_secret": "a-secret",
-    "public_base_url": "https://wishlist.example.test",
+    "public_base_url": "https://shushgift.example.test",
 }
 EMAIL_OFF = dict.fromkeys(EMAIL_ON, "")
 WORKER_OFF_WARNING = "NOTIFICATIONS_WORKER is off"
@@ -106,11 +106,11 @@ def test_no_warning_when_the_links_can_go_or_none_are_made(values, caplog):
 
 def test_config_gives_the_share_links_base_url(make_client):
     # Share links are <base>/join#<token> (lists plan D5): no trailing slash.
-    client = make_client(public_base_url=" https://wishlist.example.com/ ")
+    client = make_client(public_base_url=" https://shushgift.example.com/ ")
 
     response = client.get("/api/config")
 
-    assert response.json()["public_base_url"] == "https://wishlist.example.com"
+    assert response.json()["public_base_url"] == "https://shushgift.example.com"
 
 
 def test_first_sign_in_creates_one_user_and_a_working_token(client, google, engine):

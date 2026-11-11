@@ -21,8 +21,8 @@ from sqlalchemy import text
 from app.accounts.apple import AppleKeys, AppleKeysUnavailable, AppleVerifier
 
 ISSUER = "https://appleid.apple.com"
-SERVICES_ID = "com.example.wishlist.web"
-BUNDLE_ID = "com.example.wishlist"
+SERVICES_ID = "com.example.shushgift.web"
+BUNDLE_ID = "com.example.shushgift"
 KEY_ID = "test-key"
 NONCE = "a-random-nonce"
 ADDRESS = "ada@example.com"

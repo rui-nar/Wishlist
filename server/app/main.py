@@ -17,6 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.convertors import PathConvertor, register_url_convertor
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app import app_links
 from app.accounts import apple_tokens, sessions
 from app.accounts.apple import AppleVerifier
 from app.accounts.apple_router import router as apple_router
@@ -107,7 +108,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     # builds the schema.
     hidden = settings.app_env != "dev"
     app = FastAPI(
-        title="Wishlist",
+        title="Shush Gift",
         version=settings.app_version,
         lifespan=lifespan,
         openapi_url=None if hidden else "/openapi.json",
@@ -166,6 +167,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     _log_email_sign_in_gap(settings)
     _log_admin_gap(settings)
     _log_apple_revocation_gap(settings, revocation_gaps)
+    _log_app_links_gap(settings)
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.
@@ -228,8 +230,9 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.include_router(billing_router)
     app.include_router(admin_router)
     app.add_exception_handler(RequestValidationError, _validation_error)
+    app_links.register(app, settings)
 
-    # Registered last, so every /api route above takes precedence.
+    # Registered last, so every route above takes precedence.
     if web_dir.is_dir():
         _serve_web_client(app, web_dir)
 
@@ -311,6 +314,16 @@ def _log_apple_revocation_gap(settings: Settings, gaps: list[str]) -> None:
         _log.warning(
             "Apple token revocation is off; missing or unloadable: %s",
             ", ".join(gaps),
+        )
+
+
+def _log_app_links_gap(settings: Settings) -> None:
+    """An app-link entry that is not valid is left out of its file (Shush Gift
+    plan D7): named once, by its position, as ADMIN_USER_IDS."""
+    if settings.app_links_invalid:
+        _log.warning(
+            "app links: invalid entries ignored: %s",
+            "; ".join(settings.app_links_invalid),
         )
 
 

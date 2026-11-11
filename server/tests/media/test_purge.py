@@ -57,7 +57,7 @@ def nightly(backups, oldest, count=30, every=DAY):
     for n in range(count):
         day = (oldest + n * every).date()
         written = datetime(day.year, day.month, day.day, 3, tzinfo=UTC)
-        dump(backups, f"wishlist_{day.isoformat()}.dump", written)
+        dump(backups, f"shushgift_{day.isoformat()}.dump", written)
 
 
 def recent_dumps(backups, after):
@@ -173,20 +173,20 @@ def run(engine, media_dir, backups, now=NOW, session=None):
 def test_horizon_is_the_oldest_dump_minus_a_day(backups):
     nightly(backups, NOW - 30 * DAY)
 
-    # The oldest is wishlist_2026-10-09.dump, written that day at 03:00.
+    # The oldest is shushgift_2026-10-09.dump, written that day at 03:00.
     assert horizon(backups) == datetime(2026, 10, 8, tzinfo=UTC)
 
 
 def test_horizon_takes_the_earlier_of_the_file_date_and_the_name(backups):
-    dump(backups, "wishlist_2026-11-01.dump", NOW)
+    dump(backups, "shushgift_2026-11-01.dump", NOW)
     dump(backups, "before-restore.dump", datetime(2026, 11, 3, 9, tzinfo=UTC))
 
     assert horizon(backups) == datetime(2026, 10, 31, tzinfo=UTC)
 
 
 def test_horizon_ignores_other_names_and_a_date_that_is_not_one(backups):
-    dump(backups, "wishlist_2026-11-05.dump", datetime(2026, 11, 5, 3, tzinfo=UTC))
-    dump(backups, ".wishlist_2020-01-01.dump.partial", NOW - 900 * DAY)
+    dump(backups, "shushgift_2026-11-05.dump", datetime(2026, 11, 5, 3, tzinfo=UTC))
+    dump(backups, ".shushgift_2020-01-01.dump.partial", NOW - 900 * DAY)
     dump(backups, "notes.txt", NOW - 900 * DAY)
     dump(backups, "kept_2026-13-45.dump", datetime(2026, 11, 6, tzinfo=UTC))
 

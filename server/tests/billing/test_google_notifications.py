@@ -254,7 +254,7 @@ def assert_refused(client, fake, engine, response):
 @pytest.mark.parametrize(
     "claims",
     [
-        {"aud": "https://wishlist.example.test/elsewhere"},
+        {"aud": "https://shushgift.example.test/elsewhere"},
         {"email": "someone@example-project.iam.gserviceaccount.com"},
         {"email_verified": False},
         {"email": None},

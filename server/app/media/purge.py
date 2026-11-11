@@ -120,7 +120,7 @@ def _horizon(
 
 
 def _date_in_name(name: str) -> datetime | None:
-    # wishlist_<YYYY-MM-DD>.dump, kept_<YYYY-MM-DD>.dump: 00:00 UTC that day.
+    # shushgift_<YYYY-MM-DD>.dump, kept_<YYYY-MM-DD>.dump: 00:00 UTC that day.
     match = _DATE_IN_NAME.search(name)
     if match is None:
         return None
