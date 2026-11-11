@@ -313,6 +313,11 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
 ## Constraints
 
 - **Platforms:** web, Android and iOS.
+  iOS, decided 2026-11-11 (owner): built and signed by GitHub Actions on
+  macOS and delivered through TestFlight; Premium bought on iPhone through
+  Apple's in-app purchase from the first iOS release, and Premium bought on
+  the web works on iPhone too; the bundle identifier is decided later, before
+  the first TestFlight upload (the Android one waits for the same choice).
 - **Sign-in:** Google, Apple (required on iOS alongside Google), email and
   password.
   Decided 2026-11-10 (owner's instruction to proceed silently):
