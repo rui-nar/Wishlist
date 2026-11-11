@@ -31,8 +31,10 @@ class AdminPhotos(BaseModel):
 
 
 class AdminSubscription(BaseModel):
-    """The person's Stripe subscription, apart from a grant by hand: no id,
-    no customer and no amount."""
+    """The person's Stripe or Apple subscription, apart from a grant by hand:
+    no id, no customer and no amount. An Apple one in billing retry, which
+    grants nothing but which Apple may still charge (Apple IAP plan D9), reads
+    `past_due` with no date."""
 
     # `active`, `past_due`, `canceling` (set to stop at `period_end`),
     # `incomplete`, `ended`, or `no_news`: `active` or `past_due` past its
@@ -61,6 +63,12 @@ class AdminUserRow(BaseModel):
     # The one in force, else the latest; null if they never subscribed. Shown
     # apart from `manual_grant`: neither hides the other.
     subscription: AdminSubscription | None
+    # The same for Apple, in its own block (Apple IAP plan D9): the server
+    # cannot cancel it, so deleting the account warns of it.
+    apple_subscription: AdminSubscription | None
+    # Any Apple subscription of theirs that Apple may still charge, whichever
+    # the block shows: the admin's deletion warns of it (review R2-2).
+    apple_renewing: bool
     # The admin's grant still active, if any, so it can be ended (D8).
     manual_grant: ManualGrant | None
     lists_owned: int

@@ -6,6 +6,10 @@ description = "Wishlist server (FastAPI)"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.1",
+    # Apple's own: verifies the App Store's signed payloads and reads the App
+    # Store Server API (Apple IAP plan D3); imported only in
+    # app/billing/apple_gateway.py.
+    "app-store-server-library>=3.1.2",
     # Hashes passwords (sign-in plan D11); imported only in app/accounts/passwords.py.
     "argon2-cffi>=25.1.0",
     "fastapi>=0.162.2",

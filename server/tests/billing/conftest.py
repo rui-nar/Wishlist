@@ -12,13 +12,19 @@ import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
+from apple_fakes import APP_APPLE_ID, BUNDLE_ID, PRODUCT_ID, FakeApple, build_apple_pki
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, make_url, text
 from sqlalchemy.orm import Session
 
 from app.accounts import sessions
 from app.accounts.models import User
+from app.billing.apple_events import PRODUCTION, SANDBOX
 
 SERVER_DIR = Path(__file__).resolve().parents[2]
 
@@ -91,5 +97,54 @@ def make_account(engine: Engine) -> Callable[[], Account]:
             token = sessions.create(db, user.id, sessions.utc_now())
             user_id = user.id
         return Account(id=user_id, token=token)
+
+    return make
+
+
+@pytest.fixture(scope="session")
+def apple_pki():
+    return build_apple_pki()
+
+
+@pytest.fixture(scope="session")
+def apple_private_key() -> str:
+    """An In-App Purchase key's text, for settings: generated, never Apple's."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    return key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+
+
+@pytest.fixture
+def apple_on(apple_private_key: str) -> dict[str, Any]:
+    """Settings values that make the Apple gateway (Apple IAP plan D7), for
+    `make_client`. Placeholders, and a generated key."""
+    return {
+        "apple_product_id": PRODUCT_ID,
+        "apple_bundle_id": BUNDLE_ID,
+        "apple_iap_issuer_id": "issuer-placeholder",
+        "apple_iap_key_id": "KEYPLACEHOLDER",
+        "apple_iap_private_key": apple_private_key,
+        "apple_app_apple_id": str(APP_APPLE_ID),
+    }
+
+
+@pytest.fixture
+def make_apple_client(
+    make_client: Callable[..., TestClient], apple_on: dict[str, Any], apple_pki
+) -> Callable[..., TestClient]:
+    """A client whose Apple gateway is a `FakeApple` accepting the
+    environments its settings do (D6): no test reaches Apple."""
+
+    def make(**overrides: Any) -> TestClient:
+        client = make_client(**apple_on | overrides)
+        if client.app.state.apple_gateway is not None:
+            production = client.app.state.settings.app_env == "production"
+            client.app.state.apple_gateway = FakeApple(
+                apple_pki, (PRODUCTION, SANDBOX) if production else (SANDBOX,)
+            )
+        return client
 
     return make

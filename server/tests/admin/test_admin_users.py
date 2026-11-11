@@ -286,6 +286,8 @@ def test_a_row_says_who_how_they_sign_in_their_plan_lists_and_photos(
             "started_at": None,
             "period_end": end.isoformat().replace("+00:00", "Z"),
         },
+        "apple_subscription": None,
+        "apple_renewing": False,
         "manual_grant": None,
         "lists_owned": 3,
         "photos": {

@@ -1,12 +1,15 @@
 """The billing routes: the plan, Stripe's Checkout and Portal, and its webhook
-(premium plan D11 to D14).
+(premium plan D11 to D14); Apple's purchases and notifications (Apple IAP
+plan D3, D4).
 
-No row lock is ever held across a call to Stripe: checkout and portal
-authenticate with `unlocked_session` and lock the user only after their
-last Stripe call, and the webhook reads the subscription before its first
-write. A refusal is returned, not raised, so it keeps its `code`.
+No row lock is ever held across a call to Stripe or Apple: checkout, portal
+and Apple's transactions authenticate with `unlocked_session` and lock the
+user only after their last call, and the webhook and Apple's notifications
+read the subscription before their first write. A refusal is returned, not
+raised, so it keeps its `code`.
 """
 
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -22,7 +25,9 @@ from sqlalchemy.orm import Session
 
 from app.accounts.deps import CurrentUser, UnlockedSession, lock_signed_in
 from app.accounts.models import User
-from app.billing import stripe_events
+from app.billing import apple_events, stripe_events
+from app.billing.apple_events import SANDBOX
+from app.billing.apple_gateway import AppleError, InvalidSignedData, MissingAtApple
 from app.billing.entitlements import (
     GRACE,
     Applied,
@@ -31,8 +36,17 @@ from app.billing.entitlements import (
     record_consent,
     summary,
 )
-from app.billing.models import ACTIVE, PAST_DUE, STRIPE, BillingCustomer, Entitlement
+from app.billing.models import (
+    ACTIVE,
+    APPLE,
+    PAST_DUE,
+    STRIPE,
+    BillingCustomer,
+    Entitlement,
+)
 from app.billing.schemas import (
+    AppleOffer,
+    AppleTransactionReport,
     BillingRefusal,
     BillingStatus,
     LegalLinks,
@@ -75,6 +89,11 @@ ALREADY_PREMIUM = "already_premium"
 NO_SUBSCRIPTION = "no_subscription"
 BILLING_UNAVAILABLE = "billing_unavailable"
 BILLING_MISCONFIGURED = "billing_misconfigured"
+INVALID_TRANSACTION = "invalid_transaction"
+OTHER_ACCOUNT = "other_account"
+OTHER_PRODUCT = "other_product"
+SANDBOX_REFUSED = "sandbox_refused"
+UNKNOWN_TRANSACTION = "unknown_transaction"
 
 _REFUSALS: dict[str, tuple[int, str]] = {
     ALREADY_PREMIUM: (status.HTTP_409_CONFLICT, "Already premium"),
@@ -84,6 +103,11 @@ _REFUSALS: dict[str, tuple[int, str]] = {
         status.HTTP_503_SERVICE_UNAVAILABLE,
         "Billing is misconfigured",
     ),
+    INVALID_TRANSACTION: (status.HTTP_400_BAD_REQUEST, "Invalid transaction"),
+    OTHER_ACCOUNT: (status.HTTP_409_CONFLICT, "Another account's purchase"),
+    OTHER_PRODUCT: (status.HTTP_409_CONFLICT, "Not the product sold"),
+    SANDBOX_REFUSED: (status.HTTP_409_CONFLICT, "Sandbox purchases are refused"),
+    UNKNOWN_TRANSACTION: (status.HTTP_409_CONFLICT, "Unknown to Apple"),
 }
 
 _REFUSAL = {"model": BillingRefusal}
@@ -106,6 +130,8 @@ def billing_status(request: Request, user: CurrentUser, db: DbSession) -> Billin
         ),
         enforced=settings.limits_enforced,
         offer=_offer(settings),
+        apple_offer=_apple_offer(request),
+        apple_renewing=bool(apple_events.renewing(db, user.id)),
         can_manage=_can_manage(request, db, user.id),
         legal=LegalLinks(
             terms_url=settings.legal_terms_url.strip() or None,
@@ -315,6 +341,234 @@ def _warn_if_two_in_force(
         )
 
 
+@router.post(
+    "/apple/transactions",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={400: _REFUSAL, 409: _REFUSAL, 502: _REFUSAL},
+)
+def apple_transaction(
+    request: Request,
+    report: AppleTransactionReport,
+    session: UnlockedSession,
+    db: DbSession,
+) -> Response:
+    """A purchase or a restore on iPhone (Apple IAP plan D3). The transaction
+    only says which subscription; what is recorded is Apple's answer for it.
+    Recorded whatever the plan: a purchase made is never dropped."""
+    settings: Settings = request.app.state.settings
+    gateway = request.app.state.apple_gateway
+    if gateway is None:
+        raise not_found()
+    try:
+        reported = gateway.transaction(report.signed_transaction)
+    except InvalidSignedData:
+        return _refusal(INVALID_TRANSACTION)
+    except AppleError:
+        return _refusal(BILLING_UNAVAILABLE)
+    external_id = apple_events.original_transaction_id(reported)
+    where = apple_events.environment(reported)
+    if external_id is None or where is None:
+        return _refusal(INVALID_TRANSACTION)
+    # Before Apple is asked: a refusal costs no call.
+    refused = _apple_refusal(
+        settings,
+        reported,
+        session.user_id,
+        external_id,
+        apple_events.account_token(reported),
+    )
+    if refused is not None:
+        return _refusal(refused)
+    # Before the read, so a later handler always wins (premium plan D13).
+    read_at = request.app.state.clock()
+    try:
+        subscription = gateway.subscription(external_id, where)
+    except MissingAtApple:
+        _log.warning("apple: transaction %s is unknown to Apple", external_id)
+        return _refusal(UNKNOWN_TRANSACTION)
+    except AppleError:
+        return _refusal(BILLING_UNAVAILABLE)
+    # Whose the subscription is now, as for a notification (D4, review R2-1):
+    # the latest token, else the stored row's account; with neither, the
+    # reported transaction's, which is this account.
+    owner = (
+        apple_events.account_token(subscription.transaction)
+        or _stored_owner(db, external_id)
+        or session.user_id
+    )
+    refused = _apple_refusal(
+        settings, subscription.transaction, session.user_id, external_id, owner
+    )
+    if refused is not None:
+        return _refusal(refused)
+    facts = apple_events.facts(subscription, session.user_id)
+    if facts is None:
+        # Apple answered what it does not document: the app retries later.
+        _log.error("apple: subscription %s could not be read", external_id)
+        return _refusal(BILLING_UNAVAILABLE)
+    lock_signed_in(request, db, session)
+    apply(db, facts, read_at)
+    return _no_content()
+
+
+# No session: Apple's signature speaks for Apple.
+@router.post(
+    "/apple/notifications",
+    responses={400: {"description": "Invalid"}, 502: _REFUSAL},
+)
+async def apple_notification(request: Request, db: DbSession) -> Response:
+    """App Store Server Notifications V2 (D4): verified, then trusted only as a
+    pointer to the subscription, read back from Apple. Answered 200 whenever
+    Apple's retrying would change nothing."""
+    gateway = request.app.state.apple_gateway
+    if gateway is None:
+        raise not_found()
+    signed = _signed_payload(await _capped_body(request))
+    if signed is None:
+        raise _invalid_notification()
+    try:
+        # Off the event loop: checking a certificate's revocation asks Apple.
+        notification = await run_in_threadpool(gateway.notification, signed)
+    except InvalidSignedData:
+        _warn_of_bad_apple_signature(request)
+        raise _invalid_notification() from None
+    except AppleError:
+        return _refusal(BILLING_UNAVAILABLE)
+    return await run_in_threadpool(_handle_notification, request, db, notification)
+
+
+def _handle_notification(
+    request: Request, db: Session, notification: dict[str, Any]
+) -> Response:
+    settings: Settings = request.app.state.settings
+    gateway = request.app.state.apple_gateway
+    signed = apple_events.signed_transaction(notification)
+    if signed is None:
+        return _ok()
+    try:
+        pointed = gateway.transaction(signed)
+    except InvalidSignedData:
+        _log.error("apple: a notification's transaction failed its signature check")
+        return _ok()
+    except AppleError:
+        return _refusal(BILLING_UNAVAILABLE)
+    external_id = apple_events.original_transaction_id(pointed)
+    where = apple_events.environment(pointed)
+    if external_id is None or where is None:
+        _log.error("apple: a notification points at no subscription")
+        return _ok()
+    read_at = request.app.state.clock()
+    try:
+        subscription = gateway.subscription(external_id, where)
+    except MissingAtApple:
+        _log.warning("apple: subscription %s is unknown to Apple", external_id)
+        return _ok()
+    except AppleError:
+        return _refusal(BILLING_UNAVAILABLE)
+    user_id = _apple_owner(db, subscription.transaction, external_id)
+    if user_id is None:
+        _log.warning("apple: subscription %s of no known account", external_id)
+        return _ok()
+    if not _sold_here(settings, subscription.transaction):
+        _log.warning("apple: subscription %s is of another product", external_id)
+        return _ok()
+    if _sandbox_refused(settings, subscription.transaction, user_id):
+        _log.warning(
+            "apple: Sandbox subscription %s refused for account %s",
+            external_id,
+            user_id,
+        )
+        return _ok()
+    facts = apple_events.facts(subscription, user_id)
+    if facts is None:
+        _log.error("apple: subscription %s could not be read", external_id)
+        return _ok()
+    if apply(db, facts, read_at) is Applied.USER_GONE:
+        # Apple gives the server no way to cancel it (D9).
+        _log.warning("apple: subscription %s of a gone account", external_id)
+    return _ok()
+
+
+def _apple_refusal(
+    settings: Settings,
+    transaction: dict[str, Any],
+    user_id: uuid.UUID,
+    external_id: str,
+    owner: uuid.UUID | None,
+) -> str | None:
+    """Why this transaction may not grant Premium to this account, whose it is
+    being `owner` (D2, D3, D6), logged with ids only, or None."""
+    if not _sold_here(settings, transaction):
+        _log.warning("apple: transaction %s is of another product", external_id)
+        return OTHER_PRODUCT
+    if owner != user_id:
+        _log.warning(
+            "apple: transaction %s names another account (%s)",
+            external_id,
+            owner or "none",
+        )
+        return OTHER_ACCOUNT
+    if _sandbox_refused(settings, transaction, user_id):
+        _log.warning(
+            "apple: Sandbox transaction %s refused for account %s",
+            external_id,
+            user_id,
+        )
+        return SANDBOX_REFUSED
+    return None
+
+
+def _sold_here(settings: Settings, transaction: dict[str, Any]) -> bool:
+    return apple_events.is_subscription(transaction) and (
+        apple_events.product_id(transaction) == settings.apple_product_id.strip()
+    )
+
+
+def _sandbox_refused(
+    settings: Settings, transaction: dict[str, Any], user_id: uuid.UUID
+) -> bool:
+    """D6: production takes a Sandbox purchase from a listed account only, so
+    that a tester's free purchase grants nothing there. Elsewhere the gateway
+    accepts Sandbox only."""
+    return (
+        settings.app_env == "production"
+        and apple_events.environment(transaction) == SANDBOX
+        and user_id not in settings.apple_sandbox_ids
+    )
+
+
+def _apple_owner(
+    db: Session, transaction: dict[str, Any], external_id: str
+) -> uuid.UUID | None:
+    """Whose the subscription is (D4, review R1-2): the latest transaction's
+    token when it names an existing account; only when it carries none, the
+    account the stored row names."""
+    token = apple_events.account_token(transaction)
+    if token is not None:
+        return db.scalar(select(User.id).where(User.id == token))
+    return _stored_owner(db, external_id)
+
+
+def _stored_owner(db: Session, external_id: str) -> uuid.UUID | None:
+    return db.scalar(
+        select(Entitlement.user_id).where(
+            Entitlement.source == APPLE, Entitlement.external_id == external_id
+        )
+    )
+
+
+def _signed_payload(body: bytes | None) -> str | None:
+    """`signedPayload` of a notification's body, or None for anything else."""
+    if body is None:
+        return None
+    try:
+        decoded = json.loads(body)
+    except ValueError, RecursionError:
+        return None
+    found = decoded.get("signedPayload") if isinstance(decoded, dict) else None
+    return found if isinstance(found, str) and found else None
+
+
 def _customer_owner(db: Session, customer_id: str | None) -> uuid.UUID | None:
     if customer_id is None:
         return None
@@ -351,6 +605,15 @@ def _offer(settings: Settings) -> Offer | None:
         currency=settings.billing_price_currency.strip().upper(),
         interval="year",
     )
+
+
+def _apple_offer(request: Request) -> AppleOffer | None:
+    """Apart from Stripe's (D7): the gateway exists only once every variable
+    is set and the key loads."""
+    if request.app.state.apple_gateway is None:
+        return None
+    settings: Settings = request.app.state.settings
+    return AppleOffer(product_id=settings.apple_product_id.strip())
 
 
 def _misconfigured_variable(price: Price, settings: Settings) -> str | None:
@@ -410,6 +673,21 @@ def _warn_of_bad_signature(request: Request) -> None:
     )
 
 
+def _warn_of_bad_apple_signature(request: Request) -> None:
+    """As `_warn_of_bad_signature`: a wrong APPLE_BUNDLE_ID or
+    APPLE_APP_APPLE_ID leaves every renewal unrecorded."""
+    state = request.app.state
+    now = state.clock()
+    last = getattr(state, "bad_apple_signature_warned_at", None)
+    if last is not None and now - last < BAD_SIGNATURE_WARNING_INTERVAL:
+        return
+    state.bad_apple_signature_warned_at = now
+    _log.warning(
+        "apple: a notification failed its check: if every one does, check"
+        " APPLE_BUNDLE_ID, APPLE_APP_APPLE_ID and the URL's environment"
+    )
+
+
 def _invalid_webhook() -> HTTPException:
     # One body for every case, so nothing says what was wrong.
     return HTTPException(
@@ -417,8 +695,19 @@ def _invalid_webhook() -> HTTPException:
     )
 
 
+def _invalid_notification() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid notification"
+    )
+
+
 def _no_content() -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _ok() -> Response:
+    # What Apple takes for delivered (D4).
+    return Response(status_code=status.HTTP_200_OK)
 
 
 def _refusal(code: str) -> JSONResponse:
