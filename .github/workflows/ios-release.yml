@@ -39,6 +39,8 @@ jobs:
       bundle_id: ${{ steps.gate.outputs.bundle_id }}
       display_name: ${{ steps.gate.outputs.display_name }}
       build_name: ${{ steps.gate.outputs.build_name }}
+      google_client_id: ${{ steps.gate.outputs.google_client_id }}
+      google_reversed_client_id: ${{ steps.gate.outputs.google_reversed_client_id }}
     steps:
       - name: Check the configuration
         id: gate
@@ -55,6 +57,7 @@ jobs:
           IOS_BUNDLE_ID_VAL: ${{ vars.IOS_BUNDLE_ID_VAL }}
           API_BASE_URL_PROD: ${{ secrets.API_BASE_URL_PROD }}
           API_BASE_URL_VAL: ${{ secrets.API_BASE_URL_VAL }}
+          GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
         run: |
           missing=""
           for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
@@ -122,6 +125,18 @@ jobs:
             echo "::error::The $app app's server address is empty or not https: set the API_BASE_URL_VAL or API_BASE_URL_PROD secret"
             exit 1
           fi
+          # Google on iOS (D3): unset means no Google sign-in. Set, the app
+          # gets the client id and the Info.plist its reversed form as a URL
+          # scheme, both from this one value: Google's SDK stops the app at
+          # sign-in when it has the id without the scheme.
+          google_reversed=""
+          if [ -n "$GOOGLE_IOS_CLIENT_ID" ]; then
+            if ! [[ "$GOOGLE_IOS_CLIENT_ID" =~ ^[A-Za-z0-9-]+\.apps\.googleusercontent\.com$ ]]; then
+              echo "::error::GOOGLE_IOS_CLIENT_ID is not <id>.apps.googleusercontent.com"
+              exit 1
+            fi
+            google_reversed="com.googleusercontent.apps.${GOOGLE_IOS_CLIENT_ID%.apps.googleusercontent.com}"
+          fi
 
           {
             echo "ready=true"
@@ -129,6 +144,8 @@ jobs:
             echo "bundle_id=$bundle_id"
             echo "display_name=$display_name"
             echo "build_name=$build_name"
+            echo "google_client_id=$GOOGLE_IOS_CLIENT_ID"
+            echo "google_reversed_client_id=$google_reversed"
           } >> "$GITHUB_OUTPUT"
 
   release:
@@ -144,6 +161,8 @@ jobs:
     env:
       APP: ${{ needs.gate.outputs.app }}
       BUNDLE_ID: ${{ needs.gate.outputs.bundle_id }}
+      GOOGLE_IOS_CLIENT_ID: ${{ needs.gate.outputs.google_client_id }}
+      GOOGLE_REVERSED_CLIENT_ID: ${{ needs.gate.outputs.google_reversed_client_id }}
 
     steps:
       - uses: actions/checkout@v7
@@ -171,24 +190,22 @@ jobs:
       - name: Install dependencies
         run: flutter pub get --enforce-lockfile
 
-      # Identity.xcconfig holds the committed placeholder (D1). Later lines of
-      # an xcconfig override earlier ones, so appending sets this app's
-      # values on the runner only; nothing is committed.
+      # Identity.xcconfig holds the committed placeholders (D1) and includes
+      # Identity.local.xcconfig, gitignored, whose values replace them: this
+      # app's, on the runner only. Without a Google client id the reversed
+      # one keeps its placeholder, as the dart-define stays unset.
       - name: Set the app's identity
         env:
           DISPLAY_NAME: ${{ needs.gate.outputs.display_name }}
         run: |
-          identity=ios/Flutter/Identity.xcconfig
-          if [ ! -f "$identity" ]; then
-            echo "::error::$identity is missing"
-            exit 1
-          fi
           {
-            echo ""
-            echo "// Set by ios-release.yml for the $APP app."
+            echo "// Written by ios-release.yml for the $APP app."
             echo "WISHLIST_BUNDLE_ID = $BUNDLE_ID"
             echo "WISHLIST_DISPLAY_NAME = $DISPLAY_NAME"
-          } >> "$identity"
+            if [ -n "$GOOGLE_REVERSED_CLIENT_ID" ]; then
+              echo "GOOGLE_IOS_REVERSED_CLIENT_ID = $GOOGLE_REVERSED_CLIENT_ID"
+            fi
+          } > ios/Flutter/Identity.local.xcconfig
 
       # Writes the Flutter build settings (dart-defines, version) and installs
       # the pods, without building: xcodebuild archives below, because
@@ -221,20 +238,33 @@ jobs:
           if [ -n "$BUILD_NAME" ]; then
             args+=(--build-name="$BUILD_NAME")
           fi
+          # Only with its URL scheme, written in the step above.
+          if [ -n "$GOOGLE_IOS_CLIENT_ID" ]; then
+            args+=(--dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID")
+          fi
           flutter build ios "${args[@]}"
           echo "::notice title=iOS $APP app::$version, build $BUILD_NUMBER"
 
       # The last check before anything is signed: the bundle id Xcode will
-      # sign is this app's. Only the one setting is printed: the others hold
-      # the dart-defines.
-      - name: Check the bundle id
+      # sign is this app's, and the Google URL scheme matches the
+      # dart-define. Only these settings are read: others hold the
+      # dart-defines.
+      - name: Check the identity
         working-directory: client/ios
         run: |
-          actual=$(xcodebuild -showBuildSettings -json -workspace Runner.xcworkspace -scheme Runner -configuration Release \
-            | jq -r '.[] | select(.target == "Runner") | .buildSettings.PRODUCT_BUNDLE_IDENTIFIER')
+          settings=$(xcodebuild -showBuildSettings -json -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+            | jq -c '.[] | select(.target == "Runner") | .buildSettings | {PRODUCT_BUNDLE_IDENTIFIER, GOOGLE_IOS_REVERSED_CLIENT_ID}')
+          actual=$(jq -r '.PRODUCT_BUNDLE_IDENTIFIER' <<< "$settings")
           if [ "$actual" != "$BUNDLE_ID" ]; then
             echo "::error::Xcode would sign '$actual', not '$BUNDLE_ID'"
             exit 1
+          fi
+          if [ -n "$GOOGLE_REVERSED_CLIENT_ID" ]; then
+            actual=$(jq -r '.GOOGLE_IOS_REVERSED_CLIENT_ID' <<< "$settings")
+            if [ "$actual" != "$GOOGLE_REVERSED_CLIENT_ID" ]; then
+              echo "::error::The Google URL scheme is '$actual', not '$GOOGLE_REVERSED_CLIENT_ID'"
+              exit 1
+            fi
           fi
 
       # A temporary file, named as altool looks for it (AuthKey_<id>.p8 in

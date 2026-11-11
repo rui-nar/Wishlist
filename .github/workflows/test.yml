@@ -126,8 +126,9 @@ jobs:
           path: client/test/**/failures/
           if-no-files-found: ignore
 
-  # The iOS project builds (plan D7): unsigned, with the committed placeholder
-  # bundle id and no secrets. The tests stay on Linux, in the client job.
+  # The iOS project builds (plan D7): unsigned, with the committed placeholders
+  # of Identity.xcconfig (no Identity.local.xcconfig, no Google client id) and
+  # no secrets. The tests stay on Linux, in the client job.
   ios:
     runs-on: macos-15
     timeout-minutes: 45
