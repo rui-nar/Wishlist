@@ -23,6 +23,25 @@ on:
 permissions:
   contents: read
 
+# The app-link host (SHUSH_GIFT_PLAN D7) is the host of the app's
+# API_BASE_URL_* secret, as in ios-release.yml: https://val.shushgift.com/api
+# gives val.shushgift.com. The port, path, query and fragment are dropped, the
+# case lowered, and anything else than a DNS name refused, so the value is
+# safe to pass to Gradle. Defined once here, tested by the gate, and used by
+# the gate and the build.
+env:
+  APP_LINK_HOST_SH: |
+    app_link_host() {
+      local host="${1#https://}"
+      host="${host%%[/?#]*}"
+      if [[ "$host" =~ :[0-9]+$ ]]; then
+        host="${host%:*}"
+      fi
+      host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+      [[ "$host" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] || return 1
+      echo "$host"
+    }
+
 # One upload per ref at a time, and never a cancelled one.
 concurrency:
   group: android-release-${{ github.ref }}
@@ -40,6 +59,36 @@ jobs:
       package_name: ${{ steps.gate.outputs.package_name }}
       build_name: ${{ steps.gate.outputs.build_name }}
     steps:
+      # Sample addresses only: the secrets never reach this step.
+      - name: Test the app-link host extraction
+        run: |
+          eval "$APP_LINK_HOST_SH"
+          failed=0
+          check() {
+            local actual
+            actual=$(app_link_host "$1") || actual=""
+            if [ "$actual" != "$2" ]; then
+              echo "::error::app_link_host '$1' gave '$actual', expected '$2'"
+              failed=1
+            fi
+          }
+          check https://val.shushgift.com/api val.shushgift.com
+          check https://shushgift.com shushgift.com
+          check https://shushgift.com/ shushgift.com
+          check https://Val.ShushGift.com:8443/api/ val.shushgift.com
+          check 'https://shushgift.com?x=1' shushgift.com
+          check 'https://shushgift.com#x' shushgift.com
+          # Refused: nothing an app link can claim.
+          check http://shushgift.com/api ''
+          check https://user@shushgift.com/api ''
+          check https://localhost/api ''
+          check 'https://[::1]/api' ''
+          check 'https://shush gift.com/api' ''
+          check https://shushgift.com:/api ''
+          check https://shushgift.com:84x/api ''
+          check https:// ''
+          exit "$failed"
+
       - name: Check the configuration
         id: gate
         env:
@@ -118,6 +167,13 @@ jobs:
             echo "::error::The $app app's server address is empty or not https: set the API_BASE_URL_VAL or API_BASE_URL_PROD secret"
             exit 1
           fi
+          # Its host is the app-link domain (D7), passed to the build, which
+          # derives it again so the host never leaves the secrets.
+          eval "$APP_LINK_HOST_SH"
+          if ! app_link_host "$api" > /dev/null; then
+            echo "::error::The $app app's server address has no host an app link can use: set the API_BASE_URL_VAL or API_BASE_URL_PROD secret"
+            exit 1
+          fi
           # A wrong paste fails here, before anything is built. Nothing of the
           # key is printed, jq's messages included.
           if ! jq -e '.type == "service_account" and (.client_email | type == "string") and (.private_key | type == "string")' \
@@ -183,8 +239,10 @@ jobs:
           fi
 
       # Gradle signs with the upload key from the environment (D3), and
-      # wishlistRequireUploadKey makes it fail rather than sign with the debug
-      # key. The version code is the run number: Play needs it to grow.
+      # shushgiftRequireUploadKey makes it fail rather than sign with the debug
+      # key. The version code is the run number: Play needs it to grow. The
+      # app-link host adds the verified intent filter (SHUSH_GIFT_PLAN D7);
+      # masked, as part of the secret address.
       - name: Build the bundle
         id: build
         env:
@@ -210,10 +268,14 @@ jobs:
           # Flutter hands the dart-defines to Gradle base64-encoded, which the
           # secret's own mask does not cover.
           echo "::add-mask::$(printf '%s' "API_BASE_URL=$api" | base64 | tr -d '\n')"
+          eval "$APP_LINK_HOST_SH"
+          app_link_host=$(app_link_host "$api")
+          echo "::add-mask::$app_link_host"
           args=(
             --release --flavor "$APP"
-            -P wishlistAppId="$APP_ID"
-            -P wishlistRequireUploadKey=true
+            -P shushgiftAppId="$APP_ID"
+            -P shushgiftRequireUploadKey=true
+            -P shushgiftAppLinkHost="$app_link_host"
             --build-number="$BUILD_NUMBER"
             --dart-define=API_BASE_URL="$api"
             --dart-define=APP_VERSION="$version"
