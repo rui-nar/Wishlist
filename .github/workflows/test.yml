@@ -87,8 +87,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The SDK version is the Dockerfile's FLUTTER_TAG, goldens.ps1's and the
-      # dev machine's: move all four together.
+      # The SDK version is the Dockerfile's FLUTTER_TAG, goldens.ps1's, the
+      # dev machine's, the ios job's below and ios-release.yml's: move them
+      # all together.
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -124,3 +125,43 @@ jobs:
           name: golden-failures
           path: client/test/**/failures/
           if-no-files-found: ignore
+
+  # The iOS project builds (plan D7): unsigned, with the committed placeholder
+  # bundle id and no secrets. The tests stay on Linux, in the client job.
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # App Store Connect takes only builds made with Xcode 26 or later, and
+      # the runner image's default Xcode may be older. ios-release.yml selects
+      # it the same way, so this job builds with the release's toolchain.
+      - name: Select Xcode 26
+        run: |
+          xcode=$(printf '%s\n' /Applications/Xcode_26*.app | grep -iv beta | sort -V | tail -n 1 || true)
+          if [ ! -d "$xcode" ]; then
+            echo "::error::No Xcode 26 on this runner image"
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      # Pinned as in the client job: move them together.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.1"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build
+        run: flutter build ios --release --no-codesign

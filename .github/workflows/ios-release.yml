@@ -1,0 +1,303 @@
+name: iOS release
+
+# Signs the iOS app and uploads it to TestFlight (plan D7). Two apps (D1, D2):
+# the `validation` tag builds the VAL app against VAL, a release tag (vX.Y.Z,
+# as in docker-build.yml) builds the PROD app against PROD, and a manual run
+# chooses. It never runs for a pull request, so no fork's code ever sees the
+# signing secrets.
+on:
+  push:
+    tags:
+      - 'v*'
+      # 'v*' already matches it; listed so the trigger does not rely on that,
+      # as in docker-build.yml.
+      - 'validation'
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which app to build. PROD needs a vX.Y.Z tag as the ref.
+        type: choice
+        options: [val, prod]
+        default: val
+
+permissions:
+  contents: read
+
+# One upload per ref at a time, and never a cancelled one.
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # On Linux, so a repository without the secrets never starts a macOS runner.
+  # Refuses what would upload a wrong app before anything is signed.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      app: ${{ steps.gate.outputs.app }}
+      bundle_id: ${{ steps.gate.outputs.bundle_id }}
+      display_name: ${{ steps.gate.outputs.display_name }}
+      build_name: ${{ steps.gate.outputs.build_name }}
+    steps:
+      - name: Check the configuration
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_APP: ${{ inputs.app }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+          IOS_BUNDLE_ID_VAL: ${{ vars.IOS_BUNDLE_ID_VAL }}
+          API_BASE_URL_PROD: ${{ secrets.API_BASE_URL_PROD }}
+          API_BASE_URL_VAL: ${{ secrets.API_BASE_URL_VAL }}
+        run: |
+          missing=""
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          # None of them: the owner has not enrolled yet, which is not a failure.
+          if [ "$missing" = " ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID" ]; then
+            echo "::notice title=iOS release skipped::No App Store Connect API key is configured (ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, APPLE_TEAM_ID): nothing was built or uploaded."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Some of them: a configuration left half done.
+          if [ -n "$missing" ]; then
+            echo "::error::Missing:$missing"
+            exit 1
+          fi
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            app="$INPUT_APP"
+          elif [ "$REF_NAME" = "validation" ]; then
+            app="val"
+          else
+            app="prod"
+          fi
+
+          build_name=""
+          if [ "$app" = "prod" ]; then
+            bundle_id="$IOS_BUNDLE_ID"
+            api="$API_BASE_URL_PROD"
+            display_name="Wishlist"
+            # The PROD app's version is the release's: App Store Connect
+            # refuses a new build of a version it has already approved.
+            if [ "$REF_TYPE" != "tag" ] || ! [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::The PROD app is built from a vX.Y.Z tag only, not from '$REF_NAME'"
+              exit 1
+            fi
+            build_name="${REF_NAME#v}"
+          else
+            bundle_id="$IOS_BUNDLE_ID_VAL"
+            api="$API_BASE_URL_VAL"
+            display_name="Wishlist VAL"
+          fi
+
+          # The placeholder would make automatic signing register it with
+          # Apple. The format check also keeps the value safe to write into
+          # an xcconfig.
+          if [ -z "$bundle_id" ] || [[ "$bundle_id" == com.example.* ]]; then
+            echo "::error::The $app app's bundle id is unset or the placeholder: set the IOS_BUNDLE_ID or IOS_BUNDLE_ID_VAL variable"
+            exit 1
+          fi
+          if ! [[ "$bundle_id" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+            echo "::error::The $app app's bundle id '$bundle_id' is not a bundle identifier"
+            exit 1
+          fi
+          # Two apps (D1): a VAL build must never replace a PROD one.
+          if [ "$IOS_BUNDLE_ID" = "$IOS_BUNDLE_ID_VAL" ]; then
+            echo "::error::IOS_BUNDLE_ID and IOS_BUNDLE_ID_VAL must differ"
+            exit 1
+          fi
+          # iOS allows HTTPS only, and the app is declared as using no other
+          # encryption (D6).
+          if [[ "$api" != https://?* ]]; then
+            echo "::error::The $app app's server address is empty or not https: set the API_BASE_URL_VAL or API_BASE_URL_PROD secret"
+            exit 1
+          fi
+
+          {
+            echo "ready=true"
+            echo "app=$app"
+            echo "bundle_id=$bundle_id"
+            echo "display_name=$display_name"
+            echo "build_name=$build_name"
+          } >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        working-directory: client
+
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+      BUNDLE_ID: ${{ needs.gate.outputs.bundle_id }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # As in test.yml's ios job: App Store Connect takes only builds made
+      # with Xcode 26 or later.
+      - name: Select Xcode 26
+        run: |
+          xcode=$(printf '%s\n' /Applications/Xcode_26*.app | grep -iv beta | sort -V | tail -n 1 || true)
+          if [ ! -d "$xcode" ]; then
+            echo "::error::No Xcode 26 on this runner image"
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      # Pinned as in test.yml's client job: move them together.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.1"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      # Identity.xcconfig holds the committed placeholder (D1). Later lines of
+      # an xcconfig override earlier ones, so appending sets this app's
+      # values on the runner only; nothing is committed.
+      - name: Set the app's identity
+        env:
+          DISPLAY_NAME: ${{ needs.gate.outputs.display_name }}
+        run: |
+          identity=ios/Flutter/Identity.xcconfig
+          if [ ! -f "$identity" ]; then
+            echo "::error::$identity is missing"
+            exit 1
+          fi
+          {
+            echo ""
+            echo "// Set by ios-release.yml for the $APP app."
+            echo "WISHLIST_BUNDLE_ID = $BUNDLE_ID"
+            echo "WISHLIST_DISPLAY_NAME = $DISPLAY_NAME"
+          } >> "$identity"
+
+      # Writes the Flutter build settings (dart-defines, version) and installs
+      # the pods, without building: xcodebuild archives below, because
+      # `flutter build ipa` cannot pass it the API key.
+      - name: Configure the build
+        env:
+          BUILD_NAME: ${{ needs.gate.outputs.build_name }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          API_BASE_URL_PROD: ${{ secrets.API_BASE_URL_PROD }}
+          API_BASE_URL_VAL: ${{ secrets.API_BASE_URL_VAL }}
+        run: |
+          if [ "$APP" = "prod" ]; then
+            api="$API_BASE_URL_PROD"
+            version="$REF_NAME"
+          else
+            api="$API_BASE_URL_VAL"
+            # As the VAL image's version (docker-build.yml).
+            version="validation-$(git rev-parse --short HEAD)"
+          fi
+          # Flutter hands the dart-defines to Xcode base64-encoded, which the
+          # secret's own mask does not cover.
+          echo "::add-mask::$(printf '%s' "API_BASE_URL=$api" | base64 | tr -d '\n')"
+          args=(
+            --release --config-only --no-codesign
+            --build-number="$BUILD_NUMBER"
+            --dart-define=API_BASE_URL="$api"
+            --dart-define=APP_VERSION="$version"
+          )
+          if [ -n "$BUILD_NAME" ]; then
+            args+=(--build-name="$BUILD_NAME")
+          fi
+          flutter build ios "${args[@]}"
+          echo "::notice title=iOS $APP app::$version, build $BUILD_NUMBER"
+
+      # The last check before anything is signed: the bundle id Xcode will
+      # sign is this app's. Only the one setting is printed: the others hold
+      # the dart-defines.
+      - name: Check the bundle id
+        working-directory: client/ios
+        run: |
+          actual=$(xcodebuild -showBuildSettings -json -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+            | jq -r '.[] | select(.target == "Runner") | .buildSettings.PRODUCT_BUNDLE_IDENTIFIER')
+          if [ "$actual" != "$BUNDLE_ID" ]; then
+            echo "::error::Xcode would sign '$actual', not '$BUNDLE_ID'"
+            exit 1
+          fi
+
+      # A temporary file, named as altool looks for it (AuthKey_<id>.p8 in
+      # ./private_keys). Never committed or cached; removed at the end.
+      - name: Write the App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/private_keys/AuthKey_$ASC_KEY_ID.p8"
+
+      # Automatic signing: Xcode creates or fetches the certificate and the
+      # profile with the API key. No certificate or profile is kept as a file.
+      - name: Archive
+        working-directory: client/ios
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild archive -quiet \
+            -workspace Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination generic/platform=iOS \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey_$ASC_KEY_ID.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+
+      - name: Export the IPA
+        working-directory: client/ios
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportPath "$RUNNER_TEMP/ipa" \
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey_$ASC_KEY_ID.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      # altool finds the key in ./private_keys, hence the working directory.
+      - name: Upload to TestFlight
+        working-directory: ${{ runner.temp }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          shopt -s nullglob
+          ipas=(ipa/*.ipa)
+          if [ "${#ipas[@]}" -ne 1 ]; then
+            echo "::error::Expected one IPA, found ${#ipas[@]}"
+            exit 1
+          fi
+          xcrun altool --upload-app --type ios --file "${ipas[0]}" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Remove the API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/private_keys"
