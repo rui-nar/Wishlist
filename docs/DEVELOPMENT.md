@@ -208,6 +208,26 @@ To try a purchase, in a Stripe sandbox of its own, never VAL's, set up as for VA
 
 Delete the `STRIPE_SECRET_KEY` line and restart to turn it off again.
 
+## Building for iOS
+
+An iOS build needs a Mac with Xcode; the Windows dev machine cannot make one.
+CI builds it instead (iOS app plan D7):
+
+- the `ios` job of the `Tests` workflow builds every pull request on macOS
+  with `flutter build ios --release --no-codesign` and the placeholder bundle
+  id, with no secrets. A change to `client/ios/` is proven there only;
+- the `iOS release` workflow signs and uploads the VAL or PROD app to
+  TestFlight ([DEPLOYMENT](DEPLOYMENT.md#13-ios-app)).
+
+On Windows, `flutter analyze` and `flutter test` still cover the Dart code of
+the iOS paths: widget tests run them with
+`variant: TargetPlatformVariant.only(TargetPlatform.iOS)`.
+
+On a Mac, the same build as CI is `flutter build ios --release --no-codesign`
+in `client/`, with `--dart-define=API_BASE_URL=…` to reach a server. A local
+identity goes into `client/ios/Flutter/Identity.local.xcconfig`, gitignored,
+never into `Identity.xcconfig`, whose committed values stay placeholders.
+
 ## Tests
 
 ```powershell

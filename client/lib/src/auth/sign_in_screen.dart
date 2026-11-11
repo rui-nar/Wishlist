@@ -180,6 +180,7 @@ class _SignInScreenState extends State<SignInScreen> {
       idToken: authorisation.idToken,
       nonce: authorisation.nonce,
       name: authorisation.name,
+      authorizationCode: authorisation.authorizationCode,
     );
   }
 
