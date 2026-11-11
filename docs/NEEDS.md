@@ -346,9 +346,13 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
 - **Email:** Brevo, as TraxJourney (password reset and notifications).
 - **Hosting:** the server side runs on the owner's existing VPS (OVH, France),
   next to TraxJourney.
-- **Domain:** for now, PROD and VAL are subdomains of TraxJourney's domain
-  (hostnames in the owner's VPS notes, not in this public repository); Wishlist
-  gets its own domain later.
+- **Name and domain** (owner, 2026-11-11): the app is called **Shush Gift**
+  and has its own domain, `shushgift.com`: PROD at `shushgift.com`, VAL at
+  `val.shushgift.com`. The move happens as soon as the domain is live, before
+  the iOS and Android store releases, so no store build ships with the old
+  hosts. Until then PROD and VAL are subdomains of TraxJourney's domain
+  (hostnames in the owner's VPS notes, not in this public repository); links
+  already shared on them keep working after the move.
 - **Stack (agreed ahead of the needs, see
   [`plans/DEVOPS_FOUNDATION_PLAN.md`](plans/DEVOPS_FOUNDATION_PLAN.md)):**
   Flutter; FastAPI, Alembic, PostgreSQL.
