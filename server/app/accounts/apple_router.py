@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from app.accounts import identities, sessions
-from app.accounts.apple import AppleKeysUnavailable, InvalidAppleToken
+from app.accounts import apple_tokens, identities, sessions
+from app.accounts.apple import AppleIdentity, AppleKeysUnavailable, InvalidAppleToken
 from app.accounts.models import User
 from app.accounts.schemas import (
     DISPLAY_NAME_MAX_LENGTH,
@@ -26,6 +26,10 @@ router = APIRouter(prefix="/api", tags=["accounts"])
 # Random text the client makes up; the limit also makes pydantic refuse a lone
 # surrogate, which could not be hashed.
 _NONCE_MAX_LENGTH = 256
+# Apple's codes are a short run of printable ASCII; the limit leaves room
+# (iOS app plan D5).
+_CODE_MAX_LENGTH = 512
+_CODE_PATTERN = r"^[!-~]+$"
 _RELAY_SUFFIX = "@privaterelay.appleid.com"
 _RELAY_NAME = "Apple user"
 # Apple's form is about 2 KiB; what comes back goes into a response header.
@@ -38,6 +42,11 @@ class AppleSignIn(BaseModel):
     nonce: str = Field(min_length=1, max_length=_NONCE_MAX_LENGTH)
     # Apple gives it to the client at the first authorisation only.
     name: DisplayName | None = None
+    # Exchanged for the token revoked at the account's deletion (iOS app plan
+    # D5). Older clients send none.
+    authorization_code: str | None = Field(
+        default=None, max_length=_CODE_MAX_LENGTH, pattern=_CODE_PATTERN
+    )
 
 
 def _refused() -> HTTPException:
@@ -68,6 +77,7 @@ def sign_in_with_apple(body: AppleSignIn, request: Request, db: DbSession) -> Si
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Apple could not be reached",
         ) from None
+    refresh_token = _exchanged(request, body.authorization_code, identity)
     try:
         user = identities.user_for(
             db,
@@ -81,8 +91,31 @@ def sign_in_with_apple(body: AppleSignIn, request: Request, db: DbSession) -> Si
     except identities.AddressRequired:
         _log.warning("Apple ID token refused (reason=no_address)")
         raise _refused() from None
-    token = sessions.create(db, user.id, request.app.state.clock())
+    now = request.app.state.clock()
+    if refresh_token is not None:
+        apple_tokens.store(db, user.id, identity.audience, refresh_token, now)
+    token = sessions.create(db, user.id, now)
     return SignedIn(token=token, user=_user_out(user))
+
+
+def _exchanged(
+    request: Request, code: str | None, identity: AppleIdentity
+) -> str | None:
+    """The refresh token of the sign-in's code, or None (D5). Asked before the
+    account is looked up and locked: a deletion of the account never waits on
+    Apple here."""
+    tokens = request.app.state.apple_tokens
+    if code is None or tokens is None:
+        return None
+    settings = request.app.state.settings
+    # Only the web flow, of the Services ID, has a redirect URI; Apple wants it
+    # again with that flow's code. The native sheet's has none.
+    redirect_uri = (
+        settings.apple_redirect_uri
+        if identity.audience == settings.apple_audiences[0]
+        else None
+    )
+    return apple_tokens.exchange_code(tokens, code, identity, redirect_uri)
 
 
 @router.post("/auth/apple/callback", status_code=status.HTTP_303_SEE_OTHER)

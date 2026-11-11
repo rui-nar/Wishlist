@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     apple_client_ids: str = ""
     # The Android package Apple's callback hands the sign-in to (D16).
     apple_android_package: str = ""
+    # Sign the client secret of Apple's token endpoints, which revoking an
+    # account's Apple token at its deletion needs (iOS app plan D5). The key is
+    # a secret. Any of the three empty: no token is kept or revoked.
+    apple_team_id: str = ""
+    apple_key_id: str = ""
+    apple_private_key: str = ""
     # The origin share links are built on, `<PUBLIC_BASE_URL>/join#<token>`
     # (lists plan D5); /api/config hands it to the mobile apps. Empty in DEV:
     # the web client builds the link on its own origin.
@@ -211,6 +217,16 @@ class Settings(BaseSettings):
             for client_id in self.apple_client_ids.split(",")
             if client_id.strip()
         ]
+
+    @property
+    def apple_redirect_uri(self) -> str | None:
+        """Where Apple's web flow, on the web and Android, sends its answer
+        (sign-in plan D16). Apple's token endpoint wants it again with a code
+        from that flow."""
+        public_base_url = self.public_base_url.strip().rstrip("/")
+        if not public_base_url:
+            return None
+        return f"{public_base_url}/api/auth/apple/callback"
 
     @property
     def frontend_origins(self) -> list[str]:

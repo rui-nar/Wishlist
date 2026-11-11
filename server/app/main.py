@@ -17,7 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.convertors import PathConvertor, register_url_convertor
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.accounts import sessions
+from app.accounts import apple_tokens, sessions
 from app.accounts.apple import AppleVerifier
 from app.accounts.apple_router import router as apple_router
 from app.accounts.email_router import router as email_router
@@ -124,6 +124,14 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.state.apple_verifier = (
         AppleVerifier(settings.apple_audiences) if settings.apple_audiences else None
     )
+    # None while revocation is off: no code is exchanged and no token kept
+    # (iOS app plan D5). Replaced by tests: none calls Apple.
+    signer, revocation_gaps = apple_tokens.signer_from(settings)
+    app.state.apple_tokens = (
+        apple_tokens.AppleTokens(signer)
+        if signer is not None and settings.apple_audiences
+        else None
+    )
     app.state.clock = sessions.utc_now
     app.state.url_fetcher = SafeFetcher(version=settings.app_version)
     # None until every variable it needs is set: the worker then skips the
@@ -148,6 +156,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     _log_billing_gaps(settings)
     _log_email_sign_in_gap(settings)
     _log_admin_gap(settings)
+    _log_apple_revocation_gap(settings, revocation_gaps)
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.
@@ -175,11 +184,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
             "public_base_url": public_base_url or None,
             # What the sign-in screen offers (sign-in plan D18).
             "apple_client_id": apple_audiences[0] if apple_audiences else None,
-            "apple_redirect_uri": (
-                f"{public_base_url}/api/auth/apple/callback"
-                if public_base_url
-                else None
-            ),
+            "apple_redirect_uri": settings.apple_redirect_uri,
             "email_sign_in": (
                 app.state.mailer is not None
                 and bool(settings.notification_secret.strip())
@@ -248,6 +253,17 @@ def _log_admin_gap(settings: Settings) -> None:
         _log.warning(
             "ADMIN_USER_IDS: entries at positions %s are not account ids; ignored",
             ", ".join(str(position) for position in settings.admin_ids_invalid),
+        )
+
+
+def _log_apple_revocation_gap(settings: Settings, gaps: list[str]) -> None:
+    """Apple requires an app offering its sign-in to revoke the person's token
+    at account deletion (iOS app plan D5): with Apple sign-in on, what keeps
+    that off is named, once. Never a value: the key is a secret."""
+    if settings.apple_audiences and gaps:
+        _log.warning(
+            "Apple token revocation is off; missing or unloadable: %s",
+            ", ".join(gaps),
         )
 
 

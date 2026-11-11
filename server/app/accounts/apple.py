@@ -1,4 +1,5 @@
-"""Verifying the identity token a client got from Apple (sign-in plan D14).
+"""Verifying the identity token a client got from Apple (sign-in plan D14),
+and signing the client secret of Apple's token endpoints (iOS app plan D5).
 
 The app holds one verifier in `app.state.apple_verifier`, or None when
 APPLE_CLIENT_IDS is empty; tests give it a fake key source, so no test calls
@@ -7,10 +8,13 @@ Apple.
 
 import hashlib
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Any, NoReturn, Protocol
 
 import jwt
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from app.accounts import email_links
 
@@ -25,6 +29,9 @@ _TIMEOUT_SECONDS = 5
 # cannot make every sign-in call Apple.
 _KEYS_LIFESPAN_SECONDS = 60 * 60
 _CLOCK_SKEW_SECONDS = 10
+# The client secret: Apple allows up to six months; one is made per call.
+_SECRET_ALGORITHM = "ES256"
+_SECRET_LIFESPAN_SECONDS = 5 * 60
 
 # Most specific first: an invalid signature is also a DecodeError. Only these
 # labels are logged, never the message: PyJWT's can quote the token's header.
@@ -46,6 +53,9 @@ class AppleIdentity:
     sub: str
     # Apple does not send it every time (D15). Verified and normalised.
     email: str | None
+    # The client ID the token was issued to, one of APPLE_CLIENT_IDS: the
+    # Services ID on the web and Android, a bundle ID on iOS.
+    audience: str
 
 
 class InvalidAppleToken(Exception):
@@ -120,7 +130,7 @@ class AppleVerifier:
             # from None: a traceback logged further up must not carry the
             # original message either.
             raise InvalidAppleToken(reason) from None
-        return _identity(claims, nonce)
+        return _identity(claims, nonce, self._audiences)
 
     def _key_of(self, id_token: str) -> Any:
         header = jwt.get_unverified_header(id_token)
@@ -135,7 +145,7 @@ class AppleVerifier:
         return key
 
 
-def _identity(claims: Any, nonce: str) -> AppleIdentity:
+def _identity(claims: Any, nonce: str, audiences: list[str]) -> AppleIdentity:
     sub = claims.get("sub")
     if not isinstance(sub, str) or not sub:
         _refuse("no_subject")
@@ -143,7 +153,18 @@ def _identity(claims: Any, nonce: str) -> AppleIdentity:
     # a token alone cannot be replayed (D15). Neither value is secret.
     if claims.get("nonce") != hashlib.sha256(nonce.encode()).hexdigest():
         _refuse("nonce")
-    return AppleIdentity(sub=sub, email=_address(claims))
+    return AppleIdentity(
+        sub=sub, email=_address(claims), audience=_audience(claims, audiences)
+    )
+
+
+def _audience(claims: Any, audiences: list[str]) -> str:
+    # PyJWT has checked that the token names one of ours. Apple names one
+    # client; a list is taken at its first that is ours.
+    aud = claims["aud"]
+    if isinstance(aud, str):
+        return aud
+    return next(client_id for client_id in aud if client_id in audiences)
 
 
 def _address(claims: Any) -> str | None:
@@ -171,3 +192,59 @@ def _failure_reason(exc: Exception) -> str:
         if isinstance(exc, kind):
             return reason
     return "other"
+
+
+def load_private_key(text: str) -> ec.EllipticCurvePrivateKey | None:
+    """APPLE_PRIVATE_KEY as Apple's .p8 file has it: PEM, with its line breaks
+    or on one line of a `.env` with each written `\\n`. None when it is no
+    P-256 private key; why is never said, since the text is the secret."""
+    pem = text.strip().replace("\\n", "\n")
+    try:
+        key = serialization.load_pem_private_key(pem.encode(), password=None)
+    except Exception:
+        return None
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(
+        key.curve, ec.SECP256R1
+    ):
+        return None
+    return key
+
+
+@dataclass(frozen=True)
+class ClientSecretSigner:
+    """Signs the client secret of Apple's token endpoints with the Sign in
+    with Apple key of the owner's team (iOS app plan D5)."""
+
+    team_id: str
+    key_id: str
+    key: ec.EllipticCurvePrivateKey = field(repr=False)
+
+    def secret(self, client_id: str) -> str:
+        # Apple's clock, not the app's: the secret is checked against it.
+        now = int(time.time())
+        return jwt.encode(
+            {
+                "iss": self.team_id,
+                "iat": now,
+                "exp": now + _SECRET_LIFESPAN_SECONDS,
+                "aud": _ISSUER,
+                "sub": client_id,
+            },
+            self.key,
+            algorithm=_SECRET_ALGORITHM,
+            headers={"kid": self.key_id},
+        )
+
+
+def granted_subject(id_token: Any) -> str | None:
+    """The `sub` of the identity token Apple's token endpoint answers with, or
+    None. Its signature is not checked: it comes from Apple over TLS, in
+    answer to our own request."""
+    if not isinstance(id_token, str):
+        return None
+    try:
+        claims = jwt.decode(id_token, options={"verify_signature": False})
+    except Exception:
+        return None
+    sub = claims.get("sub")
+    return sub if isinstance(sub, str) and sub else None
