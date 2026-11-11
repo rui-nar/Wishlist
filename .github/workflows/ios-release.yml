@@ -1,17 +1,16 @@
 name: iOS release
 
 # Signs the iOS app and uploads it to TestFlight (plan D7). Two apps (D1, D2):
-# the `validation` tag builds the VAL app against VAL, a release tag (vX.Y.Z,
-# as in docker-build.yml) builds the PROD app against PROD, and a manual run
-# chooses. It never runs for a pull request, so no fork's code ever sees the
-# signing secrets.
+# a release tag (vX.Y.Z, as in docker-build.yml) builds the PROD app against
+# PROD, and a manual run chooses, so a VAL build is a manual run with
+# `app: val`. The macOS runner counts ten times against the Actions minutes,
+# so it runs on release tags only, not on `validation` (SHUSH_GIFT_PLAN D3a):
+# 'v[0-9]*', since 'v*' would match `validation` too. It never runs for a pull
+# request, so no fork's code ever sees the signing secrets.
 on:
   push:
     tags:
-      - 'v*'
-      # 'v*' already matches it; listed so the trigger does not rely on that,
-      # as in docker-build.yml.
-      - 'validation'
+      - 'v[0-9]*'
   workflow_dispatch:
     inputs:
       app:
@@ -22,6 +21,28 @@ on:
 
 permissions:
   contents: read
+
+# The app-link host (SHUSH_GIFT_PLAN D7) is the host of the app's
+# API_BASE_URL_* secret: https://val.shushgift.com/api gives
+# val.shushgift.com. The port, path, query and fragment are dropped, the case
+# lowered, and anything else than a DNS name refused (an IP address
+# included), so the value is safe in an xcconfig. Defined once here, tested by
+# the gate, and used by the gate and the build; bash 3.2 compatible, as on the
+# macOS runner.
+env:
+  APP_LINK_HOST_SH: |
+    app_link_host() {
+      local host="${1#https://}"
+      host="${host%%[/?#]*}"
+      if [[ "$host" =~ :[0-9]+$ ]]; then
+        host="${host%:*}"
+      fi
+      host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+      [[ "$host" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] || return 1
+      # A top-level label with a letter: an IP address is no app-link domain.
+      [[ "${host##*.}" =~ [a-z] ]] || return 1
+      echo "$host"
+    }
 
 # One upload per ref at a time, and never a cancelled one.
 concurrency:
@@ -42,6 +63,38 @@ jobs:
       google_client_id: ${{ steps.gate.outputs.google_client_id }}
       google_reversed_client_id: ${{ steps.gate.outputs.google_reversed_client_id }}
     steps:
+      # Sample addresses only: the secrets never reach this step.
+      - name: Test the app-link host extraction
+        run: |
+          eval "$APP_LINK_HOST_SH"
+          failed=0
+          check() {
+            local actual
+            actual=$(app_link_host "$1") || actual=""
+            if [ "$actual" != "$2" ]; then
+              echo "::error::app_link_host '$1' gave '$actual', expected '$2'"
+              failed=1
+            fi
+          }
+          check https://val.shushgift.com/api val.shushgift.com
+          check https://shushgift.com shushgift.com
+          check https://shushgift.com/ shushgift.com
+          check https://Val.ShushGift.com:8443/api/ val.shushgift.com
+          check 'https://shushgift.com?x=1' shushgift.com
+          check 'https://shushgift.com#x' shushgift.com
+          # Refused: nothing an app link can claim.
+          check http://shushgift.com/api ''
+          check https://user@shushgift.com/api ''
+          check https://localhost/api ''
+          check 'https://[::1]/api' ''
+          check https://10.0.0.1/ ''
+          check https://1.2.3.4:8080/x ''
+          check 'https://shush gift.com/api' ''
+          check https://shushgift.com:/api ''
+          check https://shushgift.com:84x/api ''
+          check https:// ''
+          exit "$failed"
+
       - name: Check the configuration
         id: gate
         env:
@@ -78,10 +131,9 @@ jobs:
             exit 1
           fi
 
+          # A tag push is a release tag (the trigger): the PROD app.
           if [ "$EVENT" = "workflow_dispatch" ]; then
             app="$INPUT_APP"
-          elif [ "$REF_NAME" = "validation" ]; then
-            app="val"
           else
             app="prod"
           fi
@@ -90,7 +142,7 @@ jobs:
           if [ "$app" = "prod" ]; then
             bundle_id="$IOS_BUNDLE_ID"
             api="$API_BASE_URL_PROD"
-            display_name="Wishlist"
+            display_name="Shush Gift"
             google_var="GOOGLE_IOS_CLIENT_ID"
             # The PROD app's version is the release's: App Store Connect
             # refuses a new build of a version it has already approved.
@@ -102,7 +154,7 @@ jobs:
           else
             bundle_id="$IOS_BUNDLE_ID_VAL"
             api="$API_BASE_URL_VAL"
-            display_name="Wishlist VAL"
+            display_name="Shush Gift VAL"
             google_var="GOOGLE_IOS_CLIENT_ID_VAL"
           fi
           google_client_id="${!google_var}"
@@ -127,6 +179,13 @@ jobs:
           # encryption (D6).
           if [[ "$api" != https://?* ]]; then
             echo "::error::The $app app's server address is empty or not https: set the API_BASE_URL_VAL or API_BASE_URL_PROD secret"
+            exit 1
+          fi
+          # Its host is the app-link domain (D7), passed to the build, which
+          # derives it again so the host never leaves the secrets.
+          eval "$APP_LINK_HOST_SH"
+          if ! app_link_host "$api" > /dev/null; then
+            echo "::error::The $app app's server address has no host an app link can use: set the API_BASE_URL_VAL or API_BASE_URL_PROD secret"
             exit 1
           fi
           # Google on iOS (D3): one iOS client per app, since Google registers
@@ -204,15 +263,28 @@ jobs:
       # Identity.xcconfig holds the committed placeholders (D1) and includes
       # Identity.local.xcconfig, gitignored, whose values replace them: this
       # app's, on the runner only. Without a Google client id the reversed
-      # one keeps its placeholder, as the dart-define stays unset.
+      # one keeps its placeholder, as the dart-define stays unset. The
+      # app-link host turns on the Associated Domains entitlement
+      # (SHUSH_GIFT_PLAN D7); masked, as part of the secret address.
       - name: Set the app's identity
         env:
           DISPLAY_NAME: ${{ needs.gate.outputs.display_name }}
+          API_BASE_URL_PROD: ${{ secrets.API_BASE_URL_PROD }}
+          API_BASE_URL_VAL: ${{ secrets.API_BASE_URL_VAL }}
         run: |
+          eval "$APP_LINK_HOST_SH"
+          if [ "$APP" = "prod" ]; then
+            api="$API_BASE_URL_PROD"
+          else
+            api="$API_BASE_URL_VAL"
+          fi
+          app_link_host=$(app_link_host "$api")
+          echo "::add-mask::$app_link_host"
           {
             echo "// Written by ios-release.yml for the $APP app."
-            echo "WISHLIST_BUNDLE_ID = $BUNDLE_ID"
-            echo "WISHLIST_DISPLAY_NAME = $DISPLAY_NAME"
+            echo "SHUSHGIFT_BUNDLE_ID = $BUNDLE_ID"
+            echo "SHUSHGIFT_DISPLAY_NAME = $DISPLAY_NAME"
+            echo "SHUSHGIFT_APP_LINK_HOST = $app_link_host"
             if [ -n "$GOOGLE_REVERSED_CLIENT_ID" ]; then
               echo "GOOGLE_IOS_REVERSED_CLIENT_ID = $GOOGLE_REVERSED_CLIENT_ID"
             fi
