@@ -83,3 +83,32 @@ sells.
 - Guard: —
 - Override: —
 - Outcome: fixed (plan U2 Scope)
+
+## Round 2 — 2026-11-11, unit review of U1, reviewed at 3556ba2
+
+### R2-1 — A report can take a subscription back from the account the stored row names
+- Trigger: accounts A and B on one Apple ID, the row on B, the latest transaction without a token; A restores → the row moves to A, B drops to Free silently.
+- Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D3)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (a2fc11d)
+
+### R2-2 — The admin row has no signal that Apple may still charge
+- Trigger: a canceling in-force row hides a second row in billing retry → the admin deletes with no warning.
+- Scores: trigger=plausible, impact=silent-wrong, detect=logged, later=cheap, fix=S/local, confidence=verified (corrected from inferred)
+- Decision: Fix now (D3)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (a2fc11d)
+
+### R2-3 — On PROD a Sandbox notification never reaches the Sandbox verifier
+- Trigger: App Review buys with the demo account → Sandbox notifications answered 400, retried, with a misleading configuration warning.
+- Scores: trigger=concrete, impact=wrong-visible, detect=logged, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D6)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (a2fc11d)
