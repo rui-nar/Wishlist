@@ -86,8 +86,11 @@ those two do for iOS, reusing their decisions wherever the platforms agree.
     the Play Developer API (`purchases.subscriptionsv2`) with a service
     account (`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, secret, plus
     `GOOGLE_PLAY_PACKAGE_NAME`). It records one entitlement, `source =
-    google`, `external_id` the purchase token's linked root (the first token
-    of the subscription), then **acknowledges** the purchase. Google refunds
+    google`, `external_id` the purchase's **current** token (delivery: Google
+    reads, acknowledges and cancels by the current token only, so a root key
+    could not cancel a re-signup at deletion). A token that replaces another
+    (`linkedPurchaseToken`) ends the old row and carries its account over.
+    Then the server **acknowledges** the purchase. Google refunds
     a purchase left unacknowledged for 3 days.
   - **Notifications:** Real-time developer notifications through Cloud
     Pub/Sub push to `POST /api/billing/google/notifications`. The push's OIDC
@@ -186,7 +189,7 @@ read for Google in place of Apple, and these additions:
   `google_subscription`.
 - **Stored data:** Google entitlements, deleted with the account.
 - **A contract with the past:** `obfuscatedExternalAccountId` = account id,
-  and the root purchase token as `external_id`.
+  and the current purchase token as `external_id`, older tokens ended.
 - **Environment:** `GOOGLE_PLAY_PACKAGE_NAME`, `GOOGLE_PLAY_PRODUCT_ID`,
   `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_PUBSUB_AUDIENCE`,
   `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT` and `GOOGLE_PLAY_TEST_ACCOUNT_IDS`.
