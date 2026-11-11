@@ -34,8 +34,10 @@ on_exit() {
     if [ "$status" -ne 0 ]; then
         log "failed (exit $status): containers and logs"
         docker ps -a || true
-        compose_prod logs --no-color || true
-        compose_val logs --no-color || true
+        if id "$deploy_user" >/dev/null 2>&1; then
+            compose_prod logs --no-color || true
+            compose_val logs --no-color || true
+        fi
     fi
 }
 trap on_exit EXIT
@@ -132,7 +134,10 @@ expect_apex_only "a path starting with /\\" --request-target '/\evil.example/' "
 expect_apex_only "a target in absolute form" --request-target "https://evil.example/" "$www_url/"
 expect_apex_only "a target in absolute form naming www" \
     --request-target "https://$www_host/x" "$www_url/"
-expect_apex_only "a target with user info" --request-target "https://$www_host@evil.example/" "$www_url/"
+# HTTP/1.1: over HTTP/2, curl turns this target into pseudo-headers that Caddy
+# refuses with a stream reset, which says nothing about the redirect.
+expect_apex_only "a target with user info" --http1.1 \
+    --request-target "https://$www_host@evil.example/" "$www_url/"
 expect_apex_only "a path with an encoded line break" \
     --request-target "/%0d%0aLocation:%20https://evil.example/" "$www_url/"
 docker rm -f shushgift-smoke-caddy >/dev/null
