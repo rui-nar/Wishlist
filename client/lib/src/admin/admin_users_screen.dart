@@ -304,8 +304,8 @@ class _UsersTable extends StatelessWidget {
   }
 }
 
-/// The plan, in the table and on a card: the effective plan, then the Stripe
-/// subscription and the grant on lines of their own ([planLines]).
+/// The plan, in the table and on a card: the effective plan, then each
+/// seller's subscription and the grant on lines of their own ([planLines]).
 class _PlanLines extends StatelessWidget {
   const _PlanLines({required this.user, this.style});
 

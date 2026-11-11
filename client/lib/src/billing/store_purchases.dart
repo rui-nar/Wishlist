@@ -1,5 +1,5 @@
 /// Reports what a store sold to the server, and finishes it there only once
-/// the server has it (Apple IAP plan D3).
+/// the server has it (Apple IAP plan D3, Android release plan D6).
 library;
 
 import 'dart:async';
@@ -25,6 +25,10 @@ enum StoreOutcome {
   /// The server refused it for good: a test purchase on the real server.
   sandboxRefused,
 
+  /// The server refused it for good: a real purchase on the test server,
+  /// which Google refunds.
+  realRefused,
+
   /// The server refused it for good: not something it sells or knows.
   notValid,
 
@@ -33,14 +37,18 @@ enum StoreOutcome {
   unconfirmed,
 }
 
-/// The server's refusals that no retry changes (`billing/router.py`), and
-/// what each means here.
+/// The server's refusals that no retry changes (`billing/router.py`), Apple's
+/// and Google's, and what each means here.
 const _kDefinitive = {
   'invalid_transaction': StoreOutcome.notValid,
+  'invalid_purchase': StoreOutcome.notValid,
   'other_product': StoreOutcome.notValid,
   'unknown_transaction': StoreOutcome.notValid,
+  'unknown_purchase': StoreOutcome.notValid,
   'other_account': StoreOutcome.otherAccount,
   'sandbox_refused': StoreOutcome.sandboxRefused,
+  'test_refused': StoreOutcome.sandboxRefused,
+  'real_refused': StoreOutcome.realRefused,
 };
 
 /// Listens to [store] while started, one purchase at a time, in order.
@@ -53,9 +61,10 @@ class StorePurchases {
 
   final Store store;
 
-  /// Sends a signed transaction to the server: completes on its 204, throws
-  /// as [ApiClient] does otherwise.
-  final Future<void> Function(String signedTransaction) report;
+  /// Sends a purchase's verification data to the server, on the route of
+  /// [store]'s source: completes on its 204, throws as [ApiClient] does
+  /// otherwise.
+  final Future<void> Function(String verificationData) report;
 
   /// What each purchase came to, for the plan page while it is open. Sync,
   /// so an outcome is out by the time [buy] or [restore] completes.
@@ -155,7 +164,10 @@ class StorePurchases {
       return;
     }
     try {
-      await store.finish(purchase);
+      await store.finish(
+        purchase,
+        otherAccount: outcome == StoreOutcome.otherAccount,
+      );
     } catch (_) {
       // Sent again later, and the server takes it again as it is.
     }
@@ -166,7 +178,7 @@ class StorePurchases {
   /// anything a retry may change. Null when signed out, which says enough.
   Future<StoreOutcome?> _report(StorePurchase purchase) async {
     try {
-      await report(purchase.signedTransaction!);
+      await report(purchase.verificationData!);
       return StoreOutcome.accepted;
     } on UnauthorizedException {
       // Signed out, which stops the listener: reported at the next sign-in.

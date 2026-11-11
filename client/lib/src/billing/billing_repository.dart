@@ -11,6 +11,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api/api_client.dart';
 import '../lists/gift_links.dart';
+import 'android_host_io.dart'
+    if (dart.library.js_interop) 'android_host_web.dart';
+import 'store.dart';
 
 const kPlanPath = '/account/plan';
 
@@ -35,9 +38,33 @@ bool? debugOnIos;
 bool get onIos =>
     debugOnIos ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
 
+/// Stands in for the platform in tests.
+@visibleForTesting
+bool? debugOnAndroid;
+
+/// The Android app, which sells through Google Play (Android release plan
+/// D8). The device's system, not [defaultTargetPlatform], which tests set to
+/// Android: Play's billing exists on a real Android only.
+bool get onAndroid => debugOnAndroid ?? (!kIsWeb && runsOnAndroid);
+
+/// The store that sells in this app: Apple's in the iOS app, Google Play's
+/// in the Android app; null on the web.
+StoreSource? get appStore => onIos
+    ? StoreSource.apple
+    : onAndroid
+        ? StoreSource.google
+        : null;
+
 /// Where an Apple subscription is managed or cancelled; the server cannot
 /// (D9).
 const kAppleSubscriptionsUrl = 'https://apps.apple.com/account/subscriptions';
+
+/// Play's subscriptions page, where a Google Play subscription is managed or
+/// cancelled (Android release plan D8). Play's documented link for all of
+/// them: the one for a single subscription needs the app's package name,
+/// which the app does not know apart from its build.
+const kGoogleSubscriptionsUrl =
+    'https://play.google.com/store/account/subscriptions';
 
 /// Apple's standard licence: the terms of a purchase in the iOS app when the
 /// server names none (D8).
@@ -47,6 +74,14 @@ const kAppleStandardEulaUrl =
 /// What the iOS app sells (D7); its price is the App Store's.
 class AppleOffer {
   const AppleOffer({required this.productId});
+
+  final String productId;
+}
+
+/// What the Android app sells (Android release plan D7); its price is
+/// Play's.
+class GoogleOffer {
+  const GoogleOffer({required this.productId});
 
   final String productId;
 }
@@ -93,6 +128,8 @@ class BillingStatus {
     required this.offer,
     this.appleOffer,
     this.appleRenewing = false,
+    this.googleOffer,
+    this.googleRenewing = false,
     required this.canManage,
     required this.legal,
   });
@@ -101,6 +138,7 @@ class BillingStatus {
     final limits = json['limits'] as Map<String, dynamic>?;
     final offer = json['offer'] as Map<String, dynamic>?;
     final appleOffer = json['apple_offer'] as Map<String, dynamic>?;
+    final googleOffer = json['google_offer'] as Map<String, dynamic>?;
     return BillingStatus(
       isPremium: json['plan'] == 'premium',
       source: json['source'] as String?,
@@ -115,6 +153,10 @@ class BillingStatus {
           ? null
           : AppleOffer(productId: appleOffer['product_id'] as String),
       appleRenewing: json['apple_renewing'] as bool,
+      googleOffer: googleOffer == null
+          ? null
+          : GoogleOffer(productId: googleOffer['product_id'] as String),
+      googleRenewing: json['google_renewing'] as bool,
       canManage: json['can_manage'] as bool,
       legal: LegalUrls.fromJson(json['legal'] as Map<String, dynamic>),
     );
@@ -152,6 +194,14 @@ class BillingStatus {
   /// says: deleting the account does not stop it (Apple IAP plan D9).
   final bool appleRenewing;
 
+  /// Google Play's, for the Android app; null unless the server sells through
+  /// Google (Android release plan D7).
+  final GoogleOffer? googleOffer;
+
+  /// A Google subscription of the account may still charge. Deleting the
+  /// account cancels it first (Android release plan D6).
+  final bool googleRenewing;
+
   /// A Stripe customer exists and the portal would serve.
   final bool canManage;
   final LegalUrls legal;
@@ -162,26 +212,48 @@ class BillingStatus {
   /// Apple's page manages it (D8).
   bool get managedAtApple => source == 'apple' || appleRenewing;
 
-  /// Something is on sale on this platform: Stripe's on the web, Apple's in
-  /// the iOS app (D7).
-  bool get offeredHere => onIos ? appleOffer != null : onTheWeb && offer != null;
+  /// Premium through Google Play, or a Google subscription that may still
+  /// charge: Play's page manages it (Android release plan D8).
+  bool get managedAtGoogle => source == 'google' || googleRenewing;
 
-  /// Stripe's portal is offered: on the web, and in the iOS app unless
-  /// Premium is Apple's (D8).
+  /// The product the phone's store sells here: Apple's in the iOS app,
+  /// Google Play's in the Android app; null elsewhere, or when not on sale.
+  String? get storeProductId => switch (appStore) {
+        StoreSource.apple => appleOffer?.productId,
+        StoreSource.google => googleOffer?.productId,
+        null => null,
+      };
+
+  /// Something is on sale on this platform: Stripe's on the web, Apple's in
+  /// the iOS app (D7), Google Play's in the Android app.
+  bool get offeredHere => appStore != null
+      ? storeProductId != null
+      : onTheWeb && offer != null;
+
+  /// Stripe's portal is offered: on the web, and in the phone apps unless
+  /// Premium is the phone store's (D8).
   bool get offersStripePortal =>
-      canManage && (onTheWeb || (onIos && source != 'apple'));
+      canManage &&
+      (onTheWeb ||
+          (onIos && source != 'apple') ||
+          (onAndroid && source != 'google'));
 
   /// Apple's subscriptions page is offered: in the iOS app (D8).
   bool get offersAppleManagement => onIos && managedAtApple;
 
-  /// Free, nothing on sale, no limit applied and nothing at Apple to manage:
-  /// the account screen stays as it was before plans existed (D18).
+  /// Play's subscriptions page is offered: in the Android app.
+  bool get offersGoogleManagement => onAndroid && managedAtGoogle;
+
+  /// Free, nothing on sale, no limit applied and nothing at a store to
+  /// manage: the account screen stays as it was before plans existed (D18).
   bool get nothingToShow =>
       !isPremium &&
       offer == null &&
       appleOffer == null &&
+      googleOffer == null &&
       !enforced &&
-      !appleRenewing;
+      !appleRenewing &&
+      !googleRenewing;
 }
 
 class BillingRepository {
@@ -210,6 +282,23 @@ class BillingRepository {
         // The server asks Apple: as long as a call to Stripe.
         timeout: _kStripeTimeout,
       );
+
+  /// Reports a purchase or a restore made in the Android app (Android release
+  /// plan D6), by its purchase token: as [reportAppleTransaction]. The server
+  /// acknowledges the purchase before its 204.
+  Future<void> reportGooglePurchase(String purchaseToken) => _api.post(
+        '$_kPath/google/purchases',
+        body: {'purchase_token': purchaseToken},
+        // The server reads and acknowledges it at Google.
+        timeout: _kStripeTimeout,
+      );
+
+  /// What reports [store]'s purchases: each store's on its own route.
+  Future<void> Function(String) reporterFor(Store store) =>
+      switch (store.source) {
+        StoreSource.apple => reportAppleTransaction,
+        StoreSource.google => reportGooglePurchase,
+      };
 
   Future<String> _stripeUrl(String path) async =>
       (await _api.postJson(path, const {}, timeout: _kStripeTimeout))['url']

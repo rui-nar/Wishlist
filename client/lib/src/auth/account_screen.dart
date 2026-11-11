@@ -8,6 +8,7 @@ import '../api/api_client.dart';
 import '../billing/billing_repository.dart';
 import '../billing/legal_links.dart';
 import '../billing/plan_screen.dart';
+import '../billing/store.dart';
 import '../design/tokens.dart';
 import '../design/widgets/page_frame.dart';
 import '../intro/intro_screen.dart';
@@ -120,17 +121,20 @@ class _AccountScreenState extends State<AccountScreen> {
     setState(() => _busy = true);
     // Read now, not when the screen opened: a subscription bought meanwhile
     // must be warned of (Apple IAP plan D9). Unknown when it cannot be read.
-    bool? appleRenewing;
+    BillingStatus? status;
     try {
-      appleRenewing = (await _billing.status()).appleRenewing;
+      status = await _billing.status();
     } catch (_) {
-      appleRenewing = null;
+      status = null;
     }
     if (!mounted) return;
     setState(() => _busy = false);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => _DeleteDialog(appleRenewing: appleRenewing),
+      builder: (context) => _DeleteDialog(
+        appleRenewing: status?.appleRenewing,
+        googleRenewing: status?.googleRenewing ?? false,
+      ),
     );
     if (confirmed != true || !mounted) return;
     setState(() => _busy = true);
@@ -244,7 +248,7 @@ class _AccountScreenState extends State<AccountScreen> {
 
 /// "Your plan": what it is, and the way to Premium or to manage it: through
 /// Stripe on the web, through Apple in the iOS app (Apple IAP plan D8, review
-/// R1-8). On Android, the plan and its limits only (PREMIUM_PLAN D18).
+/// R1-8), through Google Play in the Android app (Android release plan D8).
 class _PlanSection extends StatelessWidget {
   const _PlanSection({
     required this.status,
@@ -278,15 +282,19 @@ class _PlanSection extends StatelessWidget {
         ],
         if (status.offersAppleManagement) ...[
           const SizedBox(height: Spacing.s12),
-          const AppleSubscriptionsButton(),
+          const StoreSubscriptionsButton(store: StoreSource.apple),
+        ],
+        if (status.offersGoogleManagement) ...[
+          const SizedBox(height: Spacing.s12),
+          const StoreSubscriptionsButton(store: StoreSource.google),
         ],
         if (status.offersStripePortal) ...[
           const SizedBox(height: Spacing.s12),
           ManageSubscriptionButton(onStale: onStale),
         ],
-        if (onTheWeb || onIos) ...[
+        if (onTheWeb || appStore != null) ...[
           const SizedBox(height: Spacing.s8),
-          LegalLinks(legal: status.legal, apple: onIos),
+          LegalLinks(legal: status.legal, store: appStore),
         ],
       ],
     );
@@ -295,12 +303,20 @@ class _PlanSection extends StatelessWidget {
 
 /// Asks before deleting; pops true to delete. Warns, on every platform, of an
 /// Apple subscription the deletion does not stop, with the way to Apple's
-/// page (Apple IAP plan D9).
+/// page (Apple IAP plan D9). Says a Google Play subscription is cancelled with
+/// the account: the server cancels it first (Android release plan D6), so
+/// nothing is asked of the person.
 class _DeleteDialog extends StatelessWidget {
-  const _DeleteDialog({required this.appleRenewing});
+  const _DeleteDialog({
+    required this.appleRenewing,
+    required this.googleRenewing,
+  });
 
   /// Null when the plan could not be read: the warning is then conditional.
   final bool? appleRenewing;
+
+  /// The account has a Google subscription that may still charge.
+  final bool googleRenewing;
 
   @override
   Widget build(BuildContext context) {
@@ -318,6 +334,10 @@ class _DeleteDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(l10n.deleteAccountBody),
+            if (googleRenewing) ...[
+              const SizedBox(height: Spacing.s12),
+              Text(l10n.deleteAccountGoogleRenewing),
+            ],
             if (warning != null) ...[
               const SizedBox(height: Spacing.s12),
               Text(

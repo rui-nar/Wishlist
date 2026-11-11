@@ -183,6 +183,72 @@ void main() {
     });
   });
 
+  group('a Google subscription at deletion (Android release plan D6)', () {
+    const cancelled = 'Your Google Play subscription will be cancelled along '
+        'with your account.';
+
+    for (final web in [true, false]) {
+      testWidgets('renewing: says the deletion cancels it '
+          '(${web ? 'web' : 'Android'})', (tester) async {
+        debugOnTheWeb = web;
+        addTearDown(() => debugOnTheWeb = null);
+        await pumpAccount(tester);
+        // Bought after the screen opened: read again at deletion.
+        server.billing = billingStatus(googleRenewing: true);
+
+        await tester.tap(find.text('Delete account'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(cancelled), findsOneWidget);
+        // Nothing to do at Google: no warning to cancel, no link.
+        expect(find.textContaining('Cancel it'), findsNothing);
+        expect(find.text('Open Apple subscriptions'), findsNothing);
+
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+        expect(server.deleted, isTrue);
+      });
+    }
+
+    testWidgets('beside a renewing Apple one: both said', (tester) async {
+      server.billing = billingStatus(appleRenewing: true, googleRenewing: true);
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(cancelled), findsOneWidget);
+      expect(find.textContaining('App Store subscription'), findsOneWidget);
+    });
+
+    testWidgets('none renewing, or the plan unread: nothing said of Google',
+        (tester) async {
+      await pumpAccount(tester);
+      server.status['GET /api/billing'] = 500;
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(cancelled), findsNothing);
+    });
+
+    testWidgets('in French', (tester) async {
+      tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];
+      addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+      server.billing = billingStatus(googleRenewing: true);
+      await pumpAccount(tester);
+
+      await tester.tap(find.text('Supprimer le compte'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Votre abonnement Google Play sera résilié avec votre '
+            'compte.'),
+        findsOneWidget,
+      );
+    });
+  });
+
   testWidgets('the confirmation is in French on a French device',
       (tester) async {
     tester.platformDispatcher.localesTestValue = const [Locale('fr', 'FR')];

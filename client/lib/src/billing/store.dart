@@ -1,12 +1,17 @@
 /// A phone's app store, as the plan screen buys through it (Apple IAP plan
-/// D3): Apple's in the iOS app, and Google's behind the same interface later
-/// (ANDROID_RELEASE_PLAN U4).
+/// D3): Apple's in the iOS app, Google Play's in the Android app (Android
+/// release plan D8), behind the same interface.
 library;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'apple_store.dart';
 import 'billing_repository.dart';
+import 'google_store.dart';
+
+/// Which store sells: the server checks each one's purchases on its own
+/// route.
+enum StoreSource { apple, google }
 
 /// The subscription as the store sells it in the buyer's storefront.
 class StoreProduct {
@@ -27,28 +32,30 @@ class StorePurchase {
     required this.status,
     required this.productId,
     this.id,
-    this.signedTransaction,
+    this.verificationData,
   });
 
   final StorePurchaseStatus status;
   final String productId;
 
-  /// The store's transaction id, which [Store.finish] needs; null while
-  /// pending or cancelled.
+  /// The store's transaction or order id; null while pending or cancelled.
   final String? id;
 
-  /// What the server checks with the store (Apple's JWS). Never logged.
-  final String? signedTransaction;
+  /// What the server checks with the store: Apple's signed transaction (a
+  /// JWS), Google's purchase token. Never logged.
+  final String? verificationData;
 
   /// Bought or restored, with what the server needs to check it.
   bool get reportable =>
       (status == StorePurchaseStatus.purchased ||
           status == StorePurchaseStatus.restored) &&
-      (signedTransaction?.isNotEmpty ?? false);
+      (verificationData?.isNotEmpty ?? false);
 }
 
 /// What the app asks of a store. The store's own types stay behind it.
 abstract interface class Store {
+  StoreSource get source;
+
   /// Null when the store does not sell it here, or cannot be reached.
   Future<StoreProduct?> product(String id);
 
@@ -66,7 +73,9 @@ abstract interface class Store {
   Future<void> restore();
 
   /// Tells the store the purchase is dealt with, so it stops resending it.
-  Future<void> finish(StorePurchase purchase);
+  /// [otherAccount] when the server refused it only because another account
+  /// is signed in: that account may still take it.
+  Future<void> finish(StorePurchase purchase, {bool otherAccount = false});
 }
 
 /// Stands in for the device's store in tests.
@@ -75,6 +84,12 @@ Store? debugStore;
 
 Store? _deviceStore;
 
-/// The store this app buys through: Apple's in the iOS app, none elsewhere.
+/// The store this app buys through: Apple's in the iOS app, Google Play's in
+/// the Android app, none elsewhere.
 Store? get deviceStore =>
-    debugStore ?? (onIos ? _deviceStore ??= AppleStore() : null);
+    debugStore ??
+    (onIos
+        ? _deviceStore ??= AppleStore()
+        : onAndroid
+            ? _deviceStore ??= GoogleStore()
+            : null);

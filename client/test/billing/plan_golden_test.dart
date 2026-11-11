@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishlist/main.dart';
 import 'package:wishlist/src/billing/billing_repository.dart';
+import 'package:wishlist/src/billing/store.dart';
 
 import '../support/fakes.dart';
 import 'support.dart';
@@ -41,20 +42,36 @@ void main() {
   // there.
   final iosFree = billingStatus(appleOffer: kAppleOffer, offer: kBillingOffer);
 
-  // The golden's name, the location the app opens at, the plan, and whether
-  // in the iOS app; the others as on the web.
+  // In the Android app (Android release plan D8): Google selling, and
+  // Premium bought there.
+  final androidFree =
+      billingStatus(googleOffer: kGoogleOffer, offer: kBillingOffer);
+
+  // The golden's name, the location the app opens at, the plan, and the
+  // phone store that sells in the app; on the web when none.
   final screens = {
-    'account_screen_free_offer': ('/account', free, false),
-    'account_screen_premium': ('/account', premium, false),
-    'plan_screen_free': (kPlanPath, free, false),
-    'plan_screen_premium': (kPlanPath, premium, false),
-    'plan_screen_manual': (kPlanPath, manual, false),
-    'plan_screen_ios_free': (kPlanPath, iosFree, true),
-    'plan_screen_ios_apple': (kPlanPath, kAppleSubscribed, true),
+    'account_screen_free_offer': ('/account', free, null),
+    'account_screen_premium': ('/account', premium, null),
+    'plan_screen_free': (kPlanPath, free, null),
+    'plan_screen_premium': (kPlanPath, premium, null),
+    'plan_screen_manual': (kPlanPath, manual, null),
+    'plan_screen_ios_free': (kPlanPath, iosFree, StoreSource.apple),
+    'plan_screen_ios_apple': (kPlanPath, kAppleSubscribed, StoreSource.apple),
+    'account_screen_android_free': (
+      '/account',
+      androidFree,
+      StoreSource.google,
+    ),
+    'plan_screen_android_free': (kPlanPath, androidFree, StoreSource.google),
+    'plan_screen_android_google': (
+      kPlanPath,
+      kGoogleSubscribed,
+      StoreSource.google,
+    ),
   };
 
   group('goldens', skip: _skip, () {
-    for (final MapEntry(key: screen, value: (location, billing, ios))
+    for (final MapEntry(key: screen, value: (location, billing, phoneStore))
         in screens.entries) {
       for (final MapEntry(key: mode, value: brightness)
           in brightnesses.entries) {
@@ -72,8 +89,10 @@ void main() {
           WidgetsApp.debugAllowBannerOverride = false;
           addTearDown(() => WidgetsApp.debugAllowBannerOverride = true);
           installFakeGoogleSignIn();
-          if (ios) {
+          if (phoneStore == StoreSource.apple) {
             installFakeStore();
+          } else if (phoneStore == StoreSource.google) {
+            installFakeGoogleStore();
           } else {
             debugOnTheWeb = true;
             addTearDown(() => debugOnTheWeb = null);

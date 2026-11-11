@@ -2216,86 +2216,86 @@
   },
   "planAppleProduct": "Premium, yearly subscription",
   "@planAppleProduct": {
-    "description": "The Premium page in the iOS app: the subscription's name and length, as Apple requires."
-  },
+    "description": "The Premium page in the iOS and Android apps: the subscription's name and length, as Apple and Google require."
+  },
   "planApplePrice": "{price} per year",
   "@planApplePrice": {
-    "description": "The Premium page in the iOS app: the App Store's localised yearly price.",
+    "description": "The Premium page in the iOS and Android apps: the store's localised yearly price.",
     "placeholders": {
       "price": {
         "type": "String",
         "example": "€19.99"
       }
     }
-  },
+  },
   "planAppleRenewal": "Renews automatically every year until you cancel it in your Apple account's subscriptions, at least 24 hours before the end of the current year. Payment is charged to your Apple account.",
   "@planAppleRenewal": {
     "description": "The Premium page in the iOS app: how the subscription renews and is cancelled, as Apple requires."
-  },
+  },
   "planSubscribe": "Subscribe",
   "@planSubscribe": {
-    "description": "The Premium page in the iOS app: the button opening Apple's purchase sheet."
-  },
+    "description": "The Premium page in the iOS and Android apps: the button opening the store's purchase sheet."
+  },
   "planRestore": "Restore purchases",
   "@planRestore": {
-    "description": "The Premium page in the iOS app: finds a subscription bought earlier with the same Apple account."
-  },
+    "description": "The Premium page in the iOS and Android apps: finds a subscription bought earlier with the same Apple or Google Play account."
+  },
   "planManageApple": "Manage in the App Store",
   "@planManageApple": {
     "description": "The button opening Apple's subscriptions page, where an App Store subscription is managed or cancelled."
-  },
+  },
   "planStoreUnavailable": "The App Store cannot be reached right now. Try again later.",
   "@planStoreUnavailable": {
     "description": "The Premium page in the iOS app: the App Store did not give the subscription's price."
-  },
+  },
   "planPurchasePending": "Your purchase is waiting for approval. Your plan will update once it goes through.",
   "@planPurchasePending": {
-    "description": "The Premium page in the iOS app: the purchase waits for approval (Ask to Buy, or the bank)."
-  },
+    "description": "The Premium page in the iOS and Android apps: the purchase waits for approval (Ask to Buy, a family manager, or the bank)."
+  },
   "planPurchaseUnconfirmed": "Apple has your purchase, but it could not be confirmed yet. It will be the next time you open this page.",
   "@planPurchaseUnconfirmed": {
     "description": "The Premium page in the iOS app: the server could not record the purchase now; the app sends it again later."
-  },
+  },
   "planPurchaseOtherAccount": "This App Store purchase belongs to another Wishlist account. Sign in to that account to use it.",
   "@planPurchaseOtherAccount": {
     "description": "The Premium page in the iOS app: the purchase was made while signed in to another account."
-  },
+  },
   "planPurchaseSandbox": "Test purchases are not accepted here.",
   "@planPurchaseSandbox": {
-    "description": "The Premium page in the iOS app: a Sandbox (test) purchase refused by the production server."
-  },
+    "description": "The Premium page in the iOS and Android apps: a Sandbox or license-tester (test) purchase refused by the production server."
+  },
   "planPurchaseInvalid": "This App Store purchase could not be confirmed for your account.",
   "@planPurchaseInvalid": {
     "description": "The Premium page in the iOS app: the server refused the purchase as invalid or unknown."
-  },
+  },
   "planNothingToRestore": "No subscription to restore was found for your Apple account.",
   "@planNothingToRestore": {
     "description": "The Premium page in the iOS app: Restore purchases found nothing."
-  },
+  },
   "deleteAccountAppleRenewing": "Your App Store subscription keeps renewing: deleting your account does not cancel it. Cancel it in your Apple subscriptions first.",
   "@deleteAccountAppleRenewing": {
     "description": "The account deletion dialog: an Apple subscription of the account still renews, which only the person can stop."
-  },
+  },
   "deleteAccountAppleUnknown": "If you subscribed on iPhone, deleting your account does not cancel that subscription: cancel it in your Apple subscriptions.",
   "@deleteAccountAppleUnknown": {
     "description": "The account deletion dialog, when the plan could not be read: an Apple subscription may still renew."
-  },
+  },
   "deleteAccountAppleLink": "Open Apple subscriptions",
   "@deleteAccountAppleLink": {
     "description": "The account deletion dialog: opens Apple's subscriptions page."
-  },
+  },
   "adminAppleTitle": "App Store subscription",
   "@adminAppleTitle": {
     "description": "The admin panel: the title of the Apple subscription's block."
-  },
+  },
   "adminNoAppleSubscription": "No App Store subscription",
   "@adminNoAppleSubscription": {
     "description": "The admin panel: the account never subscribed through Apple."
-  },
+  },
   "adminAppleNoNews": "No news from Apple",
   "@adminAppleNoNews": {
     "description": "The admin panel: an Apple subscription that grants nothing and was not heard of, with no date known."
-  },
+  },
   "adminAppleNoNewsSince": "No news from Apple since {date}",
   "@adminAppleNoNewsSince": {
     "description": "The admin panel: an Apple subscription that should have renewed on that day and was not heard of since.",
@@ -2305,11 +2305,11 @@
         "example": "12 Mar 2027"
       }
     }
-  },
+  },
   "adminAppleRetrying": "Payment failed: Apple is retrying",
   "@adminAppleRetrying": {
     "description": "The admin panel: under a past_due Apple subscription, Apple tries the payment again."
-  },
+  },
   "adminAppleGraceUntil": "Premium kept until {date} while Apple retries",
   "@adminAppleGraceUntil": {
     "description": "The admin panel: an Apple subscription in its billing grace period, which ends on that day.",
@@ -2319,13 +2319,105 @@
         "example": "12 Mar 2027"
       }
     }
-  },
+  },
   "adminAppleCheck": "Check it in App Store Connect.",
   "@adminAppleCheck": {
     "description": "The admin panel: an Apple subscription not heard of: where to look."
-  },
+  },
   "adminDeleteAppleRenewing": "Their App Store subscription keeps renewing: deleting the account does not cancel it. Only they can, in their Apple subscriptions.",
   "@adminDeleteAppleRenewing": {
     "description": "The admin's deletion dialog: an Apple subscription of the account still renews, which the server cannot stop."
+  },
+  "planManageGoogle": "Manage in Google Play",
+  "@planManageGoogle": {
+    "description": "The button opening Google Play's subscriptions page, where a Google Play subscription is managed or cancelled."
+  },
+  "planGoogleRenewal": "Renews automatically every year until you cancel it in your Google Play subscriptions. Payment is charged to your Google Play account.",
+  "@planGoogleRenewal": {
+    "description": "The Premium page in the Android app: how the subscription renews and is cancelled."
+  },
+  "planGoogleStoreUnavailable": "Google Play cannot be reached right now. Try again later.",
+  "@planGoogleStoreUnavailable": {
+    "description": "The Premium page in the Android app: Google Play did not give the subscription's price."
+  },
+  "planPurchaseUnconfirmedGoogle": "Google Play has your purchase, but it could not be confirmed yet. It will be the next time you open this page.",
+  "@planPurchaseUnconfirmedGoogle": {
+    "description": "The Premium page in the Android app: the server could not record the purchase now; the app sends it again later."
+  },
+  "planPurchaseOtherAccountGoogle": "This Google Play purchase belongs to another Wishlist account. Sign in to that account to use it.",
+  "@planPurchaseOtherAccountGoogle": {
+    "description": "The Premium page in the Android app: the purchase was made while signed in to another account."
+  },
+  "planPurchaseInvalidGoogle": "This Google Play purchase could not be confirmed for your account.",
+  "@planPurchaseInvalidGoogle": {
+    "description": "The Premium page in the Android app: the server refused the purchase as invalid, unknown or of another product."
+  },
+  "planPurchaseRealRefused": "This test version of Wishlist only accepts test purchases. Google Play refunds this one within three days.",
+  "@planPurchaseRealRefused": {
+    "description": "The Premium page in the Android test app (VAL): a real purchase, refused by the test server and refunded by Google."
+  },
+  "planNothingToRestoreGoogle": "No subscription to restore was found for your Google Play account.",
+  "@planNothingToRestoreGoogle": {
+    "description": "The Premium page in the Android app: Restore purchases found nothing."
+  },
+  "deleteAccountGoogleRenewing": "Your Google Play subscription will be cancelled along with your account.",
+  "@deleteAccountGoogleRenewing": {
+    "description": "The account deletion dialog: a Google Play subscription of the account still renews; the deletion cancels it first."
+  },
+  "adminGoogleTitle": "Google Play subscription",
+  "@adminGoogleTitle": {
+    "description": "The admin panel: the title of the Google Play subscription's block."
+  },
+  "adminNoGoogleSubscription": "No Google Play subscription",
+  "@adminNoGoogleSubscription": {
+    "description": "The admin panel: the account never subscribed through Google Play."
+  },
+  "adminGoogleNoNews": "No news from Google",
+  "@adminGoogleNoNews": {
+    "description": "The admin panel: a Google subscription that grants nothing and was not heard of, with no date known."
+  },
+  "adminGoogleNoNewsSince": "No news from Google since {date}",
+  "@adminGoogleNoNewsSince": {
+    "description": "The admin panel: a Google subscription that should have renewed on that day and was not heard of since.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2027"
+      }
+    }
+  },
+  "adminGoogleOnHold": "On hold or paused",
+  "@adminGoogleOnHold": {
+    "description": "The admin panel: a Google subscription on account hold (payment failed past its grace period) or paused, which Google may still charge."
+  },
+  "adminGoogleOnHoldShort": "on hold or paused",
+  "@adminGoogleOnHoldShort": {
+    "description": "The admin's users list, after \"Google Play ·\": a Google subscription on account hold or paused."
+  },
+  "adminGoogleRetrying": "Payment failed: Google is retrying",
+  "@adminGoogleRetrying": {
+    "description": "The admin panel: under a Google subscription in its grace period, Google tries the payment again."
+  },
+  "adminGoogleMayResume": "Google may charge it again if it resumes.",
+  "@adminGoogleMayResume": {
+    "description": "The admin panel: under a Google subscription on hold or paused."
+  },
+  "adminGoogleGraceUntil": "Premium kept until {date} while Google retries",
+  "@adminGoogleGraceUntil": {
+    "description": "The admin panel: a Google subscription in its grace period, which ends on that day.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2027"
+      }
+    }
+  },
+  "adminGoogleCheck": "Check it in the Play Console.",
+  "@adminGoogleCheck": {
+    "description": "The admin panel: a Google subscription not heard of: where to look."
+  },
+  "adminDeleteGoogleRenewing": "Their Google Play subscription will be cancelled before the account is deleted.",
+  "@adminDeleteGoogleRenewing": {
+    "description": "The admin's deletion dialog: a Google subscription of the account still renews; the deletion cancels it first."
   }
 }

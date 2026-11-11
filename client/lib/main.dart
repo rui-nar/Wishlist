@@ -83,9 +83,9 @@ class _WishlistAppState extends State<WishlistApp> {
     emailLinkToken: widget.emailLinkToken,
   );
 
-  /// The phone store's purchases (Apple IAP plan D3), listened to while
-  /// someone is signed in, whatever page is shown. Null without a store: on
-  /// the web, and on Android until its store is sold through.
+  /// The phone store's purchases (Apple IAP plan D3, Android release plan
+  /// D6), listened to while someone is signed in, whatever page is shown.
+  /// Null without a store, as on the web.
   StorePurchases? _purchases;
 
   @override
@@ -94,7 +94,7 @@ class _WishlistAppState extends State<WishlistApp> {
     if (deviceStore case final store?) {
       _purchases = StorePurchases(
         store: store,
-        report: BillingRepository(widget.api).reportAppleTransaction,
+        report: BillingRepository(widget.api).reporterFor(store),
       );
       widget.auth.addListener(_followSession);
       _followSession();

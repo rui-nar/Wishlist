@@ -76,8 +76,8 @@ void main() {
           addTearDown(() => adminClock = DateTime.now);
           final server = FakeServer();
           // Bob's Stripe subscription, an Apple one in its grace period
-          // (Apple IAP plan D9) and a grant beside them; Carol's grant whose
-          // day has passed.
+          // (Apple IAP plan D9), a Google one on hold (Android release plan
+          // D8) and a grant beside them; Carol's grant whose day has passed.
           final admin = FakeAdmin(server);
           admin.grants
             ..[kBobId] = '2027-06-01T12:00:00Z'
@@ -88,7 +88,13 @@ void main() {
               startedAt: '2026-08-01T09:00:00Z',
               periodEnd: '2026-11-20T12:00:00Z',
             )
-            ..['apple_renewing'] = true;
+            ..['apple_renewing'] = true
+            ..['google_subscription'] = stripeSubscription(
+              'past_due',
+              startedAt: '2026-06-15T09:00:00Z',
+              periodEnd: null,
+            )
+            ..['google_renewing'] = true;
           final app = buildApp(
             server,
             store: MemoryTokenStore(server.addSession()),

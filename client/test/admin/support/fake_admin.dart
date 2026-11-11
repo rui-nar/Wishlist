@@ -24,6 +24,9 @@ Map<String, Object?> adminRow({
   // of the row when null, as a server from before them sends it.
   Map<String, Object?>? appleSubscription,
   bool? appleRenewing,
+  // Google Play's (Android release plan D8), likewise.
+  Map<String, Object?>? googleSubscription,
+  bool? googleRenewing,
   int listsOwned = 0,
   Map<String, Object?> photos = const {
     'count': 0,
@@ -41,11 +44,13 @@ Map<String, Object?> adminRow({
       'subscription': subscription,
       'apple_subscription': ?appleSubscription,
       'apple_renewing': ?appleRenewing,
+      'google_subscription': ?googleSubscription,
+      'google_renewing': ?googleRenewing,
       'lists_owned': listsOwned,
       'photos': photos,
     };
 
-/// A Stripe or Apple subscription as a row gives it.
+/// A Stripe, Apple or Google subscription as a row gives it.
 Map<String, Object?> stripeSubscription(
   String status, {
   String? startedAt = '2026-05-02T10:05:00Z',
