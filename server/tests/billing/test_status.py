@@ -59,6 +59,8 @@ def test_free_with_an_offer_and_limits(client, make_account):
         "offer": {"amount": "10.00", "currency": "EUR", "interval": "year"},
         "apple_offer": None,
         "apple_renewing": False,
+        "google_offer": None,
+        "google_renewing": False,
         "can_manage": False,
         "legal": {"terms_url": None, "privacy_url": None, "withdrawal_url": None},
     }
@@ -257,3 +259,85 @@ def test_stripe_rows_are_not_apple_renewing(client, make_account, engine):
     ada = make_account()
     add_entitlement(engine, ada.id)
     assert status_of(client, ada)["apple_renewing"] is False
+
+
+# Selling on Android (Android release plan D6, D7).
+
+
+def test_google_offer_apart_from_stripes(make_google_client, make_account):
+    body = status_of(make_google_client(), make_account())
+    assert body["google_offer"] == {"product_id": "premium_yearly"}
+    assert body["offer"] is None
+    assert body["apple_offer"] is None
+
+
+def test_google_selling_alone_enforces_no_limit(make_google_client, make_account):
+    """Limits apply only while Stripe sells (D7)."""
+    client = make_google_client(billing_enforce_limits=True)
+    assert client.app.state.settings.limits_enforced is False
+    assert status_of(client, make_account())["enforced"] is False
+
+
+@pytest.mark.parametrize(
+    "variable",
+    ["google_play_pubsub_audience", "google_play_pubsub_service_account"],
+)
+def test_no_google_offer_without_the_notification_settings(
+    make_client, google_on, make_account, caplog, variable
+):
+    """Review R1-2: unverifiable notifications would leave renewals, grace
+    and refunds unrecorded."""
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        client = make_client(**google_on | {variable: ""})
+    assert status_of(client, make_account())["google_offer"] is None
+    assert "selling on Android is off" in caplog.text
+    assert variable.upper() in caplog.text
+
+
+def test_a_google_key_that_does_not_load_offers_nothing(
+    make_client, google_on, make_account, caplog
+):
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        client = make_client(
+            **google_on | {"google_play_service_account_json": "secret-text"}
+        )
+    assert status_of(client, make_account())["google_offer"] is None
+    assert "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" in caplog.text
+    assert "secret-text" not in caplog.text
+
+
+def test_the_start_log_names_what_google_misses(make_client, caplog):
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        make_client(google_play_product_id="premium_yearly")
+    assert "selling on Android is off" in caplog.text
+    assert "GOOGLE_PLAY_PACKAGE_NAME" in caplog.text
+    assert "premium_yearly" not in caplog.text
+
+
+def test_no_google_start_log_when_nothing_is_asked_for(make_client, caplog):
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        make_client()
+    assert "Android" not in caplog.text
+
+
+@pytest.mark.parametrize("case", RENEWING)
+def test_google_renewing(client, make_account, engine, case):
+    status, cancel, renewing = RENEWING[case]
+    ada = make_account()
+    add_entitlement(
+        engine,
+        ada.id,
+        source="google",
+        external_id="token-1",
+        status=status,
+        cancel_at_period_end=cancel,
+    )
+    body = status_of(client, ada)
+    assert (body["google_renewing"], body["apple_renewing"]) == (renewing, False)
+
+
+def test_stripe_and_apple_rows_are_not_google_renewing(client, make_account, engine):
+    ada = make_account()
+    add_entitlement(engine, ada.id)
+    add_entitlement(engine, ada.id, source="apple", external_id="2000000001")
+    assert status_of(client, ada)["google_renewing"] is False

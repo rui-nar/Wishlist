@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -35,8 +36,8 @@ _SOURCES = f"source IN ('{STRIPE}', '{APPLE}', '{GOOGLE}', '{MANUAL}')"
 
 
 class Entitlement(Base):
-    """One purchase: a Stripe subscription, later a store's transaction, or
-    an admin's grant."""
+    """One purchase: a Stripe subscription, a store's subscription, or an
+    admin's grant."""
 
     __tablename__ = "entitlements"
     __table_args__ = (
@@ -53,9 +54,10 @@ class Entitlement(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     source: Mapped[str] = mapped_column(String(6))
-    # The Stripe subscription id, later Apple's original transaction id or
-    # Google's purchase token.
-    external_id: Mapped[str] = mapped_column(String(255))
+    # The Stripe subscription id, Apple's original transaction id or Google's
+    # purchase token, which can be longer than 255 characters (Android release
+    # plan D6, review R1-5).
+    external_id: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(10))
     period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_at_period_end: Mapped[bool]

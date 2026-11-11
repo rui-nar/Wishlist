@@ -37,7 +37,9 @@ sees none of it. A new route under `GUARDED_PREFIXES` without a row in
 `ENDPOINTS` or `COVERED_ELSEWHERE` fails `test_every_route_is_in_the_matrix`.
 """
 
+import base64
 import io
+import json
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -46,7 +48,7 @@ from typing import Any
 
 import pytest
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from PIL import Image
 
 # Relative to today: a fixed date would turn the occasions into passed ones,
@@ -627,6 +629,8 @@ COVERED_ELSEWHERE = {
     ("POST", "/api/billing/webhook"),  # test_stripe_webhook_by_role
     ("POST", "/api/billing/apple/transactions"),  # test_apple_transactions_by_role
     ("POST", "/api/billing/apple/notifications"),  # test_apple_notifications_by_role
+    ("POST", "/api/billing/google/purchases"),  # test_google_purchases_by_role
+    ("POST", "/api/billing/google/notifications"),  # test_google_notifications_by_role
     # The admin routes: every role but the admin gets 404, in
     # tests/admin/test_admin_routes.py (admin panel plan Conventions).
     ("GET", "/api/admin/users"),
@@ -1136,6 +1140,88 @@ def test_apple_notifications_by_role(client, apple_client, scenario, actor):
         "/api/billing/apple/notifications", json=body, headers=headers
     )
     absent = client.post("/api/billing/apple/notifications", json=body, headers=headers)
+
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {"detail": "Invalid notification"},
+    )
+    assert (absent.status_code, absent.json()) == (404, {"detail": "Not found"})
+    assert owners_view(client, scenario) == before
+
+
+@pytest.fixture
+def google_client(make_client, billing_on):
+    """A client for the same database with Google Play's gateway configured
+    (Android release plan D6): the real one, with a generated service account
+    key. No call reaches Google: nothing sent below is a purchase token or a
+    Pub/Sub token, which is refused before any network."""
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    account = {
+        "type": "service_account",
+        "private_key": pem.decode(),
+        "client_email": "play-api@example-project.iam.gserviceaccount.com",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    return make_client(
+        **billing_on,
+        google_play_product_id="premium_yearly",
+        google_play_package_name="com.example.wishlist",
+        google_play_service_account_json=json.dumps(account),
+        google_play_pubsub_audience="https://wishlist.example.test/notifications",
+        google_play_pubsub_service_account="push@example.iam.gserviceaccount.com",
+    )
+
+
+@pytest.mark.parametrize("actor", ACTORS)
+def test_google_purchases_by_role(client, google_client, scenario, actor):
+    """A purchase is about the caller alone: without a purchase token, every
+    actor gets the same refusal and changes nothing, and with no gateway the
+    same 404."""
+    before = owners_view(client, scenario)
+    headers = scenario.headers(actor)
+    body = {"purchase_token": "not a purchase token"}
+
+    refused = google_client.post(
+        "/api/billing/google/purchases", json=body, headers=headers
+    )
+    absent = client.post("/api/billing/google/purchases", json=body, headers=headers)
+
+    assert owners_view(client, scenario) == before
+    if actor == SIGNED_OUT:
+        assert {refused.status_code, absent.status_code} == {401}
+        return
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {"detail": "Invalid purchase", "code": "invalid_purchase"},
+    )
+    assert (absent.status_code, absent.json()) == (404, {"detail": "Not found"})
+
+
+@pytest.mark.parametrize("actor", ACTORS)
+def test_google_notifications_by_role(client, google_client, scenario, actor):
+    """A session is nothing to Play's notifications: its token is no Pub/Sub
+    token, so every actor gets the same refusal and changes nothing, and with
+    no gateway the same 404."""
+    before = owners_view(client, scenario)
+    headers = scenario.headers(actor)
+    notification = {
+        "packageName": "com.example.wishlist",
+        "subscriptionNotification": {"purchaseToken": "token-1"},
+    }
+    data = base64.b64encode(json.dumps(notification).encode()).decode()
+    body = {"message": {"data": data}}
+
+    refused = google_client.post(
+        "/api/billing/google/notifications", json=body, headers=headers
+    )
+    absent = client.post(
+        "/api/billing/google/notifications", json=body, headers=headers
+    )
 
     assert (refused.status_code, refused.json()) == (
         400,
