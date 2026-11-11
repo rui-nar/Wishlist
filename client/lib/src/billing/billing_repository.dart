@@ -56,6 +56,7 @@ class LegalUrls {
 class BillingStatus {
   const BillingStatus({
     required this.isPremium,
+    this.source,
     required this.status,
     required this.renewsAt,
     required this.endsAt,
@@ -72,6 +73,7 @@ class BillingStatus {
     final offer = json['offer'] as Map<String, dynamic>?;
     return BillingStatus(
       isPremium: json['plan'] == 'premium',
+      source: json['source'] as String?,
       status: json['status'] as String?,
       renewsAt: _date(json['renews_at']),
       endsAt: _date(json['ends_at']),
@@ -88,6 +90,13 @@ class BillingStatus {
       value == null ? null : DateTime.parse(value as String);
 
   final bool isPremium;
+
+  /// Where Premium comes from: `stripe`, `apple`, `google`, or `manual` when
+  /// the admin granted it (admin panel plan D8). Null on the free plan.
+  final String? source;
+
+  /// Granted by the admin, until [renewsAt]: nothing renews or is paid.
+  bool get isManual => source == 'manual';
 
   /// Null, `active`, `past_due` or `canceling`.
   final String? status;

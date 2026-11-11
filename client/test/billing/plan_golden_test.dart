@@ -27,6 +27,14 @@ void main() {
     limits: const {'max_lists': null, 'max_gifts_per_list': null},
     canManage: true,
   );
+  // Granted by the admin (admin panel plan D8).
+  final manual = billingStatus(
+    plan: 'premium',
+    source: 'manual',
+    status: 'active',
+    renewsAt: '2027-03-12T12:00:00Z',
+    limits: const {'max_lists': null, 'max_gifts_per_list': null},
+  );
 
   // The golden's name, the location the app opens at, and the plan. As on the
   // web: on Android and iOS these screens offer no purchase.
@@ -35,6 +43,7 @@ void main() {
     'account_screen_premium': ('/account', premium),
     'plan_screen_free': (kPlanPath, free),
     'plan_screen_premium': (kPlanPath, premium),
+    'plan_screen_manual': (kPlanPath, manual),
   };
 
   group('goldens', skip: _skip, () {
