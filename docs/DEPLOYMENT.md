@@ -1,29 +1,37 @@
 # Deployment (VAL and PROD on the VPS)
 
-Runbook for installing, deploying, backing up and restoring Wishlist on the
+Runbook for installing, deploying, backing up and restoring Shush Gift on the
 OVH VPS that already runs TraxJourney. The decisions behind it (D1…D18) are in
 [`plans/DEVOPS_FOUNDATION_PLAN.md`](plans/DEVOPS_FOUNDATION_PLAN.md); the
 local DEV environment is in [DEVELOPMENT](DEVELOPMENT.md).
 
-- **PROD**: `/opt/wishlist`, image `ghcr.io/rui-nar/wishlist:latest`,
+- **PROD**: `/opt/shushgift`, image `ghcr.io/rui-nar/shushgift:latest`,
   `127.0.0.1:8010`, deployed by hand with `deploy.ps1 -Target Prod`.
-- **VAL**: `/opt/wishlist-val`, image `:validation`, `127.0.0.1:8011`,
-  redeployed by itself through the `wishlist-webhook` unit on `127.0.0.1:9998`.
+- **VAL**: `/opt/shushgift-val`, image `:validation`, `127.0.0.1:8011`,
+  redeployed by itself through the `shushgift-webhook` unit on `127.0.0.1:9998`.
 
 **Status:** not installed yet. Replace this line with the date once every
 item of [Definition of done](#definition-of-done) has been checked.
 
-The repository is public. Nothing from the VPS goes into it: no host name, no
-user name, no IP, no secret, no dump. This document uses the placeholders
-below; replace them as you run the commands.
+The repository is private (plan D3a), but it can be shared, made public again
+or leak. Nothing from the VPS goes into it: no host name, no user name, no IP,
+no secret, no dump. This document uses the placeholders below; replace them as
+you run the commands. The brand domain, `shushgift.com`, is public and may
+appear.
+
+An install made before the move to `shushgift.com` follows [Moving to
+shushgift.com](#moving-to-shushgiftcom) once, with a way back at every step.
+A new install follows steps 1 to 14 below as they are.
 
 ## Placeholders
 
 | Placeholder | What to put there |
 |---|---|
-| `<prod-host>` | PROD's public hostname (for now a subdomain of TraxJourney's domain, until Wishlist has its own) |
-| `<top-private-domain>` | The registered domain that `<val-host>` and `<prod-host>` are subdomains of |
-| `<val-host>` | VAL's public hostname |
+| `<prod-host>` | PROD's public hostname: `shushgift.com` |
+| `<top-private-domain>` | The registered domain of both hosts: `shushgift.com` |
+| `<val-host>` | VAL's public hostname: `val.shushgift.com` |
+| `<old-prod-host>`, `<old-val-host>` | the hostnames PROD and VAL had on a subdomain of TraxJourney's domain, until [the move](#moving-to-shushgiftcom). Never committed |
+| `<old>` | the app's name before Shush Gift, in lowercase, as the plan's problem statement spells it (`docs/plans/SHUSH_GIFT_PLAN.md`). The old directories, projects, volumes, database users and names, dumps and unit carry it. Written as `OLD=<old>` once in a shell, so that no old name is written out in this document |
 | `<vps-host>` | the VPS's SSH address (`DEPLOY_HOST` in `deploy.env`) |
 | `<deploy-user>` | the VPS account `deploy.ps1` connects as, in the `docker` group (TraxJourney's runbook §1) |
 | `<traxjourney-prod-host>`, `<traxjourney-val-host>` | TraxJourney's hostnames, to check it still answers |
@@ -31,22 +39,22 @@ below; replace them as you run the commands.
 | `<previous-release>` | the release before `<release>` |
 | `<sha>` | a full 40-digit commit sha |
 | `<short sha>` | the first 7 hex digits of a commit, as `git rev-parse --short` prints it |
-| `<YYYY-MM-DD>` | the date in a dump's name, `wishlist_<YYYY-MM-DD>.dump` |
+| `<YYYY-MM-DD>` | the date in a dump's name, `shushgift_<YYYY-MM-DD>.dump` |
 | `<old-major>`, `<new-major>` | Postgres major versions, e.g. `18` and `19` ([Postgres major upgrade](#postgres-major-upgrade)) |
 | `<old-postgres-tag>` | the exact Postgres image tag before a major upgrade, e.g. `18.6` |
 | `<postgres-password>` | never typed: the text in `deploy/*/.env.example` that [step 5](#5-env-files) replaces with a generated password |
-| `<google-web-client-id>` | the ID of Wishlist's web OAuth client in the Google Cloud console, ending in `.apps.googleusercontent.com` ([step 11](#11-google-sign-in)). Public, not a secret, but never committed |
-| `<brevo-api-key>` | an API key of the Brevo account that sends Wishlist's emails ([Release-specific steps](#release-specific-steps)). Secret: pasted at a prompt, never typed into a command or committed |
+| `<google-web-client-id>` | the ID of Shush Gift's web OAuth client in the Google Cloud console, ending in `.apps.googleusercontent.com` ([step 11](#11-google-sign-in)). Public, not a secret, but never committed |
+| `<brevo-api-key>` | an API key of the Brevo account that sends Shush Gift's emails ([Release-specific steps](#release-specific-steps)). Secret: pasted at a prompt, never typed into a command or committed |
 | `<sender-address>` | the address emails come from, a sender verified in that Brevo account. Never committed |
 | `<owner-address>` | the owner's own email address, the one their account on VAL signs in with. Never committed |
 | `<stripe-secret-key>` | the secret API key of the Stripe sandbox (VAL) or of the live account (PROD), `sk_test_…` or `sk_live_…`. Secret: pasted at a prompt, never typed into a command or committed |
 | `<stripe-webhook-secret>` | the signing secret Stripe shows for a webhook endpoint, `whsec_…`, a different one per endpoint. Secret, handled like the key |
-| `<stripe-price-id>` | the id of Wishlist's yearly price, `price_…`, which belongs to one Stripe account and mode. Never committed |
+| `<stripe-price-id>` | the id of Shush Gift's yearly price, `price_…`, which belongs to one Stripe account and mode. Never committed |
 | `<price-amount>` | that price's amount in major units, as it is in Stripe: digits, a dot, two decimals. Never committed |
-| `<apple-services-id>` | the identifier of Wishlist's Services ID in Apple Developer, in reverse-domain form ([step 12](#12-apple-sign-in)). Public, not a secret, but never committed |
-| `<ios-bundle-id>` | the bundle ID of the PROD iOS app, registered as an App ID ([step 12](#12-apple-sign-in)), and Android's PROD application id too ([step 13](#the-bundle-id)). Never committed |
-| `<ios-bundle-id-val>` | the bundle ID of the VAL iOS app, `<ios-bundle-id>.val` ([step 13](#the-bundle-id)). Never committed |
-| `<apple-team-id>` | the 10-character Team ID of the Apple Developer membership ([step 13](#the-sign-in-with-apple-key)). Not a secret, but never committed |
+| `<apple-services-id>` | the identifier of Shush Gift's Services ID in Apple Developer, in reverse-domain form ([step 12](#12-apple-sign-in)). Public, not a secret, but never committed |
+| `<ios-bundle-id>` | the bundle ID of the PROD iOS app, `com.shushgift.app`, registered as an App ID ([step 12](#12-apple-sign-in)), and Android's PROD application id too ([step 13](#the-bundle-id)) |
+| `<ios-bundle-id-val>` | the bundle ID of the VAL iOS app, `<ios-bundle-id>.val`, so `com.shushgift.app.val` ([step 13](#the-bundle-id)) |
+| `<apple-team-id>` | the 10-character Team ID of the Apple Developer membership ([step 13](#the-sign-in-with-apple-key)); with a bundle id, it makes the `<apple-team-id>.<bundle id>` of `APP_LINKS_APPLE_APP_IDS` ([App links](#app-links)). Not a secret, but never committed |
 | `<apple-key-id>` | the 10-character ID of the Sign in with Apple key; its file is `AuthKey_<apple-key-id>.p8`, a secret ([step 13](#the-sign-in-with-apple-key)). Never committed |
 | `<asc-key-id>`, `<asc-issuer-id>` | the ID and the issuer ID of the App Store Connect API key; its file is `AuthKey_<asc-key-id>.p8`, a secret ([step 13](#the-app-store-connect-api-key)). Never committed |
 | `<apple-product-id>` | the id of the yearly subscription, the same in both apps ([Billing, Part 3](BILLING.md#2-create-the-subscription-in-each-app)). Never committed |
@@ -56,12 +64,13 @@ below; replace them as you run the commands.
 | `<google-ios-client-id>`, `<google-ios-client-id-val>` | the IDs of the PROD and VAL apps' iOS OAuth clients, one per bundle id, ending in `.apps.googleusercontent.com` ([step 13](#google-ios-oauth-client)). Public, not secrets, but never committed |
 | `<android-application-id>` | the Android applicationId of the PROD app, the same value as `<ios-bundle-id>` ([step 14](#the-two-apps)); it is also what the PROD server's `APPLE_ANDROID_PACKAGE` holds ([step 12](#12-apple-sign-in), [step 11](#android-oauth-client)). Never committed |
 | `<android-application-id-val>` | the Android applicationId of the VAL app, `<android-application-id>.val` ([step 14](#the-two-apps)); the VAL server's `APPLE_ANDROID_PACKAGE`. Never committed |
+| `<upload-key-sha256>`, `<play-signing-sha256>`, `<play-signing-sha256-val>` | the SHA-256 fingerprints of the same keys, for `APP_LINKS_ANDROID_SHA256` ([App links](#app-links)). Never committed |
 | `<upload-key-sha1>`, `<play-signing-sha1>`, `<play-signing-sha1-val>`, `<debug-sha1>` | the SHA-1 fingerprints of the upload key, the PROD and the VAL app's Play App Signing keys, and a dev machine's debug key ([step 11](#android-oauth-client)). Never committed |
 | `<play-upload-service-account-email>`, `<play-server-service-account-email>`, `<pubsub-push-service-account-email>` | the email addresses of the service accounts that upload builds ([step 14](#the-service-account-for-uploads)), read subscriptions for the server ([Billing, Part 4](BILLING.md#3-create-the-servers-service-account)) and sign the Pub/Sub push ([Billing, Part 4](BILLING.md#4-create-the-pubsub-topic-and-the-push-subscription)). Never committed |
 | `<service-account-key-file>` | the downloaded JSON key of a service account, a secret. Never committed |
 | `<google-product-id>` | the id of the yearly Google Play subscription, the same in both apps ([Billing, Part 4](BILLING.md#2-create-the-subscription-in-each-app)). Never committed |
-| `<gcp-project-id>`, `<pubsub-topic>` | the id of Wishlist's Google Cloud project and the id of an environment's Pub/Sub topic ([Billing, Part 4](BILLING.md#4-create-the-pubsub-topic-and-the-push-subscription)). Never committed |
-| `<owner-account-id>` | the id of the owner's own Wishlist account, for `GOOGLE_PLAY_TEST_ACCOUNT_IDS` ([Billing, Part 4](BILLING.md#9-fill-in-prod-for-android)). Never committed |
+| `<gcp-project-id>`, `<pubsub-topic>` | the id of Shush Gift's Google Cloud project and the id of an environment's Pub/Sub topic ([Billing, Part 4](BILLING.md#4-create-the-pubsub-topic-and-the-push-subscription)). Never committed |
+| `<owner-account-id>` | the id of the owner's own Shush Gift account, for `GOOGLE_PLAY_TEST_ACCOUNT_IDS` ([Billing, Part 4](BILLING.md#9-fill-in-prod-for-android)). Never committed |
 | `<account-address>` | the email address of an account, when it has to be looked up. Never committed |
 | `<user-id>` | an account's id, printed by the query that looked it up |
 | `<admin-user-id>` | the id of the account that is admin, found in [Admin](#admin). Never committed |
@@ -70,35 +79,35 @@ below; replace them as you run the commands.
 
 Four placeholders are also the literal text of files in `deploy/`:
 `<prod-host>` and `<val-host>` in `Caddyfile.snippet`, `<deploy-user>` in
-`wishlist-webhook.service`, and `<postgres-password>` in the `.env.example`
+`shushgift-webhook.service`, and `<postgres-password>` in the `.env.example`
 files. Inside the `sed` and `grep` patterns that fill in or check those files
 (each marked `# literal placeholder`), leave them as they are.
 
 Commands are marked **[VPS]** (bash, logged in as `<deploy-user>`),
 **[dev]** (PowerShell in the repository checkout on the Windows dev machine),
-**[GitHub]** (the web UI of `rui-nar/Wishlist`), **[Brevo]** (the console of
+**[GitHub]** (the web UI of `rui-nar/shushgift`), **[Brevo]** (the console of
 the Brevo account that sends the emails), **[Stripe]** (the dashboard of the
-Stripe account selling Wishlist: a sandbox for VAL, live mode for PROD),
-**[Google Cloud]** (the Google Cloud console, in Wishlist's project) or
+Stripe account selling Shush Gift: a sandbox for VAL, live mode for PROD),
+**[Google Cloud]** (the Google Cloud console, in Shush Gift's project) or
 **[Apple]** (the Apple Developer account, at
 <https://developer.apple.com/account/resources>, or App Store Connect, at
 <https://appstoreconnect.apple.com>, as the step says) or **[Play]** (the
 Google Play Console, at <https://play.google.com/console>).
 
-## What Wishlist adds to the VPS
+## What Shush Gift adds to the VPS
 
 | Path or item | Owner | Mode | What |
 |---|---|---|---|
-| `/opt/wishlist/` | `<deploy-user>` | 755 | PROD: `docker-compose.yml` (644), `.env` (600) |
-| `/opt/wishlist/backup/` | `<deploy-user>` | 755 | `backup.sh`, `healthcheck.sh` (644), mounted read-only into the `backup` service |
-| `/opt/wishlist/backups/` | `999:10001` | 750 | the nightly dumps (600 each); uid 999 is the `postgres` user of the official image (D14); group 10001 lets PROD's app list them for the media purge, not read them ([Backups](#backups)) |
-| `/opt/wishlist-val/` | `<deploy-user>` | 755 | VAL: `docker-compose.yml` (644), `.env` (600), `seed-from-prod.sh` (755) |
-| `/opt/wishlist-val/webhook/` | `<deploy-user>` | 755 | `deploy-validation.sh` (755), `hooks.yaml` (600, holds the secret), `deploy.log`, `deploy.lock` |
-| `/opt/wishlist-media/` | `root` | 755 | parent of both media directories, so one mount covers both when seeding (D18) |
-| `/opt/wishlist-media/prod/`, `/opt/wishlist-media/val/` | `10001:10001` | 750 | uploaded files; uid 10001 is the app's fixed user (D18) |
-| `/etc/systemd/system/wishlist-webhook.service` | `root` | 644 | the VAL auto-deploy listener, `127.0.0.1:9998` (D7) |
-| `/etc/caddy/Caddyfile` | | | two site blocks appended, `<prod-host>` and `<val-host>` |
-| Docker volumes `wishlist-prod_pgdata`, `wishlist-val_pgdata` | | | each environment's Postgres data (D2, D14) |
+| `/opt/shushgift/` | `<deploy-user>` | 755 | PROD: `docker-compose.yml` (644), `.env` (600) |
+| `/opt/shushgift/backup/` | `<deploy-user>` | 755 | `backup.sh`, `healthcheck.sh` (644), mounted read-only into the `backup` service |
+| `/opt/shushgift/backups/` | `999:10001` | 750 | the nightly dumps (600 each); uid 999 is the `postgres` user of the official image (D14); group 10001 lets PROD's app list them for the media purge, not read them ([Backups](#backups)) |
+| `/opt/shushgift-val/` | `<deploy-user>` | 755 | VAL: `docker-compose.yml` (644), `.env` (600), `seed-from-prod.sh` (755) |
+| `/opt/shushgift-val/webhook/` | `<deploy-user>` | 755 | `deploy-validation.sh` (755), `hooks.yaml` (600, holds the secret), `deploy.log`, `deploy.lock` |
+| `/opt/shushgift-media/` | `root` | 755 | parent of both media directories, so one mount covers both when seeding (D18) |
+| `/opt/shushgift-media/prod/`, `/opt/shushgift-media/val/` | `10001:10001` | 750 | uploaded files; uid 10001 is the app's fixed user (D18) |
+| `/etc/systemd/system/shushgift-webhook.service` | `root` | 644 | the VAL auto-deploy listener, `127.0.0.1:9998` (D7) |
+| `/etc/caddy/Caddyfile` | | | three site blocks appended: `<prod-host>`, `www.<prod-host>` (redirecting to it) and `<val-host>` |
+| Docker volumes `shushgift-prod_pgdata`, `shushgift-val_pgdata` | | | each environment's Postgres data (D2, D14) |
 
 The owners and modes are exactly the ones `deploy/smoke/run.sh` creates, and
 the `Deploy smoke test` workflow proves on Linux that both stacks boot, back up
@@ -112,16 +121,16 @@ Nothing of TraxJourney's is edited apart from appending to the Caddyfile.
 ### What TraxJourney's setup already provides
 
 TraxJourney's runbook (`docs/DEPLOYMENT_VPS.md` in its repository) set up the
-host. Wishlist relies on all of it and installs none of it again:
+host. Shush Gift relies on all of it and installs none of it again:
 
-| Provided | Used by Wishlist for |
+| Provided | Used by Shush Gift for |
 |---|---|
 | Debian 12 with Docker Engine and the Compose plugin | both stacks |
 | `<deploy-user>` in the `docker` group, key-only SSH, `sudo` with a password | every step here; `deploy.ps1`; the webhook unit's `User=` |
-| `ufw` allowing only 22, 80 and 443 | nothing else needs opening: every Wishlist port is on loopback |
+| `ufw` allowing only 22, 80 and 443 | nothing else needs opening: every Shush Gift port is on loopback |
 | Caddy from its official apt repository, default `:80` block removed | the two new site blocks |
-| `webhook` 2.8.0 from Debian's package | `wishlist-webhook.service` runs the same binary |
-| `<deploy-user>` logged in to `ghcr.io` with a read-only token | pulls, if the package stays private ([step 3](#3-the-ghcr-package)) |
+| `webhook` 2.8.0 from Debian's package | `shushgift-webhook.service` runs the same binary |
+| `<deploy-user>` logged in to `ghcr.io` with a read-only token | pulls of the private package ([step 3](#3-the-ghcr-package)) |
 
 ### Checks before installing
 
@@ -158,13 +167,13 @@ also has `default:` lines, remove them before creating anything (step 4):
 `sudo setfacl -k /opt`. That only changes what new entries under `/opt` inherit;
 TraxJourney's existing directories keep their own permissions.
 
-**[VPS]** Wishlist's ports are free, and its directories do not exist yet:
+**[VPS]** Shush Gift's ports are free, and its directories do not exist yet:
 
 ```bash
 ss -ltn | grep -E ':(8010|8011|9998)\b'          # nothing
 docker ps --format '{{.Names}} {{.Ports}}' | grep -E ':(8010|8011|9998)-' # nothing
 ss -ltn | grep -E ':(8000|8001|9999)\b'          # TraxJourney's, on 127.0.0.1 only
-ls -d /opt/wishlist* 2>/dev/null                 # nothing
+ls -d /opt/shushgift* 2>/dev/null                 # nothing
 ```
 
 If 8010, 8011 or 9998 is taken, stop: the ports are fixed by D8 in the compose
@@ -181,7 +190,7 @@ df -h /                 # at least 5 GB available
 docker system df
 ```
 
-Wishlist's memory limits add up to 1088 MB (PROD app 320, PROD Postgres 256,
+Shush Gift's memory limits add up to 1088 MB (PROD app 320, PROD Postgres 256,
 VAL app 256, VAL Postgres 192, backup 64). The app limits leave room for image
 processing (gift images plan; measured idle ≈121 MB + ≈89 MB per image; idle
 RSS measured in a Linux container, 2026-11-08, to be refined on VAL). Limits
@@ -201,35 +210,48 @@ the layout above, takes a backup and seeds VAL from it.
 
 ## 2. Getting the files onto the host
 
-The VPS has no checkout of the repository. The files come from GitHub's raw
-URLs (the repository is public), into a temporary directory, and are installed
-from there with explicit owners and modes.
+The VPS has no checkout of the repository, and the repository is private, so
+the VPS cannot fetch from it (a raw URL answers 404 without a token, and a
+token or deploy key on the VPS would be one more secret there, for files you
+already have). The files come from your checkout: `git archive` exports the
+`deploy/` folder at the wanted ref, `scp` copies it into a temporary directory
+on the VPS, and the files are installed from there with explicit owners and
+modes.
+
+**[dev]** In the checkout, at the ref (`master` for a first install; when
+updating, the release tag). `--output` writes the archive without PowerShell
+touching its bytes; the five folders leave out `deploy/smoke/`, which never
+goes on the VPS:
+
+```powershell
+$ref = 'master'
+git fetch origin
+git archive --format=tar --output=$HOME\deploy-files.tar "origin/$ref" deploy/prod deploy/val deploy/backup deploy/webhook deploy/caddy
+scp $HOME\deploy-files.tar <deploy-user>@<vps-host>:
+Remove-Item $HOME\deploy-files.tar
+```
+
+`git archive` exports committed files only, so no `.env` or `deploy.env` can
+travel by mistake.
 
 **[VPS]**
 
 ```bash
-REF=master    # first install (once this plan is merged); when updating, the release tag
 SRC=$(mktemp -d)
-for f in \
-    deploy/prod/docker-compose.yml deploy/prod/.env.example \
-    deploy/backup/backup.sh deploy/backup/healthcheck.sh \
-    deploy/val/docker-compose.yml deploy/val/.env.example deploy/val/seed-from-prod.sh \
-    deploy/webhook/deploy-validation.sh deploy/webhook/hooks.yaml.example \
-    deploy/webhook/wishlist-webhook.service \
-    deploy/caddy/Caddyfile.snippet
-do
-    curl -fsSL --create-dirs -o "$SRC/$f" \
-        "https://raw.githubusercontent.com/rui-nar/Wishlist/$REF/$f" || echo "FAILED: $f"
-done
+tar -xf ~/deploy-files.tar -C "$SRC"
+rm ~/deploy-files.tar
 find "$SRC" -type f | wc -l     # 11
 ```
 
 Keep this shell open: steps 4 to 8 use `$SRC`. In a new shell, run the block
-again.
+again after exporting once more.
+
+Check: 11 files under `$SRC/deploy/`. The way back: `rm -r "$SRC"` and start
+again; nothing on the host changes before step 4.
 
 ## 3. The GHCR package
 
-CI pushes the image to `ghcr.io/rui-nar/wishlist` with the workflow's built-in
+CI pushes the image to `ghcr.io/rui-nar/shushgift` with the workflow's built-in
 `GITHUB_TOKEN` (owner's decision): there is no push token to create, store or
 renew. The package does not exist until the first image is pushed, so publish
 one first.
@@ -244,46 +266,34 @@ git push origin validation --force
 
 **[GitHub]** Actions → "Build and publish Docker image" for `validation`
 succeeds. The package then appears under the owner's profile → Packages →
-`wishlist`, linked to the repository through the image's
+`shushgift`, linked to the repository through the image's
 `org.opencontainers.image.source` label. In its Package settings:
 
-- **Manage Actions access** lists `rui-nar/Wishlist` with the **Write** role.
+- **Manage Actions access** lists `rui-nar/shushgift` with the **Write** role.
   The first push adds it; if a later build fails with
   `denied: permission_denied: write_package`, add it there.
-- **Danger Zone → visibility**: check it rather than assume it. A package a
-  workflow creates under a personal account usually starts **private**.
+- **Danger Zone → visibility**: it must read **Private**. The image holds the
+  source, and the repository is private (plan D3a). Never make it public:
+  GitHub does not let a public package go back to private.
 
-### Private or public: how the VPS pulls
+### Private: how the VPS pulls
 
-Decide once, now:
+The VPS pulls with `<deploy-user>`'s existing `ghcr.io` login: TraxJourney's
+read-only classic token (`read:packages` covers every package the account can
+read, and the package is the same owner's). Docker keeps one login per
+registry and user, so a separate Shush Gift token would replace TraxJourney's
+rather than sit next to it. The coupling is the price: when that token expires
+or is revoked, Shush Gift's pulls fail too, until TraxJourney's runbook renews
+it. A failed pull is safe: `deploy.ps1` and the webhook stop before touching
+the running containers.
 
-| | Keep it private | Make it public |
-|---|---|---|
-| How the VPS pulls | with `<deploy-user>`'s existing `ghcr.io` login: TraxJourney's read-only classic token (`read:packages` covers every package the account can read). Docker keeps one login per registry and user, so a separate Wishlist token would replace TraxJourney's rather than sit next to it. | without a login |
-| Who can pull | only that account | anyone. The image is built from the public repository and holds nothing it does not (no secret is passed to the build, only `APP_VERSION`) |
-| Coupling with TraxJourney | when its token expires or is revoked, Wishlist's pulls fail too, until TraxJourney's runbook renews it | none on the token itself, but see below |
-| Reversible | yes | **no**: GitHub does not let a public package go back to private |
-
-Docker sends the stored `ghcr.io` login with every `ghcr.io` pull, public
-images included, and GHCR rejects an expired token instead of falling back to
-an anonymous pull. Either way, then, an expired TraxJourney token stops
-Wishlist's pulls until it is renewed or removed (`docker logout ghcr.io` makes
-the public image pullable again, and TraxJourney's private one not). A failed
-pull is safe: `deploy.ps1` and the webhook stop before touching the running
-containers.
-
-**Recommended: make it public.** The source is already public, so the image
-discloses nothing new; Wishlist then needs no credential of its own, and does
-not depend on TraxJourney's token existing at all. The cost is that the choice
-is permanent.
-
-**[GitHub]** To make it public: Package settings → Danger Zone → Change
-visibility → Public.
-
-**[VPS]** Either way, the deploy user can now pull:
+**[VPS]** The deploy user can now pull. Check: the pull succeeds; "denied" or
+"unauthorized" means the login cannot read the package (Package settings →
+Manage access lists who can). The way back is nothing: a pull changes no
+running container.
 
 ```bash
-docker pull ghcr.io/rui-nar/wishlist:validation
+docker pull ghcr.io/rui-nar/shushgift:validation
 ```
 
 ## 4. Directories and files
@@ -293,15 +303,15 @@ docker pull ghcr.io/rui-nar/wishlist:validation
 ```bash
 me=$(id -un)
 sudo install -d -o "$me" -g "$me" -m 755 \
-    /opt/wishlist /opt/wishlist/backup /opt/wishlist-val /opt/wishlist-val/webhook
-sudo install -d -o 999 -g 10001 -m 750 /opt/wishlist/backups
-sudo install -d -o root -g root -m 755 /opt/wishlist-media
-sudo install -d -o 10001 -g 10001 -m 750 /opt/wishlist-media/prod /opt/wishlist-media/val
+    /opt/shushgift /opt/shushgift/backup /opt/shushgift-val /opt/shushgift-val/webhook
+sudo install -d -o 999 -g 10001 -m 750 /opt/shushgift/backups
+sudo install -d -o root -g root -m 755 /opt/shushgift-media
+sudo install -d -o 10001 -g 10001 -m 750 /opt/shushgift-media/prod /opt/shushgift-media/val
 
-install -m 644 "$SRC/deploy/prod/docker-compose.yml" /opt/wishlist/
-install -m 644 "$SRC/deploy/backup/backup.sh" "$SRC/deploy/backup/healthcheck.sh" /opt/wishlist/backup/
-install -m 644 "$SRC/deploy/val/docker-compose.yml" /opt/wishlist-val/
-install -m 755 "$SRC/deploy/val/seed-from-prod.sh" /opt/wishlist-val/
+install -m 644 "$SRC/deploy/prod/docker-compose.yml" /opt/shushgift/
+install -m 644 "$SRC/deploy/backup/backup.sh" "$SRC/deploy/backup/healthcheck.sh" /opt/shushgift/backup/
+install -m 644 "$SRC/deploy/val/docker-compose.yml" /opt/shushgift-val/
+install -m 755 "$SRC/deploy/val/seed-from-prod.sh" /opt/shushgift-val/
 ```
 
 `999` and `10001` are numeric on purpose: they are users inside the
@@ -319,16 +329,16 @@ the secret is never in a file anyone else can read, whatever the umask.
 
 ```bash
 # literal placeholder: <postgres-password> is the examples' own text
-install -m 600 /dev/null /opt/wishlist/.env
+install -m 600 /dev/null /opt/shushgift/.env
 sed "s/<postgres-password>/$(openssl rand -hex 32)/g" \
-    "$SRC/deploy/prod/.env.example" > /opt/wishlist/.env
+    "$SRC/deploy/prod/.env.example" > /opt/shushgift/.env
 
-install -m 600 /dev/null /opt/wishlist-val/.env
+install -m 600 /dev/null /opt/shushgift-val/.env
 sed "s/<postgres-password>/$(openssl rand -hex 32)/g" \
-    "$SRC/deploy/val/.env.example" > /opt/wishlist-val/.env
+    "$SRC/deploy/val/.env.example" > /opt/shushgift-val/.env
 
-grep -c '<postgres-password>' /opt/wishlist/.env /opt/wishlist-val/.env   # :0 for both
-ls -l /opt/wishlist/.env /opt/wishlist-val/.env                          # -rw------- both
+grep -c '<postgres-password>' /opt/shushgift/.env /opt/shushgift-val/.env   # :0 for both
+ls -l /opt/shushgift/.env /opt/shushgift-val/.env                          # -rw------- both
 ```
 
 Each `sed` generates one password and writes it into both `POSTGRES_PASSWORD`
@@ -354,7 +364,7 @@ Things to know about these files:
   database too, then in both lines of `.env`:
 
   ```bash
-  cd /opt/wishlist                                  # or /opt/wishlist-val
+  cd /opt/shushgift                                  # or /opt/shushgift-val
   OLD=$(sed -n 's/^POSTGRES_PASSWORD=//p' .env)
   NEW=$(openssl rand -hex 32)
   echo "ALTER ROLE CURRENT_USER PASSWORD '$NEW';" | docker compose exec -T -u postgres db \
@@ -372,22 +382,22 @@ Things to know about these files:
 **[VPS]** Both stacks parse with their `.env`:
 
 ```bash
-docker compose -f /opt/wishlist/docker-compose.yml config -q && echo prod ok
-docker compose -f /opt/wishlist-val/docker-compose.yml config -q && echo val ok
-docker compose -f /opt/wishlist-val/docker-compose.yml pull     # :validation and postgres
+docker compose -f /opt/shushgift/docker-compose.yml config -q && echo prod ok
+docker compose -f /opt/shushgift-val/docker-compose.yml config -q && echo val ok
+docker compose -f /opt/shushgift-val/docker-compose.yml pull     # :validation and postgres
 ```
 
 **[VPS]** Owners and modes, against the table in
-[What Wishlist adds](#what-wishlist-adds-to-the-vps):
+[What Shush Gift adds](#what-shush-gift-adds-to-the-vps):
 
 ```bash
 sudo stat -c '%U(%u):%G(%g) %a %n' \
-    /opt/wishlist /opt/wishlist/backup /opt/wishlist/backups /opt/wishlist/.env \
-    /opt/wishlist/docker-compose.yml /opt/wishlist/backup/*.sh \
-    /opt/wishlist-val /opt/wishlist-val/.env /opt/wishlist-val/docker-compose.yml \
-    /opt/wishlist-val/seed-from-prod.sh /opt/wishlist-val/webhook \
-    /opt/wishlist-media /opt/wishlist-media/prod /opt/wishlist-media/val
-sudo getfacl -p /opt/wishlist/backups /opt/wishlist-media/prod /opt/wishlist-val/.env
+    /opt/shushgift /opt/shushgift/backup /opt/shushgift/backups /opt/shushgift/.env \
+    /opt/shushgift/docker-compose.yml /opt/shushgift/backup/*.sh \
+    /opt/shushgift-val /opt/shushgift-val/.env /opt/shushgift-val/docker-compose.yml \
+    /opt/shushgift-val/seed-from-prod.sh /opt/shushgift-val/webhook \
+    /opt/shushgift-media /opt/shushgift-media/prod /opt/shushgift-media/val
+sudo getfacl -p /opt/shushgift/backups /opt/shushgift-media/prod /opt/shushgift-val/.env
 ```
 
 `getfacl` shows only `user::`, `group::` and `other::` lines. Extra entries mean
@@ -395,8 +405,9 @@ a default ACL was inherited ([checks](#checks-before-installing)).
 
 ## 6. Caddy
 
-This step needs the hostnames (an open decision, D13). Everything before it
-can be done without them; see [Before the domain exists](#before-the-domain-exists).
+This step needs the hostnames, `shushgift.com` and `val.shushgift.com` (plan
+D1), with their DNS records. Everything before it can be done without them;
+see [Before the domain exists](#before-the-domain-exists).
 
 Caddy serves every site on the host from one file. **A reload of a Caddyfile
 that does not validate takes down every site, TraxJourney's included.** Hence:
@@ -407,6 +418,7 @@ certificate challenge fails and Caddy backs off and retries later:
 
 ```bash
 getent hosts <prod-host>
+getent hosts www.<prod-host>
 getent hosts <val-host>
 # If getent is empty but the record is published, ask a public resolver
 # (the local one can cache a negative answer):
@@ -427,7 +439,7 @@ reloading:
 ```bash
 PROD_HOST=<prod-host>
 VAL_HOST=<val-host>
-sudo cp -p /etc/caddy/Caddyfile /etc/caddy/Caddyfile.before-wishlist
+sudo cp -p /etc/caddy/Caddyfile /etc/caddy/Caddyfile.before-shushgift
 grep -c '127.0.0.1:801[01]' /etc/caddy/Caddyfile              # 0: not appended yet
 # literal placeholder: the two patterns below are the snippet's own text
 sed -e "s/<prod-host>/$PROD_HOST/g" -e "s/<val-host>/$VAL_HOST/g" \
@@ -438,8 +450,9 @@ caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
 ```
 
 If `caddy validate` fails, nothing was reloaded: put the copy back with
-`sudo cp -p /etc/caddy/Caddyfile.before-wishlist /etc/caddy/Caddyfile` and fix
-the appended blocks before trying again.
+`sudo cp -p /etc/caddy/Caddyfile.before-shushgift /etc/caddy/Caddyfile` and fix
+the appended blocks before trying again. After a successful reload the same
+copy is the way back (copy, `caddy validate`, `sudo systemctl reload caddy`).
 
 **[VPS]** TraxJourney still answers, and the new sites get certificates:
 
@@ -448,6 +461,7 @@ curl -s https://<traxjourney-prod-host>/api/version; echo
 curl -s https://<traxjourney-val-host>/api/version; echo
 sudo journalctl -u caddy -n 200 --no-pager | grep '"logger":"tls'   # "certificate obtained successfully" for both hosts
 curl -sI https://<val-host>/ | head -n 1     # 502 until VAL runs (step 8); no TLS error
+curl -sI 'https://www.<prod-host>/join?x=1#t' | grep -i -e '^HTTP' -e '^location'   # 301, location: https://<prod-host>/join?x=1
 ```
 
 `NXDOMAIN` in those lines means the host has no DNS record yet: add it, and
@@ -458,7 +472,9 @@ which is expected.
 
 The VAL site routes `/gh-webhook/*` to the webhook on 9998 (with the prefix
 stripped) and everything else to the app on 8011. PROD's site never exposes
-the hook.
+the hook. `www.<prod-host>` redirects to `https://<prod-host>` with the path
+and query kept: its target host is fixed in the snippet, so no request can
+choose where it is sent.
 
 **[VPS]** Now that the hosts are served, give each app its public address,
 which share links are built on (`<PUBLIC_BASE_URL>/join#<token>`). The web
@@ -467,10 +483,10 @@ email is sent while it is empty:
 
 ```bash
 # literal placeholder: <val-host>, <prod-host> are this document's, replace them
-cd /opt/wishlist-val
+cd /opt/shushgift-val
 grep -n '^PUBLIC_BASE_URL=' .env        # PUBLIC_BASE_URL= (empty)
 sed -i 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://<val-host>|' .env
-cd /opt/wishlist
+cd /opt/shushgift
 grep -n '^PUBLIC_BASE_URL=' .env
 sed -i 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://<prod-host>|' .env
 ```
@@ -483,7 +499,7 @@ in its directory. Check with `curl -s https://<val-host>/api/config`:
 
 ## 7. The VAL webhook
 
-Wishlist has its own `webhook` instance (D7): its own unit, port, hooks file
+Shush Gift has its own `webhook` instance (D7): its own unit, port, hooks file
 and secret. TraxJourney's `webhook` unit on 9999 is not touched.
 
 How a build reaches VAL: the "Build and publish Docker image" workflow
@@ -491,24 +507,24 @@ finishes; GitHub POSTs a `workflow_run` delivery to
 `https://<val-host>/gh-webhook/hooks/deploy-validation`; Caddy passes it to
 `127.0.0.1:9998`; `webhook` runs `deploy-validation.sh <sha>` (the built commit) only if the
 signature is valid and the run is a successful, completed build of the
-`validation` tag in `rui-nar/Wishlist` (every rule in `hooks.yaml.example`).
+`validation` tag in `rui-nar/shushgift` (every rule in `hooks.yaml.example`).
 The script pulls, runs `up -d`, and polls `http://127.0.0.1:8011/api/version`
 for up to 5 minutes until it reports `validation-<short sha>` of the built
-commit, logging to `/opt/wishlist-val/webhook/deploy.log`.
+commit, logging to `/opt/shushgift-val/webhook/deploy.log`.
 
 **[VPS]** Install the script and the examples:
 
 ```bash
-install -m 755 "$SRC/deploy/webhook/deploy-validation.sh" /opt/wishlist-val/webhook/
+install -m 755 "$SRC/deploy/webhook/deploy-validation.sh" /opt/shushgift-val/webhook/
 install -m 644 "$SRC/deploy/webhook/hooks.yaml.example" \
-    "$SRC/deploy/webhook/wishlist-webhook.service" /opt/wishlist-val/webhook/
+    "$SRC/deploy/webhook/shushgift-webhook.service" /opt/shushgift-val/webhook/
 ```
 
-**[VPS]** Create `hooks.yaml` with a new secret, Wishlist's own (never
+**[VPS]** Create `hooks.yaml` with a new secret, Shush Gift's own (never
 TraxJourney's):
 
 ```bash
-cd /opt/wishlist-val/webhook
+cd /opt/shushgift-val/webhook
 SECRET=$(openssl rand -hex 32)
 install -m 600 /dev/null hooks.yaml
 sed "s/secret: \"\"/secret: \"$SECRET\"/" hooks.yaml.example > hooks.yaml
@@ -525,13 +541,13 @@ delivery.
 
 ```bash
 # literal placeholder: User=<deploy-user> is the unit file's own text
-sed "s/^User=<deploy-user>$/User=$(id -un)/" /opt/wishlist-val/webhook/wishlist-webhook.service \
-    | sudo tee /etc/systemd/system/wishlist-webhook.service >/dev/null
-grep '^User=' /etc/systemd/system/wishlist-webhook.service    # User=<deploy-user>, the real name
+sed "s/^User=<deploy-user>$/User=$(id -un)/" /opt/shushgift-val/webhook/shushgift-webhook.service \
+    | sudo tee /etc/systemd/system/shushgift-webhook.service >/dev/null
+grep '^User=' /etc/systemd/system/shushgift-webhook.service    # User=<deploy-user>, the real name
 sudo systemctl daemon-reload
-sudo systemctl enable --now wishlist-webhook
-systemctl status wishlist-webhook --no-pager
-sudo journalctl -u wishlist-webhook -n 20 --no-pager   # "loaded: deploy-validation",
+sudo systemctl enable --now shushgift-webhook
+systemctl status shushgift-webhook --no-pager
+sudo journalctl -u shushgift-webhook -n 20 --no-pager   # "loaded: deploy-validation",
                                                        # "serving hooks on http://127.0.0.1:9998/hooks/{id}"
 ss -ltn | grep ':9998\b'                               # 127.0.0.1:9998 only
 systemctl is-active webhook                            # TraxJourney's: still active
@@ -550,7 +566,7 @@ curl -s -X POST https://<val-host>/gh-webhook/hooks/deploy-validation \
     -H 'Content-Type: application/json' -d '{}'; echo # Hook rules were not satisfied.
 ```
 
-**[GitHub]** `rui-nar/Wishlist` → Settings → Webhooks → Add webhook:
+**[GitHub]** `rui-nar/shushgift` → Settings → Webhooks → Add webhook:
 
 | Field | Value |
 |---|---|
@@ -593,7 +609,7 @@ change proves it again on a new version.
 **[VPS]** Watch it arrive:
 
 ```bash
-tail -F /opt/wishlist-val/webhook/deploy.log
+tail -F /opt/shushgift-val/webhook/deploy.log
 ```
 
 `-F` waits for the file: the script creates it on its first delivery.
@@ -619,8 +635,8 @@ Within 5 minutes of the build finishing, without any manual step:
 gateway `FORWARDED_ALLOW_IPS` trusts:
 
 ```bash
-docker compose -f /opt/wishlist-val/docker-compose.yml ps     # app and db (healthy)
-docker network inspect wishlist-val_default -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+docker compose -f /opt/shushgift-val/docker-compose.yml ps     # app and db (healthy)
+docker network inspect shushgift-val_default -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
 ```
 
 The gateway must be a `172.16.0.0/12` address (`172.16.x.x` to `172.31.x.x`).
@@ -663,7 +679,7 @@ themselves (D6).
 .\deploy.ps1 -Target Prod
 ```
 
-It asks for confirmation, checks that `/opt/wishlist/docker-compose.yml` runs
+It asks for confirmation, checks that `/opt/shushgift/docker-compose.yml` runs
 `:latest`, pulls, refuses an image whose `APP_VERSION` is not the newest
 `vX.Y.Z` tag (a build still running), runs `up -d`, then waits for
 `https://<prod-host>/api/version` to report `v0.1.0` and for `/api/health` to
@@ -676,16 +692,16 @@ the pull is then a no-op.
 service dumps once when it starts):
 
 ```bash
-docker compose -f /opt/wishlist/docker-compose.yml ps    # app, db, backup: (healthy)
-docker network inspect wishlist-prod_default -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}'   # 172.16-31.x.x, as in step 8
-sudo ls -l /opt/wishlist/backups/                        # wishlist_<YYYY-MM-DD>.dump, 999 999, -rw-------
+docker compose -f /opt/shushgift/docker-compose.yml ps    # app, db, backup: (healthy)
+docker network inspect shushgift-prod_default -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}'   # 172.16-31.x.x, as in step 8
+sudo ls -l /opt/shushgift/backups/                        # shushgift_<YYYY-MM-DD>.dump, 999 999, -rw-------
 ```
 
 **[VPS]** Restore test: seed VAL from that dump
 ([Seeding VAL](#seeding-val-from-prod)):
 
 ```bash
-/opt/wishlist-val/seed-from-prod.sh       # ends with "done: VAL is up on wishlist_<YYYY-MM-DD>.dump"
+/opt/shushgift-val/seed-from-prod.sh       # ends with "done: VAL is up on shushgift_<YYYY-MM-DD>.dump"
 ```
 
 ### Before the domain exists
@@ -695,7 +711,7 @@ Steps 1 to 5 need no hostname. Without one:
 - Start a stack by hand and check it on loopback:
 
   ```bash
-  docker compose -f /opt/wishlist-val/docker-compose.yml up -d --wait --wait-timeout 300
+  docker compose -f /opt/shushgift-val/docker-compose.yml up -d --wait --wait-timeout 300
   curl -s http://127.0.0.1:8011/api/health; echo
   ```
 
@@ -707,11 +723,11 @@ Steps 1 to 5 need no hostname. Without one:
 
 ## 10. Verifying the installation
 
-**[VPS]** No Wishlist port outside loopback, no Postgres port published at all
+**[VPS]** No Shush Gift port outside loopback, no Postgres port published at all
 (D3, D8):
 
 ```bash
-docker ps --filter name=wishlist --format 'table {{.Names}}\t{{.Ports}}'
+docker ps --filter name=shushgift --format 'table {{.Names}}\t{{.Ports}}'
 ss -ltn | grep -E ':(8010|8011|9998)\b'
 ```
 
@@ -729,7 +745,7 @@ curl.exe -m 5 http://<vps-host>:8011/api/version   # same
 **[VPS]** Memory within the limits (about 1.1 GB in total):
 
 ```bash
-docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}' | grep -E 'NAME|wishlist'
+docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}' | grep -E 'NAME|shushgift'
 free -m
 ```
 
@@ -751,11 +767,12 @@ package hashes in the two lock files:
 ```powershell
 git grep -I -n -E '\b[0-9a-f]{64}\b' -- . ':!server/uv.lock' ':!client/pubspec.lock'   # nothing
 git log --all --oneline -G '[0-9a-f]{64}' -- . ':!server/uv.lock' ':!client/pubspec.lock'  # nothing
-git grep -n -i -F -e <prod-host> -e <val-host> -e <vps-host> -e <deploy-user>   # nothing
+git grep -n -i -F -e <vps-host> -e <deploy-user> -e <old-prod-host> -e <old-val-host>   # nothing
 ```
 
-The last command takes the real names. (The placeholders themselves are
-expected in this document and in `deploy/`.)
+The last command takes the real names: the VPS's, the deploy user's and the
+old hostnames. (The placeholders themselves are expected in this document and
+in `deploy/`; `shushgift.com` is the brand's and is public.)
 
 ## 11. Google sign-in
 
@@ -768,28 +785,28 @@ only `https` origins, apart from `localhost`.
 ### Everything to do in the Google Cloud console
 
 All of it is in one project, at <https://console.cloud.google.com>. Google
-sign-in is the only thing Wishlist uses there. Everything is free, and no API
+sign-in is the only thing Shush Gift uses there. Everything is free, and no API
 has to be enabled. Details of rows 6 and 7 follow below.
 
 | # | Where | What | When |
 |---|---|---|---|
-| 1 | Project selector → New project | One project for Wishlist. Its id can never change, so choose it as if it were public | Once |
-| 2 | Google Auth Platform → Branding | App name `Wishlist`, a user support email, a developer contact email. **No logo**: a logo makes Google review the branding first | Once |
-| 3 | Branding → Authorised domains | `<top-private-domain>`. Google requires it before accepting the origins of row 6 or the links of row 8 | Once, and again when Wishlist gets its own domain |
+| 1 | Project selector → New project | One project for Shush Gift. Its id can never change, so choose it as if it were public | Once |
+| 2 | Google Auth Platform → Branding | App name `Shush Gift`, a user support email, a developer contact email. **No logo**: a logo makes Google review the branding first | Once |
+| 3 | Branding → Authorised domains | `<top-private-domain>`. Google requires it before accepting the origins of row 6 or the links of row 8 | Once |
 | 4 | Google Auth Platform → Audience | User type **External**. Add your own account under Test users | Once |
 | 5 | Google Auth Platform → Data Access | Add nothing. Sign-in asks only for `openid`, `email` and `profile`, and any other scope changes what Google demands | Never |
-| 6 | Google Auth Platform → Clients | The web client `Wishlist web`, with the origin of each environment ([below](#web-oauth-client)) | Once, then a line per environment |
+| 6 | Google Auth Platform → Clients | The web client `Shush Gift web`, with the origin of each environment ([below](#web-oauth-client)) | Once, then a line per environment |
 | 7 | Google Auth Platform → Clients | One Android client per app and signing key ([below](#android-oauth-client)) | Once each app has its first upload to Play ([step 14](#14-android-app)); a debug client for a dev machine |
 | 8 | Branding → App domain | Home page `https://<prod-host>/welcome`, privacy policy the address of `LEGAL_PRIVACY_URL`, terms of service the address of `LEGAL_TERMS_URL` | Before row 9 |
 | 9 | Audience → **Publish app** | Status **In production**: open to any Google account | Before PROD serves the public |
-| 10 | Verification Centre | Only for showing the name `Wishlist` or a logo on Google's screen. It needs the ownership of `<top-private-domain>` proven in Google Search Console | Optional |
+| 10 | Verification Centre | Only for showing the name `Shush Gift` or a logo on Google's screen. It needs the ownership of `<top-private-domain>` proven in Google Search Console | Optional |
 | 11 | Google Auth Platform → Clients | Two iOS clients, one per iOS app's bundle id ([step 13](#google-ios-oauth-client)) | Once the bundle ids are chosen |
 
 - **Row 8:** Google requires the home page to be public, to describe the app
   and to link the same privacy policy. The welcome page does not link a privacy
   policy yet, and needs one before you publish.
 - **Row 9:** while the app is unverified, Google's screen shows the domain
-  only, so people see `<top-private-domain>`, not `Wishlist`.
+  only, so people see `<top-private-domain>`, not `Shush Gift`.
 - **Testing status:** Google's documentation says an app asking only for
   `openid`, `email` and `profile` is not limited to its test users and its
   sign-ins do not expire, even in Testing. Keep your own account listed anyway.
@@ -801,7 +818,7 @@ has to be enabled. Details of rows 6 and 7 follow below.
 If it does not exist yet, create it as in
 [DEVELOPMENT](DEVELOPMENT.md#google-sign-in-in-dev), step 3.
 
-**[Google Cloud]** Google Auth Platform → Clients → `Wishlist web` →
+**[Google Cloud]** Google Auth Platform → Clients → `Shush Gift web` →
 Authorised JavaScript origins. Add, next to `http://localhost:5500`:
 
 | Origin | For |
@@ -818,7 +835,7 @@ into no `.env` and no GitHub secret.
 the app:
 
 ```bash
-cd /opt/wishlist-val                     # then the same in /opt/wishlist
+cd /opt/shushgift-val                     # then the same in /opt/shushgift
 grep -n '^GOOGLE_CLIENT_IDS=' .env       # GOOGLE_CLIENT_IDS= (empty)
 sed -i 's/^GOOGLE_CLIENT_IDS=.*/GOOGLE_CLIENT_IDS=<google-web-client-id>/' .env
 grep -n '^GOOGLE_CLIENT_IDS=' .env       # GOOGLE_CLIENT_IDS=<google-web-client-id>
@@ -880,7 +897,7 @@ under the app signing key certificate. Take the SHA-1, not the SHA-256.
 JDK Flutter uses):
 
 ```powershell
-keytool -list -v -keystore $HOME\wishlist-upload.keystore -alias upload
+keytool -list -v -keystore $HOME\shushgift-upload.keystore -alias upload
 keytool -list -v -keystore $HOME\.android\debug.keystore -alias androiddebugkey -storepass android
 ```
 
@@ -889,16 +906,16 @@ row of this table:
 
 | Name | Package name | SHA-1 |
 |---|---|---|
-| `Wishlist Android VAL (Play)` | `<android-application-id-val>` | `<play-signing-sha1-val>` |
-| `Wishlist Android VAL (upload)` | `<android-application-id-val>` | `<upload-key-sha1>` |
-| `Wishlist Android (Play)` | `<android-application-id>` | `<play-signing-sha1>` |
-| `Wishlist Android (upload)` | `<android-application-id>` | `<upload-key-sha1>` |
-| `Wishlist Android debug` | the id of the build you run: `com.example.wishlist.val` with no `-P wishlistAppId`, or `<android-application-id-val>` with it | `<debug-sha1>` |
+| `Shush Gift Android VAL (Play)` | `<android-application-id-val>` | `<play-signing-sha1-val>` |
+| `Shush Gift Android VAL (upload)` | `<android-application-id-val>` | `<upload-key-sha1>` |
+| `Shush Gift Android (Play)` | `<android-application-id>` | `<play-signing-sha1>` |
+| `Shush Gift Android (upload)` | `<android-application-id>` | `<upload-key-sha1>` |
+| `Shush Gift Android debug` | the id of the build you run: `com.example.shushgift.val` with no `-P shushgiftAppId`, or `<android-application-id-val>` with it | `<debug-sha1>` |
 
 For all of them the application type is **Android**. Only the Play App Signing
 row is needed for testers installing from Play; the upload row covers a bundle
 installed another way, signed with the upload key. A client registered with
-the old placeholder `com.example.wishlist` stops matching any build: replace
+the old placeholder `com.example.shushgift` stops matching any build: replace
 it with the debug row. A new client can take a few minutes to reach Google,
 and none of these values goes in a file of the repository.
 
@@ -908,7 +925,7 @@ hands Apple's sign-in back to, so each environment has its own: VAL's ends in
 filled it in with the build's id:
 
 ```bash
-cd /opt/wishlist-val                     # VAL; PROD in /opt/wishlist with <android-application-id>
+cd /opt/shushgift-val                     # VAL; PROD in /opt/shushgift with <android-application-id>
 sed -i 's/^APPLE_ANDROID_PACKAGE=.*/APPLE_ANDROID_PACKAGE=<android-application-id-val>/' .env
 grep -n '^APPLE_ANDROID_PACKAGE=' .env   # VAL: the id ending .val
 docker compose up -d --wait --wait-timeout 300
@@ -948,15 +965,17 @@ holds no Apple key.
 4. People who hide their address get a relay address, and Apple relays email
    only from registered senders. Certificates, Identifiers & Profiles →
    Services → **Sign in with Apple for Email Communication** → Configure: add
-   the domain or the address of `EMAIL_SENDER_ADDRESS`, which must pass SPF.
-   Otherwise their notifications bounce silently.
+   the domain `shushgift.com` and the sender `hello@shushgift.com`, the
+   address of `EMAIL_SENDER_ADDRESS`, which must pass SPF. Otherwise their
+   notifications bounce silently. Check: the domain shows as verified there.
+   The way back: remove the entry, which stops the relay again.
 
 **[VPS]** Set the two values in the environment's `.env` (VAL first, then the
-same in `/opt/wishlist`), then recreate the app. `<android-application-id>`
+same in `/opt/shushgift`), then recreate the app. `<android-application-id>`
 is the Android applicationId of the build:
 
 ```bash
-cd /opt/wishlist-val                     # then the same in /opt/wishlist
+cd /opt/shushgift-val                     # then the same in /opt/shushgift
 grep -n '^APPLE_' .env                   # APPLE_CLIENT_IDS= and APPLE_ANDROID_PACKAGE= (empty)
 sed -i 's/^APPLE_CLIENT_IDS=.*/APPLE_CLIENT_IDS=<apple-services-id>/' .env
 sed -i 's/^APPLE_ANDROID_PACKAGE=.*/APPLE_ANDROID_PACKAGE=<android-application-id>/' .env
@@ -992,11 +1011,13 @@ stay on: the links it mails expire in an hour.
 
 The iOS app is built and signed on GitHub's macOS runners and delivered by
 TestFlight (iOS app plan, D1 to D7). There are **two apps**: the VAL app,
-"Wishlist VAL", built from the `validation` tag and talking to VAL, which
-testers use; and the PROD app, built from a release tag and talking to PROD.
-Until the secrets of [GitHub secrets and
-variables](#github-secrets-and-variables) exist, the `iOS release` workflow
-ends with a notice and builds nothing.
+"Shush Gift VAL", built by a **manual run** of the `iOS release` workflow
+(`app: val`) and talking to VAL, which testers use; and the PROD app, built
+when a release tag `vX.Y.Z` is pushed and talking to PROD. The workflow does
+not run on the `validation` tag: the macOS runner counts ten times against the
+private repository's Actions minutes (plan D3a). Until the secrets of [GitHub
+secrets and variables](#github-secrets-and-variables) exist, the `iOS release`
+workflow ends with a notice and builds nothing.
 
 This step needs [step 12](#12-apple-sign-in) done first, at least on VAL: its
 membership, its App ID and its Services ID.
@@ -1012,19 +1033,19 @@ Apple has accepted the enrolment.
 
 ### The bundle id
 
-`<ios-bundle-id>` is the PROD app's identity, and **cannot change** once an
-App Store Connect app uses it. Android uses the same value as its PROD
-application id (`ANDROID_RELEASE_PLAN.md` D1), which cannot change once the
-app is on Google Play either, so one choice serves both:
+The ids are decided (plan D3, `docs/NEEDS.md`): `<ios-bundle-id>` is
+`com.shushgift.app`, the PROD app's identity, and `<ios-bundle-id-val>` is
+`com.shushgift.app.val`. They **cannot change** once an App Store Connect app
+uses them. Android uses the same value as its PROD application id
+(`ANDROID_RELEASE_PLAN.md` D1), which cannot change once the app is on Google
+Play either, so one choice serves both. Both are lowercase letters, digits and
+dots only, each part starting with a letter: Apple forbids `_`, Android
+forbids `-`, and only this set is valid on both.
 
-- reverse-domain, on a domain the owner controls for good, such as
-  `<top-private-domain>` reversed, then `.wishlist`. Never the placeholder
-  `com.example.wishlist`, which the release workflow refuses;
-- lowercase letters, digits and dots only, each part starting with a letter:
-  Apple forbids `_`, Android forbids `-`, and only this set is valid on both.
-
-`<ios-bundle-id-val>` is `<ios-bundle-id>.val`, as Android's VAL app adds
-`.val` to its application id.
+The code still holds the placeholder `com.example.shushgift` as its default
+(`client/README.md`, "Placeholder application id"): the real ids reach a build
+only through the `IOS_BUNDLE_ID*` and `ANDROID_APP_ID` variables below, and the
+release workflows refuse the placeholder.
 
 ### App IDs
 
@@ -1035,11 +1056,21 @@ missing one itself, with only the capabilities of the app's entitlements.
 | | PROD | VAL |
 |---|---|---|
 | Identifier | `<ios-bundle-id>`, from [step 12](#12-apple-sign-in), point 2 | **+** → App IDs → App: `<ios-bundle-id-val>`, explicit |
-| Description | `Wishlist` | `Wishlist VAL` |
+| Description | `Shush Gift` | `Shush Gift VAL` |
 | Sign in with Apple | ticked, **Enable as a primary App ID** | ticked, then Edit: **Group with an existing primary App ID**, the PROD one |
 | In-App Purchase | ticked (Apple ticks it by default: check it) | ticked |
+| Associated Domains | ticked | ticked |
 
-Nothing else: no push notifications, no associated domains (plan D8).
+Nothing else: no push notifications. **Associated Domains** is what lets a
+Shush Gift link open the installed app (plan D7): the build's entitlement
+`applinks:<host>` is refused at signing unless the App ID has the capability.
+Tick it on both App IDs, and **regenerate the provisioning profiles** of both
+afterwards (Profiles → the app's profile → Edit → Generate), since a profile
+made before the capability lacks it. With automatic signing on the release
+runner, a new profile is made at the next run; check there that the run does
+not fail at signing with "doesn't include the Associated Domains capability".
+The way back needs no step: a capability that a build does not use harms
+nothing, and the links themselves are checked in [App links](#app-links).
 
 VAL is grouped with PROD because one Sign in with Apple key signs for its
 primary App ID's group only, and VAL's server exchanges the codes of both the
@@ -1059,7 +1090,7 @@ Apple's one-time code for the token it revokes when the account is deleted
 **[Apple]** Certificates, Identifiers & Profiles:
 
 1. Membership details (top right): the **Team ID**, `<apple-team-id>`.
-2. Keys → **+**: name `Wishlist Sign in with Apple`, tick **Sign in with
+2. Keys → **+**: name `Shush Gift Sign in with Apple`, tick **Sign in with
    Apple** → Configure → Primary App ID: `<ios-bundle-id>`. Register.
 3. Note the **Key ID**, `<apple-key-id>`, and **Download**
    `AuthKey_<apple-key-id>.p8`. Apple offers the file once only. Keep it in
@@ -1085,7 +1116,7 @@ the Services ID, which stays first. `APPLE_PRIVATE_KEY` is written with
 `printf`, not `sed`: `sed` would turn its `\n` into line breaks.
 
 ```bash
-cd /opt/wishlist-val
+cd /opt/shushgift-val
 grep -n '^APPLE_' .env                   # APPLE_CLIENT_IDS=<apple-services-id>, APPLE_ANDROID_PACKAGE=…, then APPLE_TEAM_ID=, APPLE_KEY_ID=, APPLE_PRIVATE_KEY= (empty)
 sed -i 's/^APPLE_CLIENT_IDS=.*/APPLE_CLIENT_IDS=<apple-services-id>,<ios-bundle-id-val>/' .env
 sed -i 's/^APPLE_TEAM_ID=.*/APPLE_TEAM_ID=<apple-team-id>/' .env
@@ -1094,7 +1125,7 @@ read -rs APPLE_KEY                       # paste the key's one line, then Enter:
 sed -i '/^APPLE_PRIVATE_KEY=/d' .env
 printf 'APPLE_PRIVATE_KEY=%s\n' "$APPLE_KEY" >> .env
 unset APPLE_KEY
-grep -c '^APPLE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\\n.*\\n-----END PRIVATE KEY-----$' .env   # 1
+grep -c '^APPLE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n.*\n-----END PRIVATE KEY-----$' .env   # 1
 grep -E '^APPLE_(CLIENT_IDS|TEAM_ID|KEY_ID)=' .env                                              # the three, no secret
 ls -l .env                               # -rw-------
 docker compose up -d --wait --wait-timeout 300
@@ -1109,7 +1140,7 @@ also installs the `seed-from-prod.sh` that keeps PROD's tokens off VAL. The
 PEM form, with its real line breaks, also
 works, but a `.env` value cannot hold it unquoted.
 
-**[VPS]** PROD the same, before the first PROD build, in `/opt/wishlist` with
+**[VPS]** PROD the same, before the first PROD build, in `/opt/shushgift` with
 `<ios-bundle-id>`:
 
 ```bash
@@ -1136,10 +1167,10 @@ once per app:
 | Field | PROD | VAL |
 |---|---|---|
 | Platforms | iOS | iOS |
-| Name | `Wishlist` | `Wishlist VAL` |
+| Name | `Shush Gift` | `Shush Gift VAL` |
 | Primary language | English | English |
 | Bundle ID | `<ios-bundle-id>` | `<ios-bundle-id-val>` |
-| SKU | `wishlist-prod` | `wishlist-val` |
+| SKU | `shushgift-prod` | `shushgift-val` |
 | User Access | Full Access | Full Access |
 
 An App Store name is unique across the store, even for an app never
@@ -1189,7 +1220,7 @@ do: set them all in one sitting, before any tag is pushed.
 | `APPLE_TEAM_ID` | variable | `<apple-team-id>` |
 | `IOS_BUNDLE_ID` | variable | `<ios-bundle-id>` |
 | `IOS_BUNDLE_ID_VAL` | variable | `<ios-bundle-id-val>`; the workflow refuses it equal to `IOS_BUNDLE_ID` |
-| `API_BASE_URL_VAL` | secret | `https://<val-host>`, no trailing slash. A secret so the hostname stays out of the logs |
+| `API_BASE_URL_VAL` | secret | `https://<val-host>`, no trailing slash. A secret so the hostname stays out of the logs. The workflow also takes the app-link host from it: the host alone, `SHUSHGIFT_APP_LINK_HOST`, which turns on the Associated Domains entitlement (`Runner/RunnerAppLinks.entitlements`, `applinks:<host>`). A value that is not an https DNS name fails the gate |
 | `API_BASE_URL_PROD` | secret | `https://<prod-host>`, the same way |
 | `GOOGLE_IOS_CLIENT_ID` | variable | `<google-ios-client-id>`, the PROD app's iOS client ([below](#google-ios-oauth-client)). Unset: the PROD app offers Apple and email only |
 | `GOOGLE_IOS_CLIENT_ID_VAL` | variable | `<google-ios-client-id-val>`, the VAL app's iOS client, the same way; the workflow refuses it equal to `GOOGLE_IOS_CLIENT_ID` |
@@ -1231,7 +1262,7 @@ app:
 | Field | PROD | VAL |
 |---|---|---|
 | Application type | **iOS** | **iOS** |
-| Name | `Wishlist iOS` | `Wishlist iOS VAL` |
+| Name | `Shush Gift iOS` | `Shush Gift iOS VAL` |
 | Bundle ID | `<ios-bundle-id>` | `<ios-bundle-id-val>` |
 | App Store ID, Team ID | empty | empty |
 
@@ -1250,10 +1281,10 @@ member of the team in App Store Connect (up to 100).
 
 1. Users and Access → **+**: the tester's name and Apple Account address,
    role **Developer**, without access to Certificates, Identifiers &
-   Profiles, and Apps: **Wishlist VAL** only. TestFlight takes internal
+   Profiles, and Apps: **Shush Gift VAL** only. TestFlight takes internal
    testers with the Admin, App Manager, Developer or Marketing role only.
    They accept the email invitation.
-2. Apps → Wishlist VAL → TestFlight → Internal Testing → **+**: a group named
+2. Apps → Shush Gift VAL → TestFlight → Internal Testing → **+**: a group named
    `Testers`, with **Enable automatic distribution** ticked. Add the testers.
 3. On their iPhone, testers install Apple's **TestFlight** app and accept the
    invitation it shows.
@@ -1264,7 +1295,7 @@ PROD](#seeding-val-from-prod)).
 
 ### Privacy labels
 
-**[Apple]** Apps → Wishlist → App Privacy. Apple requires this before the PROD
+**[Apple]** Apps → Shush Gift → App Privacy. Apple requires this before the PROD
 app goes to review; the VAL app does not need it. Privacy Policy URL: the
 address of `LEGAL_PRIVACY_URL`. Then Get Started → **Yes, we collect data**:
 
@@ -1288,27 +1319,33 @@ each app, the In-App Purchase key, the notification URLs and the test on VAL.
 The apps offer no purchase until the variables of the [release with Apple
 purchases](#release-specific-steps) are filled in.
 
-### First build from the validation tag
+### First build of the VAL app: a manual run
 
 Before it: VAL runs the release with Apple's token revocation (its migration
 adds `apple_tokens`; its [release-specific step](#release-specific-steps) is
-done), and its `.env` is filled in as [above](#the-servers-values).
+done), its `.env` is filled in as [above](#the-servers-values), and both
+`.well-known` files answer on VAL ([App links](#app-links)).
 
-**[dev]** Push the `validation` tag as in [step 8](#8-first-val-deploy). It
-deploys VAL, as always, and starts the iOS release of the VAL app.
+**[dev]** The `validation` tag deploys VAL, as always, but starts no iOS
+build. Run it by hand:
 
-**[GitHub]** Actions → "iOS release" for `validation`: the `gate` job, then
-`release` on macOS, about 20 minutes. Its notice says `validation-<short sha>,
-build <n>`. The run's log shows no hostname: the secrets are masked.
+```powershell
+gh workflow run "iOS release" -f app=val --ref validation
+```
 
-**[Apple]** Apps → Wishlist VAL → TestFlight: the build appears as
+**[GitHub]** Actions → "iOS release" (the same as "Run workflow", `app: val`,
+branch or tag `validation`): the `gate` job, then `release` on macOS, about 20
+minutes. Its notice says `validation-<short sha>, build <n>`. The `gate`
+failing on the host means `API_BASE_URL_VAL` is not an https DNS name. The run's log shows no hostname: the secrets are masked.
+
+**[Apple]** Apps → Shush Gift VAL → TestFlight: the build appears as
 Processing, then becomes available to the `Testers` group, usually within half
 an hour. No export compliance question: the app declares it uses no
 encryption beyond HTTPS (plan D6).
 
 **[dev]** On an iPhone, in the VAL app installed from TestFlight:
 
-1. The name under the icon is "Wishlist VAL", and the app shows the version
+1. The name under the icon is "Shush Gift VAL", and the app shows the version
    `validation-<short sha>`.
 2. Sign in with Apple, with Google, then with email: each one signs in.
 3. A gift's photo can be taken with the camera and picked from the library,
@@ -1320,7 +1357,7 @@ The check of review R1-4: nothing else shows whether Apple's code exchange
 works. **[VPS]** After the Apple sign-in on the iPhone:
 
 ```bash
-cd /opt/wishlist-val
+cd /opt/shushgift-val
 docker compose exec -T -u postgres db sh -c \
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select client_id, updated_at from apple_tokens order by updated_at desc limit 5"'
 # a row for <ios-bundle-id-val>, updated at the sign-in. Never select refresh_token: it is a secret
@@ -1342,7 +1379,7 @@ new certificate at each run, and Apple limits how many a team has.
 
 **[Apple]** Certificates, Identifiers & Profiles → Certificates. Note the
 count and the types before the first run, after it, and after the second (the
-second `validation` push, or a manual run of "iOS release" for `val`).
+second manual run of "iOS release" for `val`).
 
 - The second run added nothing: done.
 - Each run added one (an Apple Development or Apple Distribution certificate
@@ -1355,7 +1392,7 @@ second `validation` push, or a manual run of "iOS release" for `val`).
 
 The Android app is built and signed on GitHub's Linux runners and uploaded to
 Google Play's internal testing track (Android release plan, D1 to D4). There
-are **two apps**, as on iOS: the VAL app, "Wishlist VAL", built from the
+are **two apps**, as on iOS: the VAL app, "Shush Gift VAL", built from the
 `validation` tag and talking to VAL, which testers use; and the PROD app,
 built from a release tag and talking to PROD. Until the secrets of [GitHub
 variables and secrets](#github-variables-and-secrets-for-android) exist, the
@@ -1392,9 +1429,9 @@ Nothing below can start before Google has accepted the registration.
 
 ### The two apps
 
-`<android-application-id>` is the PROD app's identity, the value chosen in
-[The bundle id](#the-bundle-id) (the same as `<ios-bundle-id>`), and **cannot
-change** once Google Play uses it. The VAL app's is `<android-application-id-val>`,
+`<android-application-id>` is the PROD app's identity, `com.shushgift.app`, the
+value chosen in [The bundle id](#the-bundle-id) (the same as
+`<ios-bundle-id>`), and **cannot change** once Google Play uses it. The VAL app's is `<android-application-id-val>`,
 which is `<android-application-id>.val`: the `val` flavour adds that suffix
 (`client/android/app/build.gradle.kts`).
 
@@ -1402,7 +1439,7 @@ which is `<android-application-id>.val`: the `val` flavour adds that suffix
 
 | Field | VAL app | PROD app |
 |---|---|---|
-| App name | Wishlist VAL | Wishlist |
+| App name | Shush Gift VAL | Shush Gift |
 | Default language | the language of the store listing | the same |
 | App or game | **App** | **App** |
 | Free or paid | **Free** (Premium is an in-app subscription; a free app cannot be made paid later, unconfirmed) | the same |
@@ -1425,7 +1462,7 @@ upload key serves both apps.
 and ignored by Git, but a checkout is the wrong place anyway):
 
 ```powershell
-keytool -genkeypair -v -storetype PKCS12 -keystore $HOME\wishlist-upload.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkeypair -v -storetype PKCS12 -keystore $HOME\shushgift-upload.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 `keytool` asks for a keystore password, then for the key's, and a name and
@@ -1436,7 +1473,7 @@ in the password manager, with a second copy of the file somewhere else. Note
 its SHA-1 for [step 11](#android-oauth-client), `<upload-key-sha1>`:
 
 ```powershell
-keytool -list -v -keystore $HOME\wishlist-upload.keystore -alias upload
+keytool -list -v -keystore $HOME\shushgift-upload.keystore -alias upload
 ```
 
 **Keep it safe:** whoever has the file and its passwords can upload to your
@@ -1458,8 +1495,8 @@ the VAL app, `<play-signing-sha1>` for the PROD app. They differ, and
 CI sends the bundle through the Play Developer API as a Google service
 account, which the workflow signs in as with its JSON key.
 
-**[Google Cloud]** In Wishlist's project, IAM & Admin → Service Accounts →
-Create service account, such as `wishlist-play-upload`, with no project role.
+**[Google Cloud]** In Shush Gift's project, IAM & Admin → Service Accounts →
+Create service account, such as `shushgift-play-upload`, with no project role.
 Keys → Add key → Create new key → **JSON**; the file downloads once, and it
 is a secret. Make sure the Google Play Android Developer API is enabled in
 the project (APIs & Services → Library; unconfirmed).
@@ -1493,7 +1530,7 @@ are the ones iOS uses ([step 13](#github-secrets-and-variables)).
 | `ANDROID_UPLOAD_KEY_ALIAS` | secret | `upload` |
 | `ANDROID_UPLOAD_KEY_PASSWORD` | secret | the key's password |
 | `PLAY_SERVICE_ACCOUNT_JSON` | secret | the whole JSON key of the upload service account |
-| `API_BASE_URL_VAL` | secret | `https://<val-host>`, as in step 13 |
+| `API_BASE_URL_VAL` | secret | `https://<val-host>`, as in step 13. The workflow passes its host as `-P shushgiftAppLinkHost`, which adds the `autoVerify` intent filter ([App links](#app-links)); a value that is not an https DNS name fails the gate |
 | `API_BASE_URL_PROD` | secret | `https://<prod-host>`, as in step 13 |
 
 **[dev]** With the GitHub CLI, in the checkout. The key and the keystore are
@@ -1502,7 +1539,7 @@ a command:
 
 ```powershell
 gh variable set ANDROID_APP_ID --body <android-application-id>
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\wishlist-upload.keystore")) | gh secret set ANDROID_UPLOAD_KEYSTORE_B64
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\shushgift-upload.keystore")) | gh secret set ANDROID_UPLOAD_KEYSTORE_B64
 gh secret set ANDROID_UPLOAD_KEYSTORE_PASSWORD
 gh secret set ANDROID_UPLOAD_KEY_ALIAS --body upload
 gh secret set ANDROID_UPLOAD_KEY_PASSWORD
@@ -1533,15 +1570,17 @@ keeps the signed bundle as the artefact `android-bundle`, for 7 days. Download
 it (Artifacts, at the bottom of the run's page) and unzip it: it holds
 `app-val-release.aab` (`app-prod-release.aab` for PROD).
 
-**[Play]** Wishlist VAL → Test and release → Testing → Internal testing →
+**[Play]** Shush Gift VAL → Test and release → Testing → Internal testing →
 Create new release: if the Console asks, accept Play App Signing. Upload the
 `.aab`, give the release a name, save, review and roll it out to internal
 testing. The Console may ask for a testers list before it lets the release
 go: do the next section first, then return. The app now has its application id
-and its first upload; Billing, Part 4 can create its subscription.
+and its first upload; Billing, Part 4 can create its subscription, and its
+Play App Signing certificate exists: take its SHA-256 for
+`APP_LINKS_ANDROID_SHA256` ([App links](#the-app-link-values)).
 
-**[GitHub]** Delete the artefact from the run's page. A public repository's
-artefacts can be downloaded by anyone, and the bundle holds the server's
+**[GitHub]** Delete the artefact from the run's page. Anyone who can read the
+repository can download its artefacts, and the bundle holds the server's
 address, which is kept out of the logs.
 
 Later runs upload through the API by themselves. While an app has never been
@@ -1555,7 +1594,7 @@ which only grows.
 
 Internal testers get every VAL build in minutes, without Google's review.
 
-**[Play]** Wishlist VAL → Test and release → Testing → Internal testing →
+**[Play]** Shush Gift VAL → Test and release → Testing → Internal testing →
 Testers tab:
 
 1. Create an email list named `Testers`, and add the testers' Google accounts,
@@ -1564,7 +1603,7 @@ Testers tab:
 2. Copy the **opt-in link** under "How testers join your test". It is private
    to the testers: never commit it.
 3. On their phone, each tester opens the link signed in with that account,
-   accepts, and installs "Wishlist VAL" from Play.
+   accepts, and installs "Shush Gift VAL" from Play.
 
 Testers use the VAL app, never the PROD one (plan D1): VAL is seeded from PROD
 and what they do there is lost at the next seed ([Seeding VAL from
@@ -1596,13 +1635,13 @@ It deploys VAL, as always, and starts the Android release of the VAL app.
 validation-<short sha>, build <n>`. The run's log shows no hostname: the
 secrets are masked.
 
-**[Play]** Wishlist VAL → Test and release → Testing → Internal testing: the
+**[Play]** Shush Gift VAL → Test and release → Testing → Internal testing: the
 new release is there, completed (or a draft, to roll out, as above). It
 reaches the testers' phones within minutes to an hour (unconfirmed).
 
 **[dev]** On an Android phone, with the VAL app updated from Play:
 
-1. The name under the icon is "Wishlist VAL", and the app shows the version
+1. The name under the icon is "Shush Gift VAL", and the app shows the version
    `validation-<short sha>`.
 2. Sign in with Google, with Apple, then with email: each one signs in. A
    Google button that fails with a developer error means the Android OAuth
@@ -1611,6 +1650,102 @@ reaches the testers' phones within minutes to an hour (unconfirmed).
    error text).
 3. A gift's photo can be taken with the camera and picked from the library,
    each after the system's permission prompt.
+
+## App links
+
+On a phone with the app installed, a Shush Gift link opens the app on the right
+screen instead of the browser (plan D7). The phone decides by asking the host
+which apps may open its links, so each environment serves two files from its
+own `.env`, with no redirect and as `application/json`:
+
+- `/.well-known/apple-app-site-association`, for iOS;
+- `/.well-known/assetlinks.json`, for Android.
+
+Both are configuration only, the same for whoever asks. A file whose settings
+are empty answers **404**. The paths that open the app are `/join`,
+`/shared/*`, `/create-account`, `/reset-password` and exactly `/account`;
+`/account/plan` (Stripe's return), `/unsubscribe`, `/legal/*`, `/api/*` and
+`/welcome` stay in the browser.
+
+The builds carry the host too: the release workflows take it from the host of
+the `API_BASE_URL_*` secret, so no host is committed. The iOS build turns on
+the Associated Domains entitlement with it
+([step 13](#github-secrets-and-variables)), the Android build adds the
+`autoVerify` intent filter (`-P shushgiftAppLinkHost`,
+[step 14](#github-variables-and-secrets-for-android)).
+
+### The app-link values
+
+Each environment lists **its own** apps: VAL the `.val` ones, PROD the others.
+
+| Key | VAL | PROD |
+|---|---|---|
+| `APP_LINKS_APPLE_APP_IDS` | `<apple-team-id>.<ios-bundle-id-val>` | `<apple-team-id>.<ios-bundle-id>` |
+| `APP_LINKS_ANDROID_PACKAGE` | `<android-application-id-val>` | `<android-application-id>` |
+| `APP_LINKS_ANDROID_SHA256` | `<play-signing-sha256-val>`, and optionally `<upload-key-sha256>` | `<play-signing-sha256>`, and optionally `<upload-key-sha256>` |
+
+- **The Apple id** is the Team ID, a dot, and the bundle id.
+- **The Android fingerprints** are SHA-256, colon-separated, comma-separated
+  between keys. The Play App Signing certificate's is the one that counts,
+  since Play signs what it delivers, internal testing included: **[Play]**
+  the app → App integrity → App signing (the path is from memory and was not
+  checked), the app signing key certificate's SHA-256. It exists only after the
+  app's first upload to Play ([step 14](#the-first-upload-by-hand)). The upload
+  key's is added when a build signed with it is installed another way:
+
+  ```powershell
+  keytool -list -v -keystore $HOME\shushgift-upload.keystore -alias upload   # the SHA256: line
+  ```
+
+  Take the SHA-256 here; [Android OAuth client](#android-oauth-client) takes
+  the SHA-1 of the same keys. Until the Play app has its certificate,
+  `assetlinks.json` answers 404 and the Apple file can already answer 200.
+
+**[VPS]** In each environment's directory (VAL first), then recreate the app:
+
+```bash
+cd /opt/shushgift-val                     # then the same in /opt/shushgift
+grep -n '^APP_LINKS_' .env               # three lines, empty
+sed -i 's|^APP_LINKS_APPLE_APP_IDS=.*|APP_LINKS_APPLE_APP_IDS=<apple-team-id>.<ios-bundle-id-val>|' .env
+sed -i 's|^APP_LINKS_ANDROID_PACKAGE=.*|APP_LINKS_ANDROID_PACKAGE=<android-application-id-val>|' .env
+sed -i 's|^APP_LINKS_ANDROID_SHA256=.*|APP_LINKS_ANDROID_SHA256=<play-signing-sha256-val>|' .env
+grep -c '^APP_LINKS_' .env               # 3
+docker compose up -d --wait --wait-timeout 300
+```
+
+If `grep` prints nothing, the `.env` predates these settings: add the lines
+from `.env.example` first
+([Updating the files on the host](#updating-the-files-on-the-host)). PROD takes
+its own ids from the right column. The way back: empty the three values and
+`docker compose up -d` again; the files answer 404, and links open in the
+browser as before.
+
+### Checking the links
+
+**[dev]** The files answer on each host, with no redirect:
+
+```powershell
+curl.exe -sI https://<val-host>/.well-known/apple-app-site-association   # 200, content-type: application/json, no location header
+curl.exe -s https://<val-host>/.well-known/apple-app-site-association    # "appIDs": ["<apple-team-id>.<ios-bundle-id-val>"], the five paths
+curl.exe -sI https://<val-host>/.well-known/assetlinks.json              # 200, content-type: application/json
+curl.exe -s https://<val-host>/.well-known/assetlinks.json               # the package and every fingerprint
+```
+
+**[dev]** Android, with the VAL app installed from Play on a phone with `adb`:
+`adb shell pm get-app-links <android-application-id-val>` lists the host as
+`verified`. If it says otherwise, fix the file, then
+`adb shell pm verify-app-links --re-verify <android-application-id-val>`.
+
+**[dev]** iPhone: install or update the app from TestFlight after the file
+answers 200; iOS reads it at install (Apple caches it on its own servers, so a
+change can take hours to reach a phone: unconfirmed).
+
+On each phone, tap a link in a message or an email (a link typed in the
+browser's address bar never opens an app): an occasion invitation
+(`/join#<token>`) opens the app on the join screen, a notification email's link
+(`/shared/…`) on that occasion, a password-reset link on the reset screen. A
+`/account/plan` or `/unsubscribe` link opens the browser. The way back is the
+one above: with the files at 404, no phone claims the links.
 
 ## Admin
 
@@ -1680,11 +1815,11 @@ from PROD only by a seed.
 **[VPS]** (or over `ssh <deploy-user>@<vps-host>` from the dev machine):
 
 ```bash
-docker ps --filter name=wishlist --format 'table {{.Names}}\t{{.Status}}'
+docker ps --filter name=shushgift --format 'table {{.Names}}\t{{.Status}}'
 df -h /
 ```
 
-- Every Wishlist container says `(healthy)`. `wishlist-prod-backup-1` turns
+- Every Shush Gift container says `(healthy)`. `shushgift-prod-backup-1` turns
   `unhealthy` when no dump is newer than 26 hours: a failed backup shows here
   without reading logs ([Backups](#backups)). An app turns `unhealthy` when
   `/api/health` fails: the database is unreachable or its media directory is
@@ -1693,7 +1828,7 @@ df -h /
   ([Media](#media)):
 
   ```bash
-  docker compose -f /opt/wishlist/docker-compose.yml logs --since 25h app | grep 'media purge:'
+  docker compose -f /opt/shushgift/docker-compose.yml logs --since 25h app | grep 'media purge:'
   ```
 
   Expect at least one `media purge: horizon=<date> ...` line. `horizon=none` or
@@ -1704,20 +1839,20 @@ df -h /
   the disk filling. If it drops, see what grew:
 
   ```bash
-  sudo du -sh /opt/wishlist-media /opt/wishlist/backups
+  sudo du -sh /opt/shushgift-media /opt/shushgift/backups
   docker system df
   ```
 
 ## Backups
 
 - **What:** `pg_dump -Fc` of PROD's database, by the `backup` service in
-  `/opt/wishlist/docker-compose.yml` (D9). VAL has no backup: it is
+  `/opt/shushgift/docker-compose.yml` (D9). VAL has no backup: it is
   disposable, and re-seeded from PROD.
 - **When:** once when the service starts, then every night at 02:00 UTC. A
   failed dump is logged and the next attempt is the next 02:00.
-- **Where:** `/opt/wishlist/backups/wishlist_<YYYY-MM-DD>.dump`, one per day.
+- **Where:** `/opt/shushgift/backups/shushgift_<YYYY-MM-DD>.dump`, one per day.
   A second dump on the same day (a restart) replaces that day's file.
-- **Rotation:** the 30 newest `wishlist_*.dump` files are kept, the rest
+- **Rotation:** the 30 newest `shushgift_*.dump` files are kept, the rest
   deleted after each successful dump. Other names in the directory are never
   deleted.
 - **Access:** the directory is `999:10001` mode 750 and each dump 600. The
@@ -1733,13 +1868,13 @@ df -h /
 **[VPS]** Common commands:
 
 ```bash
-sudo ls -l /opt/wishlist/backups/                                   # the dumps
-docker compose -f /opt/wishlist/docker-compose.yml logs --tail 20 backup
-docker compose -f /opt/wishlist/docker-compose.yml restart backup  # dump now (replaces today's file)
+sudo ls -l /opt/shushgift/backups/                                   # the dumps
+docker compose -f /opt/shushgift/docker-compose.yml logs --tail 20 backup
+docker compose -f /opt/shushgift/docker-compose.yml restart backup  # dump now (replaces today's file)
 ```
 
 **When `backup` is `unhealthy`:** read its logs. Likely causes: the password
-in `/opt/wishlist/.env` no longer matches the database
+in `/opt/shushgift/.env` no longer matches the database
 ([step 5](#5-env-files)), a full disk, or the backups directory's owner or
 mode changed (it must be `999:10001` 750). Once fixed, `restart backup` dumps
 at once and the service turns healthy within a minute.
@@ -1749,15 +1884,15 @@ with `sudo`, download it, delete the copy:
 
 ```bash
 sudo install -o "$(id -un)" -g "$(id -un)" -m 600 \
-    /opt/wishlist/backups/wishlist_<YYYY-MM-DD>.dump ~/
+    /opt/shushgift/backups/shushgift_<YYYY-MM-DD>.dump ~/
 ```
 
 ```powershell
-scp <deploy-user>@<vps-host>:wishlist_<YYYY-MM-DD>.dump $HOME\
+scp <deploy-user>@<vps-host>:shushgift_<YYYY-MM-DD>.dump $HOME\
 ```
 
 ```bash
-rm ~/wishlist_<YYYY-MM-DD>.dump
+rm ~/shushgift_<YYYY-MM-DD>.dump
 ```
 
 Keep it outside the repository checkout (`*.dump` is gitignored, but a dump
@@ -1779,13 +1914,13 @@ environment (D18):
 
 | Environment | Host directory | In the container |
 |---|---|---|
-| PROD | `/opt/wishlist-media/prod` | `/app/media` |
-| VAL | `/opt/wishlist-media/val` | `/app/media` |
+| PROD | `/opt/shushgift-media/prod` | `/app/media` |
+| VAL | `/opt/shushgift-media/val` | `/app/media` |
 
 Both are owned by `10001:10001` (the app's fixed uid) with mode 750, created
 in [step 4](#4-directories-and-files). If an app's `/api/health` reports
 `"media": "not writable"`, the ownership changed: put it back with
-`sudo chown 10001:10001 /opt/wishlist-media/prod` (or `val`). The image sets
+`sudo chown 10001:10001 /opt/shushgift-media/prod` (or `val`). The image sets
 `MEDIA_DIR=/app/media` and no `.env` may override it, or uploads would land in
 the container and vanish on the next `up -d`.
 
@@ -1800,7 +1935,7 @@ changes database rows; files leave the disk late, through the media purge.
 [D9, D10](plans/GIFT_IMAGES_PLAN.md)) runs inside PROD's app, 10 minutes
 after it starts and then every 24 hours. It deletes an image's two files only
 once no database row has pointed at them since before the **oldest kept
-dump** was taken: no dump still in `/opt/wishlist/backups` can reference
+dump** was taken: no dump still in `/opt/shushgift/backups` can reference
 them, so restoring any of them finds its images. The horizon is the oldest
 `*.dump` in that directory, by its file date and the date in its name,
 whichever is earlier, minus a day. So:
@@ -1818,7 +1953,7 @@ whichever is earlier, minus a day. So:
 Each run logs one line in the app's logs:
 
 ```bash
-docker compose -f /opt/wishlist/docker-compose.yml logs app | grep 'media purge:'
+docker compose -f /opt/shushgift/docker-compose.yml logs app | grep 'media purge:'
 # media purge: horizon=<iso|none> orphans=<n> purged=<n> rows_released=<n>
 # media purge: skipped (<reason>)
 ```
@@ -1828,7 +1963,7 @@ directory lost its group or mode, put back `999:10001` 750
 ([Backups](#backups)).
 
 VAL has no backups, so `BACKUP_DIR` is not set there and VAL's media are never
-purged; reseeding only adds files. If `/opt/wishlist-media/val` grows past
+purged; reseeding only adds files. If `/opt/shushgift-media/val` grows past
 1 GB, that is an open decision of the gift images plan.
 
 **What that protects against:** logical errors. A bad migration, a bug that
@@ -1845,7 +1980,7 @@ dump finds every file it references, without keeping 30 copies of the images.
   [daily check](#daily-check).
 
 The deploy user cannot list these directories (mode 750, another owner). To
-see their size: `sudo du -sh /opt/wishlist-media/prod /opt/wishlist-media/val`.
+see their size: `sudo du -sh /opt/shushgift-media/prod /opt/shushgift-media/val`.
 In one `du` run, a file hard-linked into both (by seeding) is counted once.
 
 ## Restoring PROD from a dump
@@ -1862,8 +1997,8 @@ set those times to an earlier date by hand.
 **[VPS]**
 
 ```bash
-cd /opt/wishlist
-sudo ls -l backups/                                  # choose wishlist_<YYYY-MM-DD>.dump
+cd /opt/shushgift
+sudo ls -l backups/                                  # choose shushgift_<YYYY-MM-DD>.dump
 
 # 1. Nothing writes to the database any more.
 docker compose stop app backup
@@ -1877,7 +2012,7 @@ docker compose run --rm --no-deps -T --entrypoint sh backup -c \
 docker compose exec -T -u postgres db sh -c '
     dropdb -U "$POSTGRES_USER" --force "$POSTGRES_DB" &&
     createdb -U "$POSTGRES_USER" -O "$POSTGRES_USER" "$POSTGRES_DB"'
-docker compose run --rm --no-deps -T --entrypoint cat backup /backups/wishlist_<YYYY-MM-DD>.dump |
+docker compose run --rm --no-deps -T --entrypoint cat backup /backups/shushgift_<YYYY-MM-DD>.dump |
     docker compose exec -T -u postgres db sh -c '
         pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
             --no-owner --no-privileges --exit-on-error --single-transaction'
@@ -1898,9 +2033,9 @@ Delete `before-restore.dump` (`sudo rm`) once PROD is confirmed good; it is not
 rotated.
 
 Step 4 starts the `backup` service, which dumps at once and replaces today's
-`wishlist_<YYYY-MM-DD>.dump`. If today's 02:00 dump may still be needed,
+`shushgift_<YYYY-MM-DD>.dump`. If today's 02:00 dump may still be needed,
 copy it under another name before step 4:
-`sudo cp -p backups/wishlist_<YYYY-MM-DD>.dump backups/kept_<YYYY-MM-DD>.dump`.
+`sudo cp -p backups/shushgift_<YYYY-MM-DD>.dump backups/kept_<YYYY-MM-DD>.dump`.
 
 If the running image is older than the dump's Alembic revision, the app starts
 without migrating and logs the `app.migrate` warning (see
@@ -1920,7 +2055,7 @@ the app cancels.
 
 ## Seeding VAL from PROD
 
-`/opt/wishlist-val/seed-from-prod.sh` replaces VAL's database with PROD's
+`/opt/shushgift-val/seed-from-prod.sh` replaces VAL's database with PROD's
 newest dump and hard-links PROD's media files into VAL's directory (D9, D18).
 It is also the regular proof that PROD's dumps restore.
 
@@ -1950,13 +2085,13 @@ down: with such an image on VAL, deploy VAL's image first.
 **[VPS]** Run it as the deploy user, never as root:
 
 ```bash
-/opt/wishlist-val/seed-from-prod.sh
+/opt/shushgift-val/seed-from-prod.sh
 ```
 
 What it does, and what to expect:
 
-- It finds the newest `wishlist_*.dump` first; with none, it changes nothing
-  and exits 1. For a fresher dump, `restart backup` in `/opt/wishlist` first.
+- It finds the newest `shushgift_*.dump` first; with none, it changes nothing
+  and exits 1. For a fresher dump, `restart backup` in `/opt/shushgift` first.
 - VAL is down from the moment its database is dropped until the end, and
   everything written to VAL since the last seed is lost.
 - PROD's role does not exist in VAL (its own role and password, D2):
@@ -1967,15 +2102,15 @@ What it does, and what to expect:
   D16). Their ids mean nothing to VAL's Stripe test account.
 - Media: PROD's files are hard-linked (no extra disk; safe because files are
   never modified), by uid 10001 in a one-shot container that mounts
-  `/opt/wishlist-media` once. Files VAL already has are kept.
-- It ends with `done: VAL is up on wishlist_<YYYY-MM-DD>.dump`, after VAL's
+  `/opt/shushgift-media` once. Files VAL already has are kept.
+- It ends with `done: VAL is up on shushgift_<YYYY-MM-DD>.dump`, after VAL's
   app migrated the database and reported healthy.
 
 If it fails, it says `FAILED: VAL may be left stopped`. Fix the cause and run
 it again. A failure while hard-linking a media file that no longer exists
 means PROD's daily [media purge](#media) deleted it during the copy: just run
 it again (gift images review R1-10). To bring VAL back empty instead:
-`docker compose -f /opt/wishlist-val/docker-compose.yml up -d`. Only if it
+`docker compose -f /opt/shushgift-val/docker-compose.yml up -d`. Only if it
 failed before `database restored`: later, that database is PROD's, and
 before `PROD's purchases removed` it still holds PROD's purchases. Run the
 script again in that case.
@@ -2006,9 +2141,9 @@ Run these on the host **before** deploying the release named, once.
   update the compose file (below):
 
   ```bash
-  sudo chgrp 10001 /opt/wishlist/backups && sudo chmod 750 /opt/wishlist/backups
-  sudo stat -c '%u:%g %a' /opt/wishlist/backups              # 999:10001 750
-  sudo find /opt/wishlist/backups -type f ! -perm 600       # nothing: every dump stays 600
+  sudo chgrp 10001 /opt/shushgift/backups && sudo chmod 750 /opt/shushgift/backups
+  sudo stat -c '%u:%g %a' /opt/shushgift/backups              # 999:10001 750
+  sudo find /opt/shushgift/backups -type f ! -perm 600       # nothing: every dump stays 600
   ```
 
   Without it the release still runs: the purge logs `skipped` and deletes
@@ -2042,24 +2177,24 @@ Run these on the host **before** deploying the release named, once.
   everything below filled in:
 
   ```bash
-  grep -n '^PUBLIC_BASE_URL=' /opt/wishlist-val/.env /opt/wishlist/.env   # each with its https:// origin
+  grep -n '^PUBLIC_BASE_URL=' /opt/shushgift-val/.env /opt/shushgift/.env   # each with its https:// origin
   ```
 
   If one is empty or missing, run the commands of [step 6](#6-caddy) that set
   it.
 
   **[VPS]** Each `.env` gets the new lines if it predates them, from the
-  examples at the release (step 2 with `REF=<release>`). The first `grep` keeps
+  examples at the release (step 2, exported at `<release>`). The first `grep` keeps
   a second run from adding them twice:
 
   ```bash
-  cd /opt/wishlist-val
+  cd /opt/shushgift-val
   grep -q '^NOTIFICATION_SECRET=' .env || \
       grep -E '^(BREVO_API_KEY|EMAIL_|NOTIFICATION)' "$SRC/deploy/val/.env.example" >> .env
-  cd /opt/wishlist
+  cd /opt/shushgift
   grep -q '^NOTIFICATION_SECRET=' .env || \
       grep -E '^(BREVO_API_KEY|EMAIL_|NOTIFICATION)' "$SRC/deploy/prod/.env.example" >> .env
-  grep -c -E '^(BREVO_API_KEY|EMAIL_|NOTIFICATION)' /opt/wishlist-val/.env /opt/wishlist/.env   # :6 for VAL, :5 for PROD
+  grep -c -E '^(BREVO_API_KEY|EMAIL_|NOTIFICATION)' /opt/shushgift-val/.env /opt/shushgift/.env   # :6 for VAL, :5 for PROD
   ```
 
   `EMAIL_SENDER_NAME` and `NOTIFICATIONS_WORKER` keep the examples' values.
@@ -2079,7 +2214,7 @@ Run these on the host **before** deploying the release named, once.
   empty list emails nobody.
 
   ```bash
-  cd /opt/wishlist-val
+  cd /opt/shushgift-val
   sed -i "s/^NOTIFICATION_SECRET=$/NOTIFICATION_SECRET=$(openssl rand -hex 32)/" .env
   read -rs BREVO_KEY                                 # paste <brevo-api-key>, then Enter: nothing is shown or kept in the history
   sed -i "s|^BREVO_API_KEY=.*|BREVO_API_KEY=$BREVO_KEY|" .env
@@ -2096,7 +2231,7 @@ Run these on the host **before** deploying the release named, once.
   start naming missing variables is gone:
 
   ```bash
-  docker compose -f /opt/wishlist-val/docker-compose.yml logs app |
+  docker compose -f /opt/shushgift-val/docker-compose.yml logs app |
       grep -E 'BREVO_API_KEY|EMAIL_SENDER_ADDRESS|NOTIFICATION_SECRET|PUBLIC_BASE_URL'   # nothing
   ```
 
@@ -2111,7 +2246,7 @@ Run these on the host **before** deploying the release named, once.
   comment gets none. If nothing arrives, see why (counts only, no address):
 
   ```bash
-  cd /opt/wishlist-val
+  cd /opt/shushgift-val
   docker compose exec -T -u postgres db sh -c \
       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select status, skip_reason, count(*) from email_digests group by 1, 2"'
   ```
@@ -2121,16 +2256,16 @@ Run these on the host **before** deploying the release named, once.
   send Brevo refused: the app's logs have the reason.
 
   **[VPS]** Then PROD, once VAL's check has passed: the same commands in
-  `/opt/wishlist`, without the `EMAIL_ALLOWED_RECIPIENTS` line, which PROD
+  `/opt/shushgift`, without the `EMAIL_ALLOWED_RECIPIENTS` line, which PROD
   does not have. **From then on every account with notifications on receives
   its emails.** If PROD does not run this release yet, leave out `up -d` too:
   `.\deploy.ps1 -Target Prod` recreates the app with the new `.env`. After it,
-  run the log check above on `/opt/wishlist/docker-compose.yml`, and check that
+  run the log check above on `/opt/shushgift/docker-compose.yml`, and check that
   the two secrets differ:
 
   ```bash
-  [ "$(sed -n 's/^NOTIFICATION_SECRET=//p' /opt/wishlist/.env)" != \
-    "$(sed -n 's/^NOTIFICATION_SECRET=//p' /opt/wishlist-val/.env)" ] && echo different   # different
+  [ "$(sed -n 's/^NOTIFICATION_SECRET=//p' /opt/shushgift/.env)" != \
+    "$(sed -n 's/^NOTIFICATION_SECRET=//p' /opt/shushgift-val/.env)" ] && echo different   # different
   ```
 
   **[dev]** The addresses were not committed:
@@ -2148,19 +2283,19 @@ Run these on the host **before** deploying the release named, once.
   [Billing with Stripe](#billing-with-stripe) says how, VAL first.
 
   **[VPS]** Each `.env` gets the new lines, from the examples at the release
-  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  (step 2, exported at `<release>`). The first `grep` keeps a second run from
   adding them twice. The new `seed-from-prod.sh` goes in **before the next
   seed**: the old one would bring PROD's purchases to VAL once PROD has any.
 
   ```bash
-  cd /opt/wishlist-val
+  cd /opt/shushgift-val
   grep -q '^BILLING_ENFORCE_LIMITS=' .env || \
       grep -E '^(BILLING_|FREE_MAX_|STRIPE_|LEGAL_)' "$SRC/deploy/val/.env.example" >> .env
-  cd /opt/wishlist
+  cd /opt/shushgift
   grep -q '^BILLING_ENFORCE_LIMITS=' .env || \
       grep -E '^(BILLING_|FREE_MAX_|STRIPE_|LEGAL_)' "$SRC/deploy/prod/.env.example" >> .env
-  grep -c -E '^(BILLING_|FREE_MAX_|STRIPE_|LEGAL_)' /opt/wishlist-val/.env /opt/wishlist/.env   # :15 for both
-  install -m 755 "$SRC/deploy/val/seed-from-prod.sh" /opt/wishlist-val/
+  grep -c -E '^(BILLING_|FREE_MAX_|STRIPE_|LEGAL_)' /opt/shushgift-val/.env /opt/shushgift/.env   # :15 for both
+  install -m 755 "$SRC/deploy/val/seed-from-prod.sh" /opt/shushgift-val/
   ```
 
   Nothing needs `docker compose up -d` yet: every value is its default.
@@ -2175,17 +2310,17 @@ Run these on the host **before** deploying the release named, once.
   email set-up of the comments release and nothing more.
 
   **[VPS]** Each `.env` gets the new lines, from the examples at the release
-  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  (step 2, exported at `<release>`). The first `grep` keeps a second run from
   adding them twice.
 
   ```bash
-  cd /opt/wishlist-val
+  cd /opt/shushgift-val
   grep -q '^APPLE_CLIENT_IDS=' .env || \
       grep -E '^APPLE_' "$SRC/deploy/val/.env.example" >> .env
-  cd /opt/wishlist
+  cd /opt/shushgift
   grep -q '^APPLE_CLIENT_IDS=' .env || \
       grep -E '^APPLE_' "$SRC/deploy/prod/.env.example" >> .env
-  grep -c -E '^APPLE_' /opt/wishlist-val/.env /opt/wishlist/.env   # :2 for both
+  grep -c -E '^APPLE_' /opt/shushgift-val/.env /opt/shushgift/.env   # :2 for both
   ```
 
   Nothing needs `docker compose up -d` yet: both are empty.
@@ -2201,17 +2336,17 @@ Run these on the host **before** deploying the release named, once.
   then.
 
   **[VPS]** Each `.env` gets the new line, from the examples at the release
-  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  (step 2, exported at `<release>`). The first `grep` keeps a second run from
   adding it twice.
 
   ```bash
-  cd /opt/wishlist-val
+  cd /opt/shushgift-val
   grep -q '^ADMIN_USER_IDS=' .env || \
       grep -E '^ADMIN_USER_IDS=' "$SRC/deploy/val/.env.example" >> .env
-  cd /opt/wishlist
+  cd /opt/shushgift
   grep -q '^ADMIN_USER_IDS=' .env || \
       grep -E '^ADMIN_USER_IDS=' "$SRC/deploy/prod/.env.example" >> .env
-  grep -c -E '^ADMIN_USER_IDS=' /opt/wishlist-val/.env /opt/wishlist/.env   # :1 for both
+  grep -c -E '^ADMIN_USER_IDS=' /opt/shushgift-val/.env /opt/shushgift/.env   # :1 for both
   ```
 
   Nothing needs `docker compose up -d` yet: it is empty, and no one is admin
@@ -2227,21 +2362,21 @@ Run these on the host **before** deploying the release named, once.
   logs at start that it is off.
 
   **[VPS]** Each `.env` gets the new lines, from the examples at the release
-  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  (step 2, exported at `<release>`). The first `grep` keeps a second run from
   adding them twice. The new `seed-from-prod.sh` goes in **before the next
   seed**: the old one would bring PROD's Apple tokens, real secrets, to VAL,
   where deleting an account would revoke a PROD user's sign-in with Apple.
 
   ```bash
-  cd /opt/wishlist-val
+  cd /opt/shushgift-val
   grep -q '^APPLE_TEAM_ID=' .env || \
       grep -E '^APPLE_(TEAM_ID|KEY_ID|PRIVATE_KEY)=' "$SRC/deploy/val/.env.example" >> .env
-  cd /opt/wishlist
+  cd /opt/shushgift
   grep -q '^APPLE_TEAM_ID=' .env || \
       grep -E '^APPLE_(TEAM_ID|KEY_ID|PRIVATE_KEY)=' "$SRC/deploy/prod/.env.example" >> .env
-  grep -c -E '^APPLE_(TEAM_ID|KEY_ID|PRIVATE_KEY)=' /opt/wishlist-val/.env /opt/wishlist/.env   # :3 for both
-  install -m 755 "$SRC/deploy/val/seed-from-prod.sh" /opt/wishlist-val/
-  grep -c 'apple_tokens' /opt/wishlist-val/seed-from-prod.sh                                  # 2
+  grep -c -E '^APPLE_(TEAM_ID|KEY_ID|PRIVATE_KEY)=' /opt/shushgift-val/.env /opt/shushgift/.env   # :3 for both
+  install -m 755 "$SRC/deploy/val/seed-from-prod.sh" /opt/shushgift-val/
+  grep -c 'apple_tokens' /opt/shushgift-val/seed-from-prod.sh                                  # 2
   ```
 
   Nothing needs `docker compose up -d` yet: all are empty.
@@ -2255,18 +2390,18 @@ Run these on the host **before** deploying the release named, once.
   3](BILLING.md#part-3-selling-on-iphone), VAL first).
 
   **[VPS]** Each `.env` gets the new lines, from the examples at the release
-  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  (step 2, exported at `<release>`). The first `grep` keeps a second run from
   adding them twice. VAL gets five lines, PROD seven: the two more are
   `APPLE_APP_APPLE_ID` and `APPLE_SANDBOX_ACCOUNT_IDS`.
 
   ```bash
-  cd /opt/wishlist-val
+  cd /opt/shushgift-val
   grep -q '^APPLE_PRODUCT_ID=' .env || \
       grep -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|IAP_)' "$SRC/deploy/val/.env.example" >> .env
-  cd /opt/wishlist
+  cd /opt/shushgift
   grep -q '^APPLE_PRODUCT_ID=' .env || \
       grep -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|APP_APPLE_ID|IAP_|SANDBOX_ACCOUNT_IDS)' "$SRC/deploy/prod/.env.example" >> .env
-  grep -c -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|APP_APPLE_ID|IAP_|SANDBOX_ACCOUNT_IDS)' /opt/wishlist-val/.env /opt/wishlist/.env   # :5 for VAL, :7 for PROD
+  grep -c -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|APP_APPLE_ID|IAP_|SANDBOX_ACCOUNT_IDS)' /opt/shushgift-val/.env /opt/shushgift/.env   # :5 for VAL, :7 for PROD
   ```
 
   Nothing needs `docker compose up -d` yet: all are empty.
@@ -2292,18 +2427,18 @@ Run these on the host **before** deploying the release named, once.
   meanwhile.
 
   **[VPS]** Each `.env` gets the new lines, from the examples at the release
-  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  (step 2, exported at `<release>`). The first `grep` keeps a second run from
   adding them twice. VAL gets five lines, PROD six: the one more is
   `GOOGLE_PLAY_TEST_ACCOUNT_IDS`.
 
   ```bash
-  cd /opt/wishlist-val
+  cd /opt/shushgift-val
   grep -q '^GOOGLE_PLAY_PRODUCT_ID=' .env || \
       grep -E '^GOOGLE_PLAY_' "$SRC/deploy/val/.env.example" >> .env
-  cd /opt/wishlist
+  cd /opt/shushgift
   grep -q '^GOOGLE_PLAY_PRODUCT_ID=' .env || \
       grep -E '^GOOGLE_PLAY_' "$SRC/deploy/prod/.env.example" >> .env
-  grep -c '^GOOGLE_PLAY_' /opt/wishlist-val/.env /opt/wishlist/.env   # :5 for VAL, :6 for PROD
+  grep -c '^GOOGLE_PLAY_' /opt/shushgift-val/.env /opt/shushgift/.env   # :5 for VAL, :6 for PROD
   ```
 
   Nothing needs `docker compose up -d` yet: all are empty. `APPLE_ANDROID_PACKAGE`
@@ -2315,29 +2450,50 @@ Run these on the host **before** deploying the release named, once.
   unrecorded, Premium would end for someone who paid, and deleting their
   account would be refused, since it cancels the subscription first.
 
+- **The release with Shush Gift's name and app links** (the first with
+  `APP_LINKS_APPLE_APP_IDS` in the `.env.example` files). On an install made
+  before it, the move to `shushgift.com` comes first: [Moving to
+  shushgift.com](#moving-to-shushgiftcom), which carries the `.env` over. For
+  an install already on the new names, **[VPS]** each `.env` gets the new
+  lines, then the values of [App links](#the-app-link-values):
+
+  ```bash
+  cd /opt/shushgift-val
+  grep -q '^APP_LINKS_' .env ||       grep -E '^APP_LINKS_' "$SRC/deploy/val/.env.example" >> .env
+  cd /opt/shushgift
+  grep -q '^APP_LINKS_' .env ||       grep -E '^APP_LINKS_' "$SRC/deploy/prod/.env.example" >> .env
+  grep -c '^APP_LINKS_' /opt/shushgift-val/.env /opt/shushgift/.env   # :3 for both
+  ```
+
+  Nothing needs `docker compose up -d` yet: all are empty, so both files
+  answer 404 and the release runs as before. The way back is the previous
+  release, which ignores the three lines.
+
 ### Updating the files on the host
 
 `deploy.ps1` and the webhook only pull images. Changes to the compose files,
 the backup scripts, `seed-from-prod.sh` or the webhook files reach the VPS
 only by hand.
 
-**[VPS]** Fetch them at the release (step 2 with `REF=<release>`), compare,
-install the changed ones with the same modes as in step 4, then apply:
+**[dev]** Export them at the release (step 2, with `$ref = '<release>'`: `git
+archive` and `scp`, since the repository is private), **[VPS]** unpack them
+into a new `$SRC`, then compare, install the changed ones with the same modes
+as in step 4, and apply:
 
 ```bash
-diff -u /opt/wishlist/docker-compose.yml "$SRC/deploy/prod/docker-compose.yml"
-install -m 644 "$SRC/deploy/prod/docker-compose.yml" /opt/wishlist/
+diff -u /opt/shushgift/docker-compose.yml "$SRC/deploy/prod/docker-compose.yml"
+install -m 644 "$SRC/deploy/prod/docker-compose.yml" /opt/shushgift/
 ```
 
 | Changed | Then |
 |---|---|
 | a compose file | `docker compose up -d --wait` in its directory (recreates what changed), with the [cluster check](#checking-the-database-cluster-is-unchanged) before and after. A Postgres **patch or minor** bump (Dependabot) is just this; a **major** one is [below](#postgres-major-upgrade). |
-| `deploy/backup/*.sh` | `docker compose restart backup` in `/opt/wishlist` (it reads the script on start) |
+| `deploy/backup/*.sh` | `docker compose restart backup` in `/opt/shushgift` (it reads the script on start) |
 | `deploy/val/seed-from-prod.sh` | nothing: read on each seed. Install it with mode 755 **before the next seed** |
 | `deploy/webhook/deploy-validation.sh` | nothing: read on each delivery |
-| `deploy/webhook/hooks.yaml.example` | re-create `hooks.yaml` as in step 7, keeping the secret: `SECRET=$(sed -n 's/^ *secret: "\(.*\)"$/\1/p' hooks.yaml)` first, then `sudo systemctl restart wishlist-webhook` |
-| `deploy/webhook/wishlist-webhook.service` | install it as in step 7, then `sudo systemctl daemon-reload && sudo systemctl restart wishlist-webhook` |
-| `deploy/caddy/Caddyfile.snippet` | edit the Wishlist blocks in `/etc/caddy/Caddyfile` by hand, then `caddy validate` before the reload, as in step 6 |
+| `deploy/webhook/hooks.yaml.example` | re-create `hooks.yaml` as in step 7, keeping the secret: `SECRET=$(sed -n 's/^ *secret: "\(.*\)"$/\1/p' hooks.yaml)` first, then `sudo systemctl restart shushgift-webhook` |
+| `deploy/webhook/shushgift-webhook.service` | install it as in step 7, then `sudo systemctl daemon-reload && sudo systemctl restart shushgift-webhook` |
+| `deploy/caddy/Caddyfile.snippet` | edit the Shush Gift blocks in `/etc/caddy/Caddyfile` by hand, then `caddy validate` before the reload, as in step 6 |
 | an `.env.example` | compare with the host's `.env` and add what is new; `docker compose up -d` |
 
 #### Checking the database cluster is unchanged
@@ -2404,8 +2560,8 @@ If that prints a file, do not roll back: fix forward with a new release.
 **[VPS]**
 
 ```bash
-cd /opt/wishlist
-sed -i 's#ghcr.io/rui-nar/wishlist:latest#ghcr.io/rui-nar/wishlist:<previous-release>#' docker-compose.yml
+cd /opt/shushgift
+sed -i 's#ghcr.io/rui-nar/shushgift:latest#ghcr.io/rui-nar/shushgift:<previous-release>#' docker-compose.yml
 grep -n 'image: ghcr.io' docker-compose.yml          # :<previous-release>
 docker compose pull app
 docker compose up -d --wait --wait-timeout 300
@@ -2414,10 +2570,10 @@ curl -s http://127.0.0.1:8010/api/version; echo      # <previous-release>
 
 **Afterwards, before the next deploy,** point the compose file back to
 `:latest`. Otherwise the next `deploy.ps1 -Target Prod` stops with
-"does not run ghcr.io/rui-nar/wishlist:latest" (before touching anything):
+"does not run ghcr.io/rui-nar/shushgift:latest" (before touching anything):
 
 ```bash
-sed -i 's#ghcr.io/rui-nar/wishlist:<previous-release>#ghcr.io/rui-nar/wishlist:latest#' /opt/wishlist/docker-compose.yml
+sed -i 's#ghcr.io/rui-nar/shushgift:<previous-release>#ghcr.io/rui-nar/shushgift:latest#' /opt/shushgift/docker-compose.yml
 ```
 
 Do this as part of deploying the fixed release, not earlier: `:latest` is
@@ -2477,15 +2633,15 @@ major is the rehearsal of PROD's restore.
 Release it. On the dev machine, `.\dev.ps1 -Reset` recreates the dev volume
 on the new major (dev data is lost; see `docs/DEVELOPMENT.md`).
 
-**[VPS]** Fetch the files at that release (step 2 with `REF=<release>`).
+**[VPS]** Fetch the files at that release (step 2, exported at `<release>`).
 
 **[VPS]** VAL (its data is disposable):
 
 ```bash
-cd /opt/wishlist-val
+cd /opt/shushgift-val
 docker compose down                                   # never -v here: see PROD
-docker volume rm wishlist-val_pgdata
-install -m 644 "$SRC/deploy/val/docker-compose.yml" /opt/wishlist-val/
+docker volume rm shushgift-val_pgdata
+install -m 644 "$SRC/deploy/val/docker-compose.yml" /opt/shushgift-val/
 docker compose up -d --wait --wait-timeout 300        # first boot on <new-major>
 ./seed-from-prod.sh                                   # PROD's <old-major> dump into <new-major>
 ```
@@ -2493,7 +2649,7 @@ docker compose up -d --wait --wait-timeout 300        # first boot on <new-major
 **[VPS]** PROD. Down from step 1 to step 5:
 
 ```bash
-cd /opt/wishlist
+cd /opt/shushgift
 
 # 1. Nothing writes; a final dump under a name the rotation never deletes.
 docker compose stop app backup
@@ -2504,16 +2660,16 @@ sudo ls -l backups/before-pg<new-major>.dump
 
 # 2. Keep the old data directory, in a copy of the volume, until the new one has proven itself.
 docker compose down                                   # containers only; NEVER `down -v`
-docker volume create wishlist-prod_pgdata-pg<old-major>
+docker volume create shushgift-prod_pgdata-pg<old-major>
 docker run --rm --entrypoint cp \
-    -v wishlist-prod_pgdata:/from:ro -v wishlist-prod_pgdata-pg<old-major>:/to \
+    -v shushgift-prod_pgdata:/from:ro -v shushgift-prod_pgdata-pg<old-major>:/to \
     postgres:<old-postgres-tag> -a /from/. /to/
-docker volume rm wishlist-prod_pgdata
+docker volume rm shushgift-prod_pgdata
 
 # 3. The new compose file (the old one kept for going back); Postgres boots on
 #    an empty volume with the .env credentials.
 cp -p docker-compose.yml docker-compose.yml.pg<old-major>
-install -m 644 "$SRC/deploy/prod/docker-compose.yml" /opt/wishlist/
+install -m 644 "$SRC/deploy/prod/docker-compose.yml" /opt/shushgift/
 docker compose up -d --wait --wait-timeout 300 db
 
 # 4. The final dump restored into it.
@@ -2537,21 +2693,21 @@ no `createdb`. A newer `pg_restore` reads an older major's dump.
 **Going back** (if step 3 or 4 fails):
 
 ```bash
-cd /opt/wishlist
+cd /opt/shushgift
 docker compose down
-docker volume rm wishlist-prod_pgdata
-docker volume create wishlist-prod_pgdata
+docker volume rm shushgift-prod_pgdata
+docker volume create shushgift-prod_pgdata
 docker run --rm --entrypoint cp \
-    -v wishlist-prod_pgdata-pg<old-major>:/from:ro -v wishlist-prod_pgdata:/to \
+    -v shushgift-prod_pgdata-pg<old-major>:/from:ro -v shushgift-prod_pgdata:/to \
     postgres:<old-postgres-tag> -a /from/. /to/
 install -m 644 docker-compose.yml.pg<old-major> docker-compose.yml
 docker compose up -d --wait --wait-timeout 300
 ```
 
 Once PROD has run on the new major for a while and the nightly dumps are
-healthy: `docker volume rm wishlist-prod_pgdata-pg<old-major>`,
+healthy: `docker volume rm shushgift-prod_pgdata-pg<old-major>`,
 `rm docker-compose.yml.pg<old-major>` and
-`sudo rm /opt/wishlist/backups/before-pg<new-major>.dump`.
+`sudo rm /opt/shushgift/backups/before-pg<new-major>.dump`.
 
 ### If it happened anyway
 
@@ -2564,9 +2720,617 @@ Recovery: put the previous exact image tag back in the compose file and run
 `docker compose up -d --wait`. The old cluster is untouched in the volume
 (unless the volume was removed).
 
+## Moving to shushgift.com
+
+A one-time procedure for an install that predates the move: PROD and VAL on
+two subdomains of TraxJourney's domain, under the app's former name. It
+follows plan `SHUSH_GIFT_PLAN.md` D6, D8 and D9. A new install skips it and
+follows steps 1 to 14. **VAL goes first**, and rehearses everything but the
+dumps and the backup service, which VAL does not have; PROD follows the same
+way.
+
+The old names are written `$OLD` below, set once per shell (`<old>` is in the
+[placeholders](#placeholders)), so that this document never spells them out:
+
+```bash
+OLD=<old>
+```
+
+What stays true throughout:
+
+- **Nothing is deleted before part 8.** Each old project is only stopped, with
+  its volume, its directories and its dumps, so going back is starting it
+  again. The one exception is data moved on the same filesystem (the media,
+  the dumps), whose way back is moving it back, written next to the move.
+- **The old hosts keep working until part 7.** Their Caddy blocks are left
+  untouched; they proxy the same local ports (8010, 8011) as the new stacks,
+  so they reach whichever stack runs, and that stack builds every new link on
+  the new host (`PUBLIC_BASE_URL`).
+- A notification sent to an old host while its console is being switched is
+  not lost: Stripe, Apple's App Store Server Notifications and Pub/Sub retry
+  failed deliveries for days.
+- **What a way back loses:** what was written on the new stack after its app
+  started. PROD has no real users yet (owner, 2026-11-11), so this is
+  accepted; with users, take a dump of the new database first and restore it
+  into the old stack as in [Restoring PROD from a dump](#restoring-prod-from-a-dump).
+- Web sessions do not move: the new origin starts with empty browser storage,
+  so everyone signs in again (plan D5). Test builds of the apps do too.
+
+Before starting: `df -h /` shows room for one more copy of PROD's database
+(the dump and the new volume), the media need none, and the old project is
+stopped before the new one starts, so memory is never doubled.
+
+### 1. DNS and Brevo's domain records
+
+**[registrar]** Add the `A` (and `AAAA`, if the old hosts have one) records of
+`<prod-host>`, `www.<prod-host>` and `<val-host>`, all to the VPS's address.
+Leave the old hosts' records alone.
+
+**[Brevo]** The domain is added and authenticated before anything sends from
+it. Claude can do it through Brevo's API, with the key in an environment
+variable and never in the chat; the console does the same (Senders, domains &
+dedicated IPs):
+
+1. Add the domain `shushgift.com`.
+2. **You** publish the DNS records it returns (DKIM, SPF, and the DMARC record
+   it suggests) at the registrar.
+3. Authenticate the domain.
+4. Create the sender "Shush Gift", `hello@shushgift.com`.
+
+Replies to `hello@` reach you through the registrar's email forwarding (its
+MX records and the forwarding rule).
+
+Check **[VPS]** and **[Brevo]**:
+
+```bash
+getent hosts <prod-host>; getent hosts www.<prod-host>; getent hosts <val-host>   # the VPS's address, three lines
+```
+
+The domain reads **authenticated** in Brevo, and the sender is listed. The way
+back: delete the new records. Nothing uses them yet, and the old sender still
+sends until a `.env` changes.
+
+### 2. The GitHub repository and the GHCR package
+
+**[GitHub]** Settings → General: rename the repository to `shushgift` (the
+owner's account is unchanged: `rui-nar/shushgift`), then Danger Zone → Change
+visibility → **Private**. Renaming keeps the history, issues, pull requests,
+Actions secrets and variables and the webhook, and GitHub redirects the old
+URLs. Then in the checkout:
+
+```powershell
+git remote set-url origin <the new repository URL>
+git fetch origin
+```
+
+Two things change at once. **VAL stops redeploying by itself:** every delivery
+now carries `rui-nar/shushgift`, which the host's `hooks.yaml` still rejects
+(it is changed in part 3, review R1-3). And the **package** is new: the old
+one is not renamed.
+
+**[dev]** Publish the first image under the new name:
+
+```powershell
+git fetch origin
+git tag -f validation origin/master
+git push origin validation --force
+```
+
+**[GitHub]** Actions → "Build and publish Docker image" for `validation`
+succeeds; the package `shushgift` appears under the owner's profile, linked to
+the repository. Package settings: visibility **Private**, and **Manage Actions
+access** lists `rui-nar/shushgift` with **Write** ([step 3](#3-the-ghcr-package)).
+**[VPS]** The pull works with the existing login:
+
+```bash
+docker pull ghcr.io/rui-nar/shushgift:validation
+```
+
+Check: the repository shows **Private**, the old URL redirects, and the pull
+succeeds. The way back: rename and make the repository public again (the
+package of the old name was never touched); the old VAL keeps running on its
+old image in the meantime.
+
+### 3. VAL's cut-over
+
+**[dev]** Export the deploy files at `master` as in [step 2](#2-getting-the-files-onto-the-host)
+(`git archive`, `scp`), and **[VPS]** unpack them into `$SRC`. Check: 11
+files under `$SRC/deploy/`; the way back: `rm -r "$SRC"`.
+
+**Caddy first.** Append the snippet as in [step 6](#6-caddy), after its DNS
+check: copy, `caddy validate`, then reload. Until PROD moves, the new
+`<prod-host>` reaches the old PROD stack on 8010.
+
+**[VPS]** Check: `curl -sI https://<val-host>/ | head -n 1` answers with no TLS
+error (the old VAL stack answers on the new host, until its cut-over), and
+`curl -sI 'https://www.<prod-host>/join?x=1' | grep -i -e '^HTTP' -e '^location'`
+shows a 301 to `https://<prod-host>/join?x=1`. The way back is the copy of
+[step 6](#6-caddy).
+
+Then D8's cut-over steps in their VAL form (VAL has no backup service,
+backups directory or dumps; its step 5 does not apply):
+
+**Cut-over step 2: stop the app and take the final dump**, through the old `db`
+container, with the seed script's forms, into the old directory (the new one
+does not exist yet):
+
+```bash
+cd /opt/$OLD-val
+docker compose stop app
+( umask 077; docker compose exec -T -u postgres db sh -c \
+    'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > before-move.dump )
+chmod 600 before-move.dump
+ls -l before-move.dump                     # -rw------- and not empty
+docker compose exec -T -u postgres db sh -c 'pg_restore -l' < before-move.dump | head -n 5
+docker compose exec -T -u postgres db sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select count(*) from users"'   # note it
+docker compose stop db
+```
+
+Check: the dump lists its tables and the `users` count is noted. The way back:
+`docker compose up -d` in `/opt/$OLD-val`.
+
+**Cut-over step 3: the new directories and `.env`.** The `.env` starts from the old one,
+so every secret and setting carries over, and only what names the app changes:
+
+```bash
+me=$(id -un)
+sudo install -d -o "$me" -g "$me" -m 755 /opt/shushgift-val /opt/shushgift-val/webhook
+sudo install -d -o root -g root -m 755 /opt/shushgift-media
+install -m 644 "$SRC/deploy/val/docker-compose.yml" /opt/shushgift-val/
+install -m 755 "$SRC/deploy/val/seed-from-prod.sh" /opt/shushgift-val/
+install -m 600 /opt/$OLD-val/.env /opt/shushgift-val/.env
+cd /opt/shushgift-val
+sed -i -e 's|^POSTGRES_USER=.*|POSTGRES_USER=shushgift_val|' \
+       -e 's|^POSTGRES_DB=.*|POSTGRES_DB=shushgift_val|' \
+       -e 's|^\(DATABASE_URL=postgresql+psycopg://\)[^:]*:\([^@]*\)@db:5432/.*|\1shushgift_val:\2@db:5432/shushgift_val|' \
+       -e 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://<val-host>|' \
+       -e 's|^EMAIL_SENDER_ADDRESS=.*|EMAIL_SENDER_ADDRESS=hello@shushgift.com|' \
+       -e 's|^EMAIL_SENDER_NAME=.*|EMAIL_SENDER_NAME="Shush Gift"|' .env
+for k in APP_LINKS_ EMAIL_SENDER_NAME=; do
+    grep -q "^$k" .env || grep -E "^$k" "$SRC/deploy/val/.env.example" >> .env
+done
+sed -i -e 's|^APP_LINKS_APPLE_APP_IDS=.*|APP_LINKS_APPLE_APP_IDS=<apple-team-id>.<ios-bundle-id-val>|' \
+       -e 's|^APP_LINKS_ANDROID_PACKAGE=.*|APP_LINKS_ANDROID_PACKAGE=<android-application-id-val>|' .env
+# VAL's LEGAL_* URLs: any that point at the old VAL host move to the new one
+# (empty ones stay empty: VAL shows placeholders)
+sed -i "s|^\(LEGAL_[A-Z_]*_URL=https://\)<old-val-host>|\1<val-host>|" .env
+grep -c '<old-val-host>' .env                              # 0: nothing points at the old host any more
+grep -n '^LEGAL_' .env                                     # empty, or on <val-host> or another host that is not the old one
+```
+
+The `LEGAL_*` check must read 0 before part 7 removes the old VAL host; the
+way back is the old `.env` in `/opt/$OLD-val`, untouched. The loop adds the `APP_LINKS_` keys, and `EMAIL_SENDER_NAME` when the old
+`.env` had no such line, from the example. Check: the keys are the old ones plus the three `APP_LINKS_` keys (names
+only; no value is printed), and the file is `600`:
+
+```bash
+diff <(sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' /opt/$OLD-val/.env | sort) \
+     <(sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' .env | sort)     # only the APP_LINKS_ lines (and EMAIL_SENDER_NAME if it was new)
+grep -c '^POSTGRES_DB=shushgift_val$' .env                 # 1
+ls -l .env                                                 # -rw-------
+```
+
+The values tied to the app ids (`APPLE_BUNDLE_ID`, `APPLE_CLIENT_IDS`,
+`APPLE_ANDROID_PACKAGE`, `GOOGLE_PLAY_PACKAGE_NAME` and the others of step 4)
+are set once their store records exist, in the VAL consoles below. The way
+back: `rm -r /opt/shushgift-val`, the old directory is untouched.
+
+**Cut-over step 4: the media.** On one filesystem, `mv` is a rename: it keeps the
+modification times the media purge relies on. Check both before and after:
+
+```bash
+stat -c '%d' /opt/$OLD-media /opt/shushgift-media          # the same number twice
+before=$(sudo find /opt/$OLD-media/val -type f -printf '%T@\n' | sort -n | head -n 1)
+sudo mv /opt/$OLD-media/val /opt/shushgift-media/val
+after=$(sudo find /opt/shushgift-media/val -type f -printf '%T@\n' | sort -n | head -n 1)
+[ "$before" = "$after" ] && echo same oldest time           # same oldest time
+sudo stat -c '%u:%g %a' /opt/shushgift-media/val           # 10001:10001 750
+```
+
+The way back, with the new app stopped:
+`sudo mv /opt/shushgift-media/val /opt/$OLD-media/val`.
+
+**Cut-over step 6: restore into the new database.** Only `db` starts, on its empty
+volume; the dump is restored with `--no-owner`, so the new role owns
+everything:
+
+```bash
+cd /opt/shushgift-val
+docker compose up -d --wait --wait-timeout 300 db
+docker compose exec -T -u postgres db sh -c '
+    pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        --no-owner --no-privileges --exit-on-error --single-transaction' < /opt/$OLD-val/before-move.dump
+docker compose exec -T -u postgres db sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select count(*) from users"'   # the count of step 2
+```
+
+Check: the same `users` count. The way back: `docker compose down --volumes`
+in `/opt/shushgift-val` drops only the new volume (`shushgift-val_pgdata`);
+restore again, or start the old project (`docker compose up -d` in
+`/opt/$OLD-val`).
+
+**Cut-over step 7: the app.** VAL has no backup service, so the app only:
+
+```bash
+docker compose up -d --wait --wait-timeout 300
+docker compose ps                                          # app and db (healthy)
+curl -s http://127.0.0.1:8011/api/health; echo             # {"status":"ok","database":"ok","media":"ok"}
+```
+
+Check: both healthy and `/api/health` ok. The way back: `docker compose stop`
+here, move the media back (step 4), and `docker compose up -d` in
+`/opt/$OLD-val`.
+
+**Cut-over step 8: the webhook unit and its filter.** One listener serves port 9998, so
+the old unit stops first. The new `hooks.yaml` keeps the old secret, so
+GitHub's webhook needs only its URL changed:
+
+```bash
+sudo systemctl disable --now $OLD-webhook
+install -m 755 "$SRC/deploy/webhook/deploy-validation.sh" /opt/shushgift-val/webhook/
+install -m 644 "$SRC/deploy/webhook/hooks.yaml.example" \
+    "$SRC/deploy/webhook/shushgift-webhook.service" /opt/shushgift-val/webhook/
+SECRET=$(sed -n 's/^ *secret: "\(.*\)"$/\1/p' /opt/$OLD-val/webhook/hooks.yaml)
+cd /opt/shushgift-val/webhook
+install -m 600 /dev/null hooks.yaml
+sed "s/secret: \"\"/secret: \"$SECRET\"/" hooks.yaml.example > hooks.yaml
+unset SECRET
+grep -c 'rui-nar/shushgift' hooks.yaml                     # 1: the exact name the hook compares
+# literal placeholder: User=<deploy-user> is the unit file's own text
+sed "s/^User=<deploy-user>$/User=$(id -un)/" /opt/shushgift-val/webhook/shushgift-webhook.service \
+    | sudo tee /etc/systemd/system/shushgift-webhook.service >/dev/null
+sudo systemctl daemon-reload
+sudo systemctl enable --now shushgift-webhook
+curl -s -X POST http://127.0.0.1:9998/hooks/deploy-validation \
+    -H 'Content-Type: application/json' -d '{}'; echo      # Hook rules were not satisfied.
+```
+
+**[GitHub]** Settings → Webhooks → the VAL webhook: Payload URL
+`https://<val-host>/gh-webhook/hooks/deploy-validation`. Recent Deliveries →
+redeliver the latest `completed` one: **200** `Deploying validation...` (or
+`Hook rules were not satisfied.` for another run), never 500. The way back:
+`sudo systemctl disable --now shushgift-webhook`, then
+`sudo systemctl enable --now $OLD-webhook`, and the old URL in GitHub's
+payload field.
+
+**VAL's checks**, once the app is up (they come before any console):
+
+```powershell
+curl.exe -s https://<val-host>/api/version                          # {"version":"validation-<short sha>",...}
+curl.exe -s https://<val-host>/api/health                           # {"status":"ok","database":"ok","media":"ok"}
+curl.exe -sI https://<val-host>/.well-known/apple-app-site-association   # 200, content-type: application/json, no location
+curl.exe -sI https://<val-host>/.well-known/assetlinks.json        # 404 until the Play app's SHA-256 is set (part 4 below)
+curl.exe -s https://<val-host>/api/config                           # "public_base_url":"https://<val-host>"
+```
+
+And a sign-in: email and password on `https://<val-host>` with an account that
+existed before the move. Google and Apple sign-in wait for the consoles. The
+way back is the one of the step that failed. Once all of it passes, VAL is confirmed and the dump goes (it holds VAL's
+data, seeded from PROD): **[VPS]** `rm /opt/$OLD-val/before-move.dump`. The
+old volume still holds the same data until part 8.
+
+### 4. The consoles for VAL
+
+Each console is repointed in this order. The consoles keep the old values
+beside the new ones until part 7 removes them, so each change adds before it
+removes, and its way back is to take the new value out again.
+
+| Where | What | Check |
+|---|---|---|
+| **[Google Cloud]** ([step 11](#everything-to-do-in-the-google-cloud-console)) | Branding: app name `Shush Gift`, authorised domain `shushgift.com`, home page `https://<prod-host>/welcome`, privacy and terms links. The web client `Shush Gift web`: add the origin `https://<val-host>`. The iOS and Android OAuth clients for the new ids ([iOS](#google-ios-oauth-client), [Android](#android-oauth-client)). The Pub/Sub subscription's push endpoint and audience: `https://<val-host>/api/billing/google/notifications` | `curl.exe -s https://<val-host>/api/config` hands the web client id; Google sign-in on `https://<val-host>` in a browser, with no origin error |
+| **[Apple]** ([step 12](#12-apple-sign-in), [step 13](#13-ios-app)) | The App IDs `com.shushgift.app` and `com.shushgift.app.val`, with Sign in with Apple and **Associated Domains** ([App IDs](#app-ids)); the Services ID's domains and return URLs (add `<val-host>`, [step 12](#12-apple-sign-in), point 3); the App Store Connect app records named "Shush Gift" and "Shush Gift VAL"; the App Store Server Notifications URLs on each ([Billing, Part 3](BILLING.md#4-set-the-notification-urls)); and, under Sign in with Apple for Email Communication, the domain `shushgift.com` and the sender `hello@shushgift.com`. Apple relays mail only from registered senders: without it, people who hid their address silently stop getting emails | Apple sign-in on `https://<val-host>` in a browser; the domain shows verified in Email Communication; a test notification from App Store Connect reaches the app's log |
+| **[Play]** ([step 14](#14-android-app)) | The apps `com.shushgift.app` and `com.shushgift.app.val`, named "Shush Gift" and "Shush Gift VAL", with their first upload; the real-time developer notifications topic on each new app ([Billing, Part 4](BILLING.md#5-turn-on-the-real-time-notifications)) | The app shows in the Play Console; the topic's test message arrives in the app's log |
+| **[Stripe]** ([Billing](BILLING.md#4-set-up-the-sandbox)) | The sandbox's webhook endpoint URL: `https://<val-host>/api/billing/webhook` (edit the endpoint, which keeps its signing secret); public details (business name, terms URL); the product name. **The metadata marker is not touched** ([Billing, step 2](BILLING.md#2-choose-the-stripe-account)) | Send a test event to the endpoint: the delivery answers 200 |
+| **[GitHub]** ([step 13](#github-secrets-and-variables), [step 14](#github-variables-and-secrets-for-android)) | Secrets `API_BASE_URL_VAL` (and `_PROD` at PROD's turn); variables `IOS_BUNDLE_ID`, `IOS_BUNDLE_ID_VAL`, `ANDROID_APP_ID`, and `GOOGLE_IOS_CLIENT_ID(_VAL)` from the new iOS OAuth clients; the VAL webhook's payload URL (done in step 3) | `gh secret list` and `gh variable list` show them; a manual "iOS release" run (`app: val`) and the "Android release" gate pass |
+| **[dev]** | `deploy.env`: `DEPLOY_VAL_URL=https://<val-host>` (and `DEPLOY_PROD_URL` at PROD's turn) | `.\deploy.ps1 -Target Val` ends with `Deployed and verified` |
+
+Then the **values in VAL's `.env` tied to the app ids**, once each store
+record exists, set as in [step 12](#12-apple-sign-in) to [step 14](#14-android-app)
+and [Billing](BILLING.md), each followed by `docker compose up -d --wait
+--wait-timeout 300` in `/opt/shushgift-val`:
+
+- `APPLE_BUNDLE_ID`, `APPLE_APP_APPLE_ID` and `APPLE_CLIENT_IDS`;
+- `GOOGLE_PLAY_PACKAGE_NAME` and `APPLE_ANDROID_PACKAGE`;
+- `APPLE_*` and `GOOGLE_PLAY_PRODUCT_ID`, naming the subscription product made
+  in each new App Store Connect and Play app;
+- `GOOGLE_PLAY_PUBSUB_AUDIENCE`, the endpoint URL of the Google row above;
+- `APP_LINKS_ANDROID_SHA256` once the Play app has its signing certificate
+  ([App links](#app-links)).
+
+No store record exists under any other id (owner, 2026-11-11), so there is
+nothing to retire.
+
+Check: `grep -c '^APPLE_BUNDLE_ID=com.shushgift.app.val$' .env` is 1,
+`curl.exe -s https://<val-host>/.well-known/assetlinks.json` now answers 200
+with the package and every fingerprint, and the app-link checks of [App
+links](#app-links) pass on a phone. The way back is the previous value in
+`.env` and `up -d`.
+
+### 5. A test email, the links on each phone, a Stripe test purchase
+
+On VAL, before PROD:
+
+1. **A test email.** Ask for a password-reset email to your own address. It
+   comes from "Shush Gift" at `hello@shushgift.com`, and the message's
+   headers say `dkim=pass` and `spf=pass`. For an address hidden behind
+   Apple's relay, the email arrives too.
+2. **An occasion link on each phone.** Open an invitation link
+   (`https://<val-host>/join#<token>`) from a message on an Android phone and
+   an iPhone with the VAL app installed: the app opens on the join screen.
+   Then `/account/plan` or an unsubscribe link: they stay in the browser.
+3. **A Stripe test purchase** as in [Stripe test on VAL](#stripe-test-on-val):
+   Premium is granted. Then resend the latest `customer.subscription.updated`
+   event of a subscription created **before** the move (Stripe → Developers →
+   Events → Resend): the delivery answers 200 and that account keeps its
+   Premium, since the marker is unchanged.
+
+The way back from any failure here is the failing step's own: a `.env` value,
+a console entry, or, for the whole of VAL, starting the old project
+(`docker compose up -d` in `/opt/$OLD-val` after
+`docker compose stop` in `/opt/shushgift-val`).
+
+### 6. PROD, the same way
+
+First, a release under the new name, since `:latest` exists only for a `vX.Y.Z`
+tag built after the rename (the old package does not move):
+
+```powershell
+git fetch origin
+git tag <release> origin/master
+git push origin <release>
+```
+
+**[GitHub]** "Build and publish Docker image" for `<release>` succeeds.
+**[VPS]** `docker pull ghcr.io/rui-nar/shushgift:latest` works.
+
+Check: both. The way back: the tag only builds and pushes an image, and
+nothing is deployed before cut-over step 7, so PROD still runs the old stack.
+To undo it, delete the tag (`git push origin :refs/tags/<release>`, and
+locally) and the package version in GitHub, or simply do not proceed.
+
+Then part 3 in PROD's form; Caddy and DNS are done. D8's cut-over steps:
+
+**Cut-over step 2: stop and take the final dump**, kept as `before-move.dump`: a name
+the backup service never writes (its first dump in step 7 replaces the day's
+`shushgift_<date>.dump`), and one the old rotation never deletes. The purge
+counts it as it counts any `*.dump`.
+
+```bash
+cd /opt/$OLD
+sudo OLD="$OLD" sh -c 'ls -1 /opt/$OLD/backups/${OLD}_*.dump | wc -l'      # note the number of dumps
+sudo OLD="$OLD" sh -c 'stat -c "%y" $(ls -1 /opt/$OLD/backups/${OLD}_*.dump | head -n 1)'   # and the oldest dump's time
+docker compose stop app backup
+docker compose run --rm --no-deps -T --entrypoint sh backup -c \
+    'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -h db -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc \
+         -f /backups/before-move.dump && chmod 600 /backups/before-move.dump'
+docker compose run --rm --no-deps -T --entrypoint sh backup -c \
+    'pg_restore -l /backups/before-move.dump | head -n 5'
+docker compose exec -T -u postgres db sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select count(*) from users"'   # note it
+docker compose stop db
+```
+
+Check: the dump lists its tables, `sudo ls -l backups/before-move.dump` shows
+`999 999 -rw-------`, and the `users` count is noted. The way back: `docker
+compose up -d` in `/opt/$OLD`.
+
+**Cut-over step 3: the directories and `.env`**, as for VAL, with PROD's names, plus
+the backups directory:
+
+```bash
+me=$(id -un)
+sudo install -d -o "$me" -g "$me" -m 755 /opt/shushgift /opt/shushgift/backup
+sudo install -d -o 999 -g 10001 -m 750 /opt/shushgift/backups
+sudo install -d -o root -g root -m 755 /opt/shushgift-media
+install -m 644 "$SRC/deploy/prod/docker-compose.yml" /opt/shushgift/
+install -m 644 "$SRC/deploy/backup/backup.sh" "$SRC/deploy/backup/healthcheck.sh" /opt/shushgift/backup/
+install -m 600 /opt/$OLD/.env /opt/shushgift/.env
+cd /opt/shushgift
+sed -i -e 's|^POSTGRES_USER=.*|POSTGRES_USER=shushgift|' \
+       -e 's|^POSTGRES_DB=.*|POSTGRES_DB=shushgift|' \
+       -e 's|^\(DATABASE_URL=postgresql+psycopg://\)[^:]*:\([^@]*\)@db:5432/.*|\1shushgift:\2@db:5432/shushgift|' \
+       -e 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://<prod-host>|' \
+       -e 's|^EMAIL_SENDER_ADDRESS=.*|EMAIL_SENDER_ADDRESS=hello@shushgift.com|' \
+       -e 's|^EMAIL_SENDER_NAME=.*|EMAIL_SENDER_NAME="Shush Gift"|' .env
+for k in APP_LINKS_ EMAIL_SENDER_NAME=; do
+    grep -q "^$k" .env || grep -E "^$k" "$SRC/deploy/prod/.env.example" >> .env
+done
+sed -i -e 's|^APP_LINKS_APPLE_APP_IDS=.*|APP_LINKS_APPLE_APP_IDS=<apple-team-id>.<ios-bundle-id>|' \
+       -e 's|^APP_LINKS_ANDROID_PACKAGE=.*|APP_LINKS_ANDROID_PACKAGE=<android-application-id>|' .env
+diff <(sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' /opt/$OLD/.env | sort) \
+     <(sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' .env | sort)     # only the APP_LINKS_ lines (and EMAIL_SENDER_NAME if it was new)
+ls -l .env                                                 # -rw-------
+```
+
+The way back: `rm -r /opt/shushgift`, the old directory is untouched.
+
+**Cut-over step 4: the media**, as for VAL, with `prod`:
+
+```bash
+before=$(sudo find /opt/$OLD-media/prod -type f -printf '%T@\n' | sort -n | head -n 1)
+sudo mv /opt/$OLD-media/prod /opt/shushgift-media/prod
+after=$(sudo find /opt/shushgift-media/prod -type f -printf '%T@\n' | sort -n | head -n 1)
+[ "$before" = "$after" ] && echo same oldest time           # same oldest time
+sudo stat -c '%u:%g %a' /opt/shushgift-media/prod          # 10001:10001 750
+```
+
+The way back, with the new app stopped:
+`sudo mv /opt/shushgift-media/prod /opt/$OLD-media/prod`.
+
+**Cut-over step 5: the dumps.** The kept nightly dumps move into the new backups
+directory as `shushgift_<date>.dump`, and `before-move.dump` beside them, so
+the rotation, the seeding and the purge's horizon all find them. They are moved
+**before** the new app starts: the purge's first run dates its horizon from
+the oldest dump in the directory.
+
+```bash
+sudo OLD="$OLD" bash -c '
+    cd /opt/$OLD/backups
+    for f in ${OLD}_*.dump; do mv -n "$f" "/opt/shushgift/backups/shushgift_${f#${OLD}_}"; done
+    mv -n before-move.dump /opt/shushgift/backups/'
+sudo ls -l /opt/shushgift/backups/                         # shushgift_<date>.dump x the noted number, and before-move.dump; all 999 999 -rw-------
+sudo ls -A /opt/$OLD/backups                               # nothing
+```
+
+Check: the new directory holds the dumps counted in step 2 plus
+`before-move.dump`, with unchanged modification times.
+
+**The way back of this step** undoes the rename, so the old project's rotation
+and seeding find the dumps again (the old `seed-from-prod.sh` and rotation read
+only `${OLD}_*.dump`, and would otherwise ignore `shushgift_*.dump`: the seed
+would find none and exit 1, and the old rotation would never delete them), with
+the new backup service stopped:
+
+```bash
+sudo OLD="$OLD" bash -c '
+    cd /opt/shushgift/backups
+    for f in shushgift_*.dump; do mv -n "$f" "/opt/$OLD/backups/${OLD}_${f#shushgift_}"; done
+    mv -n before-move.dump /opt/$OLD/backups/'
+```
+
+Together with the media's `mv` back, this returns the old project to where it
+was, and `docker compose up -d` in `/opt/$OLD` starts it.
+
+**Cut-over step 6: restore into the new database.** Only `db` starts, on its empty
+volume, and `before-move.dump` is restored as in [Restoring PROD from a
+dump](#restoring-prod-from-a-dump), with `--no-owner` and the new role:
+
+```bash
+cd /opt/shushgift
+docker compose up -d --wait --wait-timeout 300 db
+docker compose run --rm --no-deps -T --entrypoint cat backup /backups/before-move.dump |
+    docker compose exec -T -u postgres db sh -c '
+        pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+            --no-owner --no-privileges --exit-on-error --single-transaction'
+docker compose exec -T -u postgres db sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select count(*) from users"'   # the count of step 2
+```
+
+Check: the same `users` count. The way back: `docker compose down --volumes`
+in `/opt/shushgift` drops only the new volume (`shushgift-prod_pgdata`);
+restore again, or take the way back of step 5 and start the old project.
+
+**Cut-over step 7: the app and the backup service.** Only now:
+
+```bash
+docker compose up -d --wait --wait-timeout 300
+docker compose ps                                          # app, db, backup: (healthy)
+docker compose logs app | grep 'media purge:' | head -n 1  # horizon=<the oldest moved dump's time>, not today's
+sudo ls -l backups/                                        # today's shushgift_<date>.dump is new; before-move.dump stays
+```
+
+Check the purge's first log line, which shows its horizon: it must be the
+oldest moved dump's date, not today's, and not `none`. If it is, **stop**:
+`docker compose stop app`, and fix step 5 (the dumps are not where the purge
+looks) before the purge's next run. The way back: take the ways back of cut-over steps
+7, 5 and 4 in that order (`docker compose down` here, the dumps and media moved
+back, then the old project started).
+
+`before-move.dump` stays until the new stack has a nightly dump (part 8). Left
+in place for good, it would be the oldest dump and hold the purge's horizon at
+the move day (review R3-1).
+
+**PROD's checks, consoles and tests** are parts 3 to 5 for PROD:
+
+```powershell
+.\deploy.ps1 -Target Prod                                           # now /opt/shushgift, after DEPLOY_PROD_URL is the new host
+curl.exe -s https://<prod-host>/api/version                         # <release>
+curl.exe -s https://<prod-host>/api/health                          # ok
+curl.exe -sI https://<prod-host>/.well-known/apple-app-site-association
+curl.exe -sI https://<prod-host>/.well-known/assetlinks.json
+curl.exe -sI 'https://www.<prod-host>/join?x=1'                     # 301 to https://<prod-host>/join?x=1
+```
+
+Consoles, as in part 4, for PROD: the web client's origin `https://<prod-host>`;
+Services ID domain and return URL; the App Store Server Notifications URLs of
+the PROD app (Production and Sandbox); the Pub/Sub endpoint for PROD; the live
+Stripe endpoint `https://<prod-host>/api/billing/webhook`, public details and
+product name; `API_BASE_URL_PROD`; `DEPLOY_PROD_URL`; the `LEGAL_*` URLs in
+PROD's `.env`; and the PROD values tied to the app ids. Then the tests of part
+5 with a real address, and, **instead of a purchase**, a subscription created
+before the move: its account keeps Premium, since the marker is unchanged.
+
+Check: the commands above give the answers in their comments, each console's
+check is the one of part 4, and the part 5 tests pass. The way back: each
+console entry and `.env` value is added beside the old one, so take the new one
+out again (and the previous `DEPLOY_PROD_URL`, `API_BASE_URL_PROD` and
+`LEGAL_*` values back, then `docker compose up -d` in `/opt/shushgift`); for
+the whole of PROD, take the ways back of cut-over steps 7, 5 and 4 above and
+start the old project. Nothing is removed before part 7.
+
+### 7. Removing the old hosts
+
+Right after PROD and its consoles are repointed and checked, the two old
+hosts' Caddy blocks go (plan D6). From then on, links sent before the move
+stop working, which is accepted since PROD has no real users yet.
+
+**[VPS]**
+
+```bash
+sudo cp -p /etc/caddy/Caddyfile /etc/caddy/Caddyfile.before-old-hosts-removal
+sudo nano /etc/caddy/Caddyfile       # delete the two old hosts' blocks (<old-prod-host>, <old-val-host>), nothing else
+caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
+```
+
+**[Google Cloud]** and **[Apple]** Remove the old origin and the old Services
+ID domain and return URLs, which nothing uses any more.
+
+Check: `curl -s https://<traxjourney-prod-host>/api/version` and the
+TraxJourney val host still answer as before, `https://<prod-host>/api/version`
+and `https://<val-host>/api/version` answer, and the old hosts no longer serve
+Shush Gift. The way back: put the copy back, `caddy validate`, reload (and the
+console entries again).
+
+### 8. A day later: removing the old project
+
+After the new PROD has run a day with a nightly dump, and not before:
+
+```bash
+sudo ls -l /opt/shushgift/backups/                         # a shushgift_<date>.dump written at 02:00 UTC after the move
+docker compose -f /opt/shushgift/docker-compose.yml ps     # backup (healthy)
+/opt/shushgift-val/seed-from-prod.sh                       # ends with "done: VAL is up on shushgift_<date>.dump"
+docker compose -f /opt/shushgift/docker-compose.yml logs app | grep 'media purge:' | tail -n 1   # horizon=...
+```
+
+Check: all four. This is the point of no return. Each deletion below has the
+same way back, the nightly dump just proved: restore it as in [Restoring PROD
+from a dump](#restoring-prod-from-a-dump) (the old project itself cannot be
+started again). Then:
+
+```bash
+sudo rm /opt/shushgift/backups/before-move.dump             # or it holds the purge's horizon at the move day for good (R3-1)
+                                                            # way back: the nightly dump holds the same data, newer
+cd /opt/$OLD && docker compose down --volumes
+cd /opt/$OLD-val && docker compose down --volumes
+                                                            # way back: the nightly dump (PROD); VAL is re-seeded from it
+sudo rm -r /opt/$OLD /opt/$OLD-val
+                                                            # way back: the nightly dump; the compose and .env files are
+                                                            # copies of /opt/shushgift* and the repository's deploy/
+sudo rmdir /opt/$OLD-media                                  # only succeeds when empty: both media moved
+                                                            # way back: none needed, it is empty
+sudo rm /etc/systemd/system/$OLD-webhook.service && sudo systemctl daemon-reload
+                                                            # way back: the new unit is its copy (cut-over step 8)
+sudo rm /etc/caddy/Caddyfile.before-shushgift /etc/caddy/Caddyfile.before-old-hosts-removal
+                                                            # way back: the live Caddyfile is the reference
+docker volume ls | grep "^local *$OLD"                      # nothing
+ls -d /opt/$OLD* 2>/dev/null                                # nothing
+```
+
+`rmdir` stops the command if media remain in the old parent: look before
+anything else is deleted. **[GitHub]** Delete the old GHCR package (the one of
+the former name); **[VPS]** `docker image rm` its tags. The way back of both:
+the new package holds the same code, and any old tag is rebuilt by pushing it
+again.
+
+Last, the repository: a search for the old name shows only the Stripe marker
+([Billing](BILLING.md#2-choose-the-stripe-account)) and the files under
+`docs/plans/` and `docs/reviews/`, which keep the old name as the record (plan
+D4).
+
 ## The webhook: pausing and troubleshooting
 
-**Pausing:** `sudo systemctl stop wishlist-webhook` (resume with `start`).
+**Pausing:** `sudo systemctl stop shushgift-webhook` (resume with `start`).
 Deliveries then fail with a 502 and nothing deploys; redeliver the last
 `completed` delivery after starting it if VAL should catch up. To stop GitHub
 sending anything, untick **Active** on the webhook instead.
@@ -2574,15 +3338,15 @@ sending anything, untick **Active** on the webhook instead.
 **Watching:**
 
 ```bash
-tail -F /opt/wishlist-val/webhook/deploy.log
-sudo journalctl -u wishlist-webhook -f
+tail -F /opt/shushgift-val/webhook/deploy.log
+sudo journalctl -u shushgift-webhook -f
 ```
 
 GitHub's Recent Deliveries shows each response:
 
 | Response | Meaning |
 |---|---|
-| 502 | Caddy cannot reach `127.0.0.1:9998`: `systemctl status wishlist-webhook`. |
+| 502 | Caddy cannot reach `127.0.0.1:9998`: `systemctl status shushgift-webhook`. |
 | 404 `Hook not found.` | `hooks.yaml` did not load (the journal says why), or the URL path is wrong. |
 | 500 `Error occurred while evaluating hook rules.` | Signature mismatch: GitHub's secret and `hooks.yaml`'s differ, or `hooks.yaml` still has the empty secret. |
 | 200 `Hook rules were not satisfied.` | Signature fine, a field did not match. Expected for `ping`, `requested`, `in_progress`, failed builds and `v*` builds. On a successful `completed` validation build: compare the payload with the rules (`repository.full_name` after a rename, the workflow name, the content type). |
@@ -2592,7 +3356,7 @@ In `deploy.log`, `FAILED <short sha>: ... reports 'validation-...'` with another
 usually means a newer `validation` build was pushed meanwhile; its own
 delivery follows and logs `SUCCESS`. `reports 'no version'` means VAL did not
 answer within 5 minutes:
-`docker compose -f /opt/wishlist-val/docker-compose.yml logs app`.
+`docker compose -f /opt/shushgift-val/docker-compose.yml logs app`.
 `FAILED <short sha>: docker compose pull` is usually the GHCR login
 ([step 3](#3-the-ghcr-package)).
 
@@ -2609,7 +3373,7 @@ for, so DEV and VAL sharing one would cancel each other's tests), with test
 keys.
 
 **[VPS]** The queries below use this function, in the directory of the
-environment (`/opt/wishlist-val`, or `/opt/wishlist` on PROD). A new shell
+environment (`/opt/shushgift-val`, or `/opt/shushgift` on PROD). A new shell
 needs it again:
 
 ```bash
@@ -2620,7 +3384,7 @@ pg() { docker compose exec -T -u postgres db sh -c 'psql -U "$POSTGRES_USER" -d 
 
 VAL must run this release, with `PUBLIC_BASE_URL` set ([step 6](#6-caddy)).
 
-**[Stripe]** In a sandbox of the Stripe account chosen for Wishlist (sandboxes
+**[Stripe]** In a sandbox of the Stripe account chosen for Shush Gift (sandboxes
 are separate accounts: everything below has to be set in each one):
 
 1. A product with one **yearly, tax-inclusive** price, in the currency of
@@ -2647,7 +3411,7 @@ are separate accounts: everything below has to be set in each one):
 tested. The legal and consent variables stay empty: VAL shows placeholders.
 
 ```bash
-cd /opt/wishlist-val
+cd /opt/shushgift-val
 grep -n '^PUBLIC_BASE_URL=' .env                   # its https:// origin
 read -rs STRIPE_KEY                                # paste <stripe-secret-key>, then Enter
 sed -i "s|^STRIPE_SECRET_KEY=.*|STRIPE_SECRET_KEY=$STRIPE_KEY|" .env
@@ -2700,7 +3464,7 @@ real, so Premium cannot end by date during this test: only `status` proves it.
 **[VPS]** The account's id on VAL:
 
 ```bash
-cd /opt/wishlist-val
+cd /opt/shushgift-val
 pg <<'SQL'
 select id from users where email = '<account-address>';
 SQL
@@ -2713,7 +3477,7 @@ first card must pay: with a failing one the subscription would start
 
 ```powershell
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-stripe test_helpers test_clocks create --frozen-time $now --name wishlist-renewal      # <test-clock-id>
+stripe test_helpers test_clocks create --frozen-time $now --name shushgift-renewal      # <test-clock-id>
 stripe customers create --test-clock <test-clock-id> --name "Renewal test"             # <customer-id>
 stripe payment_methods attach pm_card_visa --customer <customer-id>                    # <good-card-id>
 stripe customers update <customer-id> -d "invoice_settings[default_payment_method]=<good-card-id>"
@@ -2808,7 +3572,7 @@ are `FREE_MAX_LISTS` and `FREE_MAX_GIFTS_PER_LIST`; accounts a premium owner
 covers are counted too, so these are upper bounds:
 
 ```bash
-cd /opt/wishlist
+cd /opt/shushgift
 pg <<'SQL'
 select count(*) as accounts_over_the_list_limit from (
     select user_id from list_owners group by user_id having count(*) > 1
@@ -2851,7 +3615,7 @@ No live key goes into PROD before all of this:
   the address of `LEGAL_TERMS_URL` as the terms URL: the app's own
   `/legal/terms` is only ever a placeholder. The endpoint has its own secret.
 
-**[VPS]** Set them in `/opt/wishlist/.env` as on VAL, with the texts in an
+**[VPS]** Set them in `/opt/shushgift/.env` as on VAL, with the texts in an
 editor (`nano .env`): each on one line, not quoted, never with ` #` inside,
 which would cut the value there. Leave `BILLING_ENFORCE_LIMITS=false` until
 [the count](#turning-enforcement-on). Run
@@ -2873,7 +3637,7 @@ that nothing bills any more, then record it here:
    check `user_id`):
 
    ```bash
-   cd /opt/wishlist
+   cd /opt/shushgift
    pg <<'SQL'
    select e.user_id, e.external_id, e.status, c.customer_id
    from users u
@@ -2911,20 +3675,22 @@ Each item of the plan's Definition of done, and where it is checked:
 | A pull request runs server and client tests in CI against PostgreSQL | the `Tests` workflow on any pull request ([checks](#checks-before-installing)) |
 | Pushing `validation` publishes `:validation` and `https://<val-host>/api/version` reports `validation-<short sha>` within 5 minutes with no manual step | [8. First VAL deploy](#8-first-val-deploy) |
 | Pushing `v0.1.0` publishes `:latest`, `:<sha>`, `:v0.1.0`; `deploy.ps1 -Target Prod` reports `v0.1.0` and `/api/health` 200 with `media: ok` | [9. First PROD release](#9-first-prod-release) |
-| `docker ps` shows no Wishlist port outside `127.0.0.1` and no Postgres port published | [10. Verifying](#10-verifying-the-installation), first block |
+| `docker ps` shows no Shush Gift port outside `127.0.0.1` and no Postgres port published | [10. Verifying](#10-verifying-the-installation), first block |
 | TraxJourney prod and val answer `/api/version` as before throughout | [6. Caddy](#6-caddy) after the reload, and [10. Verifying](#10-verifying-the-installation) |
-| A nightly dump exists after the first night; at most 30 kept; `backup` healthy; seeding VAL from it succeeds | the day after step 9: `sudo ls -l /opt/wishlist/backups/` shows a dump written at 02:00 UTC, the [daily check](#daily-check) shows `backup` healthy, then [Seeding VAL](#seeding-val-from-prod). The rotation to 30 is proven by the smoke test (31 old dumps, 30 kept). |
-| `docker stats` shows Wishlist's containers within their limits (about 1.1 GB) | [10. Verifying](#10-verifying-the-installation), memory |
+| A nightly dump exists after the first night; at most 30 kept; `backup` healthy; seeding VAL from it succeeds | the day after step 9: `sudo ls -l /opt/shushgift/backups/` shows a dump written at 02:00 UTC, the [daily check](#daily-check) shows `backup` healthy, then [Seeding VAL](#seeding-val-from-prod). The rotation to 30 is proven by the smoke test (31 old dumps, 30 kept). |
+| `docker stats` shows Shush Gift's containers within their limits (about 1.1 GB) | [10. Verifying](#10-verifying-the-installation), memory |
 | No secret, host name or key is committed | [10. Verifying](#10-verifying-the-installation), last block |
+| `val.shushgift.com` and `shushgift.com` serve the web client and the API over TLS; `www` redirects to the apex; the old hosts no longer serve Shush Gift while TraxJourney's own do | [Moving to shushgift.com](#moving-to-shushgiftcom), parts 3, 6 and 7 |
+| Both `.well-known` files are served on each host for its own apps; an occasion link and a reset-password email open the installed VAL app on Android and iOS | [App links](#app-links), [part 5 of the move](#5-a-test-email-the-links-on-each-phone-a-stripe-test-purchase) |
+| Emails come from "Shush Gift" at a `shushgift.com` address, with DKIM passing | [part 5 of the move](#5-a-test-email-the-links-on-each-phone-a-stripe-test-purchase) |
+| The VPS holds `/opt/shushgift*`, `shushgift-*` projects and `shushgift_<date>.dump`; a nightly dump and a VAL seed from it succeeded after the move | [part 8 of the move](#8-a-day-later-removing-the-old-project) |
 
 ## Open items
 
-- [ ] **Wishlist's own domain.** PROD and VAL run for now on two subdomains
-      of TraxJourney's domain. Moving to an own domain means: DNS records,
-      the Caddy blocks ([step 6](#6-caddy)), `PUBLIC_BASE_URL` in both `.env`,
-      the Google sign-in origins ([step 11](#11-google-sign-in)), and the old
-      hosts redirecting to the new ones so share links already sent keep
-      working.
+- [x] **Shush Gift's own domain**: PROD at `shushgift.com`, VAL at
+      `val.shushgift.com`, moved by [Moving to shushgift.com](#moving-to-shushgiftcom)
+      (plan `SHUSH_GIFT_PLAN.md`). The old hosts are removed in its part 7, so
+      links sent before the move stop working.
 - [ ] **Off-site backups** of the dumps **and** the media directory (shared
       problem with TraxJourney). Today both are lost with the VPS, its disk or
       OVH's datacenter. Needed before PROD holds real users' data.
@@ -2949,5 +3715,5 @@ Each item of the plan's Definition of done, and where it is checked:
 - [x] **R2-5, media purge vs. dump retention**: the purge follows the oldest
       kept dump, not a number of days (gift images plan
       [D9](plans/GIFT_IMAGES_PLAN.md)); see [Media](#media).
-- [ ] **Memory on a shared 4 GB host.** Wishlist's limits keep its own
+- [ ] **Memory on a shared 4 GB host.** Shush Gift's limits keep its own
       containers in bounds, but a TraxJourney peak can still exhaust the host.

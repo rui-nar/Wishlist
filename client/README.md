@@ -82,6 +82,28 @@ image's.
 (`flutter.minSdkVersion`, `flutter.targetSdkVersion`); Flutter's `targetSdk`
 is the level Google Play requires.
 
+## App links
+
+A Shush Gift link opens the installed app instead of the browser
+(`docs/plans/SHUSH_GIFT_PLAN.md` D7). The paths are `/join`, `/shared/*`,
+`/create-account`, `/reset-password` and exactly `/account`; `/account/plan`,
+`/unsubscribe`, `/legal/*`, `/api/*` and `/welcome` stay in the browser. The
+host is not committed, and a build without one claims no link:
+
+- **Android:** the Gradle property `shushgiftAppLinkHost` (a bare host name)
+  adds an `autoVerify` intent filter for those paths, in a manifest generated
+  at build time. `-P shushgiftAppLinkHost=<host>` on a command line, or the
+  environment variable `ORG_GRADLE_PROJECT_shushgiftAppLinkHost`.
+- **iOS:** `SHUSHGIFT_APP_LINK_HOST` in `ios/Flutter/Identity.local.xcconfig`
+  also sets `CODE_SIGN_ENTITLEMENTS = Runner/RunnerAppLinks.entitlements`,
+  which adds `applinks:<host>`. The App ID needs the Associated Domains
+  capability.
+- **Both** release workflows set them from the host of the build's
+  `API_BASE_URL_*` secret. The server must answer
+  `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`
+  for the host, or the phone ignores the claim (`docs/DEPLOYMENT.md`, "App
+  links").
+
 ## Placeholder application id
 
 The project was created with the placeholder org `com.example`, so the Android

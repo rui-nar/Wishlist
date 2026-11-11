@@ -1,6 +1,6 @@
 # Development
 
-How to run Wishlist on the Windows dev machine: PostgreSQL in Docker, the
+How to run Shush Gift on the Windows dev machine: PostgreSQL in Docker, the
 FastAPI server and the Flutter web client on the host, started by `dev.ps1`.
 
 ## Prerequisites
@@ -30,7 +30,76 @@ Copy-Item .env.example .env   # the defaults work as they are
 gitignored and never committed, here or on the VPS (plan D10).
 
 On first run the Postgres container boots on an empty volume and creates two
-databases: `wishlist` (dev) and `wishlist_test` (tests).
+databases: `shushgift` (dev) and `shushgift_test` (tests).
+
+## Moving from the old dev setup
+
+The rename (Shush Gift plan D3) gave the dev database a new compose project,
+`shushgift-dev`, and so a new, empty volume: the old one, `<old>-dev_pgdata`,
+is still there with your dev data. `<old>` is the app's name before Shush
+Gift, as the plan's problem statement spells it. To start fresh instead, do
+step 1, run `.\dev.ps1`, and remove the old data as in step 4, with `$c` set by
+the first line of step 2. Only the dev and test databases are involved.
+
+1. **Update `.env`.** It is gitignored, so `git pull` does not touch it, and
+   its old database values no longer match `docker-compose.dev.yml`. Keep the
+   old file, start from the new `.env.example`, and put your own values back
+   (`GOOGLE_CLIENT_IDS`, Stripe keys, and so on):
+
+   ```powershell
+   Copy-Item .env .env.old
+   Copy-Item .env.example .env
+   $old = '<old>'
+   Select-String -SimpleMatch $old .env     # nothing: the old name is gone
+   ```
+
+   `POSTGRES_USER`, `POSTGRES_DB`, `DATABASE_URL` and `TEST_DATABASE_URL` now
+   name `shushgift` and `shushgift_test`, and `EMAIL_SENDER_NAME` is
+   `Shush Gift`.
+
+2. **Dump the old database**, from its container, which keeps running until
+   now (`docker start` it if it does not). The old user and database are the
+   ones in `.env.old`, `$old` unless you changed them:
+
+   ```powershell
+   $c = docker ps -a --filter "name=$old-dev" --format '{{.Names}}'   # <old>-dev-db-1
+   docker exec $c pg_dump -U $old -d $old -Fc -f /tmp/dev.dump
+   docker cp "${c}:/tmp/dev.dump" "$HOME\dev.dump"
+   docker exec $c pg_restore -l /tmp/dev.dump | Select-Object -First 5   # the dump's contents
+   docker stop $c                                                          # frees port 5432
+   ```
+
+3. **Start the new database and restore the dump** into it. The empty
+   database needs no migration first: the dump carries the schema and
+   `alembic_version`.
+
+   ```powershell
+   . .\Load-DotEnv.ps1; Import-DotEnv
+   docker compose -f docker-compose.dev.yml up -d --wait
+   docker cp "$HOME\dev.dump" shushgift-dev-db-1:/tmp/dev.dump
+   docker exec shushgift-dev-db-1 pg_restore -U shushgift -d shushgift --no-owner /tmp/dev.dump
+   docker exec shushgift-dev-db-1 psql -U shushgift -d shushgift -c "select version_num from alembic_version"   # the dump's head
+   .\dev.ps1                                # applies any migration the dump lacks
+   ```
+
+   Uploaded files are not in the database: `MEDIA_DIR` (`media/`) is a folder
+   of the checkout and carries over as it is.
+
+4. **The way back** is the old container, which nothing above deletes:
+   `docker compose -f docker-compose.dev.yml stop`, `docker start $c`, and
+   `.env.old` back as `.env`, with the commit before the rename checked out
+   for its `dev.ps1` and compose file. Once the new setup has run for a
+   day, or to start fresh, remove the old data:
+
+   ```powershell
+   docker rm $c
+   docker volume rm "$old-dev_pgdata"
+   docker volume rm "$old-goldens-flutter" "$old-goldens-pub-cache" "$old-goldens-dart-tool" "$old-goldens-build"
+   Remove-Item "$HOME\dev.dump", .env.old
+   ```
+
+   The goldens volumes are only a cache, rebuilt by the first `.\goldens.ps1`
+   run.
 
 ## Daily use
 
@@ -76,11 +145,11 @@ Cloud console (<https://console.cloud.google.com>). VAL and PROD use the same
 project and the same client, with their own origins added
 ([DEPLOYMENT](DEPLOYMENT.md), step 11).
 
-1. **The project.** Create one (or reuse the one already made for Wishlist).
+1. **The project.** Create one (or reuse the one already made for Shush Gift).
    A project id can never be changed afterwards, so choose it as if it were
    public; only the display name can change.
 2. **The consent screen**, under Google Auth Platform:
-   - **Branding**: app name `Wishlist`, a support email, a developer contact
+   - **Branding**: app name `Shush Gift`, a support email, a developer contact
      email. No logo: a logo makes Google review the branding first.
    - **Audience**: user type **External** (anyone with a Google account).
      While the publishing status is **Testing**, only the accounts listed
@@ -88,7 +157,7 @@ project and the same client, with their own origins added
    - **Data access**: no scope to add. Sign-in asks only for `openid`,
      `email` and `profile`, which need no review.
 3. **The web client**, under Google Auth Platform → Clients → Create client:
-   - Application type: **Web application**, name `Wishlist web`.
+   - Application type: **Web application**, name `Shush Gift web`.
    - Authorised JavaScript origins: `http://localhost:5500`, the client's
      fixed port in `dev.ps1` (see [Daily use](#daily-use)). If you change
      the port, change it here too, or Google refuses the button with an
@@ -213,11 +282,12 @@ Delete the `STRIPE_SECRET_KEY` line and restart to turn it off again.
 An iOS build needs a Mac with Xcode; the Windows dev machine cannot make one.
 CI builds it instead (iOS app plan D7):
 
-- the `ios` job of the `Tests` workflow builds every pull request on macOS
-  with `flutter build ios --release --no-codesign` and the placeholder bundle
-  id, with no secrets. A change to `client/ios/` is proven there only;
-- the `iOS release` workflow signs and uploads the VAL or PROD app to
-  TestFlight ([DEPLOYMENT](DEPLOYMENT.md#13-ios-app)).
+- the `iOS release` workflow signs and uploads the PROD app to TestFlight when
+  a release tag `vX.Y.Z` is pushed, and the VAL app when it is run by hand
+  with `app: val` ([DEPLOYMENT](DEPLOYMENT.md#13-ios-app)). macOS minutes count
+  ten times against the private repository's Actions quota, so pull requests
+  no longer build iOS: a change to `client/ios/` is proven by the next
+  release run only (Shush Gift plan D3a).
 
 On Windows, `flutter analyze` and `flutter test` still cover the Dart code of
 the iOS paths: widget tests run them with
@@ -242,8 +312,8 @@ flutter run -d <device> --flavor val --dart-define=API_BASE_URL=http://<host>:80
 
 `<host>` is the dev machine as the device sees it: `10.0.2.2` from the Android
 emulator (unconfirmed), the machine's address on the network from a phone. The
-build's application id is `com.example.wishlist.val` unless `-P
-wishlistAppId=<id>` gives another, and a debug build is signed with the
+build's application id is `com.example.shushgift.val` unless `-P
+shushgiftAppId=<id>` gives another, and a debug build is signed with the
 machine's debug key. Google sign-in on it needs an Android OAuth client for
 that id and that key ([DEPLOYMENT, Android OAuth
 client](DEPLOYMENT.md#android-oauth-client)). A build for the store is CI's job
@@ -256,7 +326,7 @@ client](DEPLOYMENT.md#android-oauth-client)). A build for the store is CI's job
 ```
 
 This starts Postgres if needed and runs `pytest` in `server/` with
-`DATABASE_URL` set to `TEST_DATABASE_URL` (the `wishlist_test` database).
+`DATABASE_URL` set to `TEST_DATABASE_URL` (the `shushgift_test` database).
 Tests always run against real PostgreSQL, never SQLite (plan D12). The
 migration test creates and drops scratch databases, so the user needs the
 CREATEDB privilege. `POSTGRES_USER` is a superuser in the official image.
@@ -296,7 +366,7 @@ To regenerate them, with Docker Desktop running:
 The script runs the tests in a `debian:bookworm-slim` container with Flutter
 at the `Dockerfile`'s `FLUTTER_TAG`. The repository is mounted, so the PNGs
 land in the working tree. The first run clones the SDK and downloads the
-packages into Docker volumes (`wishlist-goldens-*`), which takes a few
+packages into Docker volumes (`shushgift-goldens-*`), which takes a few
 minutes; later runs reuse them. `client/.dart_tool`, `client/build`,
 `client/android` and `client/ios` are hidden behind container-only mounts, so
 the container writes no Linux paths into the Windows tree and the host's
@@ -304,7 +374,7 @@ the container writes no Linux paths into the Windows tree and the host's
 clean SDK, delete the volumes:
 
 ```powershell
-docker volume rm wishlist-goldens-flutter wishlist-goldens-pub-cache wishlist-goldens-dart-tool wishlist-goldens-build
+docker volume rm shushgift-goldens-flutter shushgift-goldens-pub-cache shushgift-goldens-dart-tool shushgift-goldens-build
 ```
 
 When a golden comparison fails in CI, the `client` job uploads the diff images
@@ -328,7 +398,7 @@ unexplained golden change is a review finding.
 .\dev.ps1 -Reset -Confirm:$false   # without the prompt
 ```
 
-`-Reset` deletes the `wishlist-dev_pgdata` volume, which holds **all dev and
+`-Reset` deletes the `shushgift-dev_pgdata` volume, which holds **all dev and
 test data**. The next start boots Postgres on an empty volume, as on a first
 run. Do this after changing `POSTGRES_USER`, `POSTGRES_PASSWORD` or
 `POSTGRES_DB` in `.env`, because the image reads them only on first boot.
