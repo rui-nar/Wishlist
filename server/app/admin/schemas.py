@@ -66,6 +66,9 @@ class AdminUserRow(BaseModel):
     # The same for Apple, in its own block (Apple IAP plan D9): the server
     # cannot cancel it, so deleting the account warns of it.
     apple_subscription: AdminSubscription | None
+    # Any Apple subscription of theirs that Apple may still charge, whichever
+    # the block shows: the admin's deletion warns of it (review R2-2).
+    apple_renewing: bool
     # The admin's grant still active, if any, so it can be ended (D8).
     manual_grant: ManualGrant | None
     lists_owned: int

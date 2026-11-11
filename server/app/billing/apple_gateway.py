@@ -96,8 +96,8 @@ class SignedData:
         self.environments = environments
         # Online: the certificates' revocation is asked of Apple (OCSP), as
         # Apple advises; the tests, which reach no network, check offline.
-        self._verifiers = [
-            SignedDataVerifier(
+        self._verifiers = {
+            name: SignedDataVerifier(
                 root_certificates,
                 online_checks,
                 Environment(name),
@@ -105,7 +105,7 @@ class SignedData:
                 app_apple_id if name == PRODUCTION else None,
             )
             for name in environments
-        ]
+        }
 
     def transaction(self, signed: str) -> dict[str, Any]:
         return self._verified(signed, "verify_and_decode_signed_transaction")
@@ -117,29 +117,50 @@ class SignedData:
         return self._verified(signed, "verify_and_decode_notification")
 
     def _verified(self, signed: str, method: str) -> dict[str, Any]:
-        """The payload's claims, once one environment's verifier accepts it.
-        Each verifier refuses another environment's payload, so each is
-        tried in turn."""
+        """The payload's claims, once the verifier of the environment it
+        declares accepts it: that verifier checks the signature and the
+        environment again. Picked first, not tried in turn: the library checks
+        a production notification's `appAppleId`, which Sandbox ones lack,
+        before its environment (review R2-3)."""
         from appstoreserverlibrary.signed_data_verifier import (
             VerificationException,
             VerificationStatus,
         )
 
-        for verifier in self._verifiers:
-            try:
-                getattr(verifier, method)(signed)
-            except VerificationException as exc:
-                if exc.status == VerificationStatus.INVALID_ENVIRONMENT:
-                    continue
-                if exc.status == VerificationStatus.RETRYABLE_VERIFICATION_FAILURE:
-                    _log.warning("apple: a certificate's revocation could not be read")
-                    raise AppleUnavailable() from None
-                raise InvalidSignedData() from None
-            except Exception:
-                raise InvalidSignedData() from None
-            # Plain dicts for the translator: the library's objects are not.
-            return jwt.decode(signed, options={"verify_signature": False})
-        raise InvalidSignedData()
+        try:
+            claims = jwt.decode(signed, options={"verify_signature": False})
+        except Exception:
+            raise InvalidSignedData() from None
+        verifier = self._verifiers.get(_declared_environment(claims))
+        if verifier is None:
+            raise InvalidSignedData()
+        try:
+            getattr(verifier, method)(signed)
+        except VerificationException as exc:
+            if exc.status == VerificationStatus.RETRYABLE_VERIFICATION_FAILURE:
+                _log.warning("apple: a certificate's revocation could not be read")
+                raise AppleUnavailable() from None
+            raise InvalidSignedData() from None
+        except Exception:
+            raise InvalidSignedData() from None
+        # Plain dicts for the translator: the library's objects are not.
+        return claims
+
+
+def _declared_environment(claims: Any) -> Any:
+    """Where a payload says it comes from, unverified: a transaction's or a
+    renewal's own field, a notification's in the part it carries."""
+    if not isinstance(claims, dict):
+        return None
+    for part in (
+        claims,
+        claims.get("data"),
+        claims.get("summary"),
+        claims.get("appData"),
+    ):
+        if isinstance(part, dict) and isinstance(part.get("environment"), str):
+            return part["environment"]
+    return None
 
 
 class AppleGateway:

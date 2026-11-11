@@ -180,6 +180,27 @@ def test_a_latest_transaction_with_no_token_keeps_the_reported_one(
     assert row(engine).user_id == account.id
 
 
+def test_a_latest_transaction_with_no_token_is_the_stored_rows_account(
+    client, fake, account, make_account, engine, caplog
+):
+    """A reports its old transaction; the subscription is recorded for B and
+    Apple's latest transaction carries no token: it stays B's, as a
+    notification would leave it (D4, review R2-1)."""
+    other = make_account()
+    fake.add(ORIGINAL, account.id)
+    old = fake.signed_transaction(ORIGINAL)
+    fake.add(ORIGINAL, other.id)
+    assert report(client, other, fake.signed_transaction(ORIGINAL)).status_code == 204
+    fake.add(ORIGINAL, None)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        response = report(client, account, old)
+
+    refused(response, 409, "other_account")
+    assert row(engine).user_id == other.id
+    assert f"transaction {ORIGINAL} names another account ({other.id})" in caplog.text
+
+
 def test_another_product_is_refused(client, fake, account, engine):
     fake.add(ORIGINAL, account.id, product="example.other")
     refused(

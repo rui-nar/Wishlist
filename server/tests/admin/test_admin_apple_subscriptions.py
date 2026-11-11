@@ -120,6 +120,44 @@ def test_the_one_in_force_is_shown(client, admin, make_account, add, now):
         assert view["apple_subscription"]["status"] == "active"
 
 
+def test_renewing_behind_a_canceling_one_in_force(client, admin, make_account, add):
+    """The block shows the canceling one in force; Apple may still charge the
+    other, in billing retry, and the row says so (review R2-2)."""
+    target = make_account()
+    add(target.id, status="active", cancel_at_period_end=True)
+    add(target.id, status="ended", cancel_at_period_end=False)
+
+    for view in views(client, admin, target.id):
+        assert view["apple_subscription"]["status"] == "canceling"
+        assert view["apple_renewing"] is True
+
+
+@pytest.mark.parametrize(
+    "source, status, cancel, renewing",
+    [
+        ("apple", "active", False, True),
+        ("apple", "past_due", False, True),
+        ("apple", "active", True, False),
+        ("apple", "ended", True, False),
+        ("stripe", "active", False, False),
+        ("manual", "active", False, False),
+    ],
+)
+def test_apple_renewing(
+    client, admin, make_account, add, source, status, cancel, renewing
+):
+    target = make_account()
+    add(target.id, source=source, status=status, cancel_at_period_end=cancel)
+    for view in views(client, admin, target.id):
+        assert view["apple_renewing"] is renewing
+
+
+def test_not_renewing_with_nothing(client, admin, make_account):
+    target = make_account()
+    for view in views(client, admin, target.id):
+        assert view["apple_renewing"] is False
+
+
 def test_the_admins_deletion_logs_a_renewing_one(
     client, admin, make_account, add, engine, caplog
 ):

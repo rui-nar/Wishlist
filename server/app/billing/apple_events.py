@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, and_, select
 from sqlalchemy.orm import Session
 
 from app.billing.entitlements import EntitlementFacts
@@ -135,19 +135,34 @@ def facts(
     )
 
 
+def _renewing() -> ColumnElement[bool]:
+    """An Apple subscription that Apple may still charge, whatever `summary`
+    shows (D9): `cancel_at_period_end` false, by `facts`."""
+    return and_(
+        Entitlement.source == APPLE, Entitlement.cancel_at_period_end.is_(False)
+    )
+
+
 def renewing(db: Session, user_id: uuid.UUID) -> list[str]:
-    """The account's Apple subscriptions that Apple may still charge, whatever
-    `summary` shows (D9): the server cannot cancel them, so a deletion only
-    warns of them."""
+    """The account's renewing Apple subscriptions: the server cannot cancel
+    them, so a deletion only warns of them."""
     return list(
         db.scalars(
             select(Entitlement.external_id)
-            .where(
-                Entitlement.user_id == user_id,
-                Entitlement.source == APPLE,
-                Entitlement.cancel_at_period_end.is_(False),
-            )
+            .where(Entitlement.user_id == user_id, _renewing())
             .order_by(Entitlement.external_id)
+        )
+    )
+
+
+def renewing_accounts(db: Session, user_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    """Those of `user_ids` with a renewing Apple subscription, in one query:
+    the admin's deletion warns of it (review R2-2)."""
+    return set(
+        db.scalars(
+            select(Entitlement.user_id)
+            .where(Entitlement.user_id.in_(user_ids), _renewing())
+            .distinct()
         )
     )
 

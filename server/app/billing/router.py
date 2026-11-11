@@ -370,7 +370,13 @@ def apple_transaction(
     if external_id is None or where is None:
         return _refusal(INVALID_TRANSACTION)
     # Before Apple is asked: a refusal costs no call.
-    refused = _apple_refusal(settings, reported, session.user_id, external_id)
+    refused = _apple_refusal(
+        settings,
+        reported,
+        session.user_id,
+        external_id,
+        apple_events.account_token(reported),
+    )
     if refused is not None:
         return _refusal(refused)
     # Before the read, so a later handler always wins (premium plan D13).
@@ -382,14 +388,16 @@ def apple_transaction(
         return _refusal(UNKNOWN_TRANSACTION)
     except AppleError:
         return _refusal(BILLING_UNAVAILABLE)
-    # The latest transaction says whose the subscription is now (D4); one with
-    # no token leaves it to the reported one's.
+    # Whose the subscription is now, as for a notification (D4, review R2-1):
+    # the latest token, else the stored row's account; with neither, the
+    # reported transaction's, which is this account.
+    owner = (
+        apple_events.account_token(subscription.transaction)
+        or _stored_owner(db, external_id)
+        or session.user_id
+    )
     refused = _apple_refusal(
-        settings,
-        subscription.transaction,
-        session.user_id,
-        external_id,
-        token_required=False,
+        settings, subscription.transaction, session.user_id, external_id, owner
     )
     if refused is not None:
         return _refusal(refused)
@@ -486,19 +494,18 @@ def _apple_refusal(
     transaction: dict[str, Any],
     user_id: uuid.UUID,
     external_id: str,
-    token_required: bool = True,
+    owner: uuid.UUID | None,
 ) -> str | None:
-    """Why this transaction may not grant Premium to this account (D2, D3,
-    D6), logged with ids only, or None."""
+    """Why this transaction may not grant Premium to this account, whose it is
+    being `owner` (D2, D3, D6), logged with ids only, or None."""
     if not _sold_here(settings, transaction):
         _log.warning("apple: transaction %s is of another product", external_id)
         return OTHER_PRODUCT
-    token = apple_events.account_token(transaction)
-    if token != user_id and (token is not None or token_required):
+    if owner != user_id:
         _log.warning(
             "apple: transaction %s names another account (%s)",
             external_id,
-            token or "none",
+            owner or "none",
         )
         return OTHER_ACCOUNT
     if _sandbox_refused(settings, transaction, user_id):
@@ -539,6 +546,10 @@ def _apple_owner(
     token = apple_events.account_token(transaction)
     if token is not None:
         return db.scalar(select(User.id).where(User.id == token))
+    return _stored_owner(db, external_id)
+
+
+def _stored_owner(db: Session, external_id: str) -> uuid.UUID | None:
     return db.scalar(
         select(Entitlement.user_id).where(
             Entitlement.source == APPLE, Entitlement.external_id == external_id

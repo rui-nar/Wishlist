@@ -212,6 +212,48 @@ def test_a_notification_is_read(signed, apple_pki):
     assert signed.notification(apple_sign(apple_pki, claims)) == claims
 
 
+def test_production_reads_a_sandbox_notification_without_an_app_apple_id(
+    signed, apple_pki
+):
+    """Production's verifier would refuse it for its app identifier before
+    looking at its environment: the Sandbox one reads it (review R2-3)."""
+    jws = apple_sign(apple_pki, transaction_claims(ORIGINAL, USER))
+    claims = notification_claims(jws, "Sandbox")
+    assert "appAppleId" not in claims["data"]
+
+    assert signed.notification(apple_sign(apple_pki, claims)) == claims
+
+
+def test_a_production_notification_is_read(signed, apple_pki):
+    jws = apple_sign(apple_pki, transaction_claims(ORIGINAL, USER, PRODUCTION))
+    claims = notification_claims(jws, PRODUCTION)
+    assert signed.notification(apple_sign(apple_pki, claims)) == claims
+
+
+def test_a_production_notification_without_the_app_apple_id_is_refused(
+    signed, apple_pki
+):
+    jws = apple_sign(apple_pki, transaction_claims(ORIGINAL, USER, PRODUCTION))
+    claims = notification_claims(jws, PRODUCTION)
+    del claims["data"]["appAppleId"]
+    with pytest.raises(InvalidSignedData):
+        signed.notification(apple_sign(apple_pki, claims))
+
+
+@pytest.mark.parametrize("environment", [None, "Xcode", 7])
+def test_a_payload_declaring_no_accepted_environment_is_refused(
+    signed, apple_pki, environment
+):
+    claims = transaction_claims(ORIGINAL, USER) | {"environment": environment}
+    with pytest.raises(InvalidSignedData):
+        signed.transaction(apple_sign(apple_pki, claims))
+    jws = apple_sign(apple_pki, transaction_claims(ORIGINAL, USER))
+    notification = notification_claims(jws)
+    notification["data"]["environment"] = environment
+    with pytest.raises(InvalidSignedData):
+        signed.notification(apple_sign(apple_pki, notification))
+
+
 def test_a_production_notification_of_another_app_id_is_refused(signed, apple_pki):
     jws = apple_sign(apple_pki, transaction_claims(ORIGINAL, USER, PRODUCTION))
     claims = notification_claims(jws, PRODUCTION)

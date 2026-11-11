@@ -21,6 +21,7 @@ from app.admin.schemas import (
     AdminUserRow,
     ManualGrant,
 )
+from app.billing import apple_events
 from app.billing.entitlements import GRACE, summary
 from app.billing.models import (
     ACTIVE,
@@ -101,6 +102,7 @@ def user_rows(db: Session, users: list[User], now: datetime) -> list[AdminUserRo
     photos = _photos(db, ids, now)
     subscriptions = _subscriptions(db, ids, now, STRIPE)
     apple_subscriptions = _subscriptions(db, ids, now, APPLE)
+    apple_renewing = apple_events.renewing_accounts(db, ids)
     grants = _manual_grants(db, ids)
     return [
         AdminUserRow(
@@ -112,6 +114,7 @@ def user_rows(db: Session, users: list[User], now: datetime) -> list[AdminUserRo
             plan=plan(db, user.id, now),
             subscription=subscriptions.get(user.id),
             apple_subscription=apple_subscriptions.get(user.id),
+            apple_renewing=user.id in apple_renewing,
             manual_grant=grants.get(user.id),
             lists_owned=lists_owned.get(user.id, 0),
             photos=photos.get(user.id, AdminPhotos(count=0, bytes=0, measuring=False)),

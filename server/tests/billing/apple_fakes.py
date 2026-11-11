@@ -183,19 +183,22 @@ def renewal_claims(
 def notification_claims(
     signed_transaction: str, environment: str = "Sandbox", status: int = 1
 ) -> dict[str, Any]:
-    """An App Store Server Notification V2 pointing at a transaction."""
+    """An App Store Server Notification V2 pointing at a transaction. As
+    Apple's, a Sandbox one carries no `appAppleId` (review R2-3)."""
+    data: dict[str, Any] = {
+        "environment": environment,
+        "bundleId": BUNDLE_ID,
+        "signedTransactionInfo": signed_transaction,
+        "status": status,
+    }
+    if environment == "Production":
+        data["appAppleId"] = APP_APPLE_ID
     return {
         "notificationType": "DID_RENEW",
         "notificationUUID": str(uuid.uuid4()),
         "version": "2.0",
         "signedDate": apple_ms(sessions.utc_now()),
-        "data": {
-            "environment": environment,
-            "bundleId": BUNDLE_ID,
-            "appAppleId": APP_APPLE_ID,
-            "signedTransactionInfo": signed_transaction,
-            "status": status,
-        },
+        "data": data,
     }
 
 

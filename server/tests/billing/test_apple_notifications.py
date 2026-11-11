@@ -211,7 +211,6 @@ def test_a_notification_about_no_subscription_is_acknowledged(client, fake):
             "summary": {
                 "environment": "Sandbox",
                 "bundleId": "com.example.wishlist",
-                "appAppleId": 1234567890,
             },
         },
     )
