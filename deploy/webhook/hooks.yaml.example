@@ -5,7 +5,7 @@
 # shushgift-webhook unit on 127.0.0.1:9998, never TraxJourney's hooks file.
 #
 # The secret below lives inline, so the filled-in hooks.yaml exists only on the
-# VPS and is never committed (the repository is public). The example ships
+# VPS and is never committed, even to the private repository. The example ships
 # with an EMPTY secret on purpose. webhook refuses to check a signature against
 # an empty secret, so a copy nobody filled in rejects every delivery (HTTP 500)
 # instead of accepting payloads signed with a placeholder anyone can read here.
