@@ -23,3 +23,4 @@ the plan.
 | [COMMENTS_NOTIFICATIONS_PLAN](COMMENTS_NOTIFICATIONS_PLAN.md) | — | feat/hidden-gifts-comments (#11) |
 | [PREMIUM_PLAN](PREMIUM_PLAN.md) | — | feat/paywall |
 | [APPLE_EMAIL_SIGNIN_PLAN](APPLE_EMAIL_SIGNIN_PLAN.md) | — | feat/apple-email-signin |
+| [ADMIN_PANEL_PLAN](ADMIN_PANEL_PLAN.md) | — | feat/admin-panel |
