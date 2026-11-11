@@ -329,7 +329,8 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
   - **Passwords:** 10 to 128 characters, no composition rules. Sign-in attempts
     and emails are rate limited.
   - **Apple:** on the web and Android now, on iOS with the iOS release. The
-    email link opens on the web, for now.
+    email link opens the installed app on a phone, and the web otherwise
+    (owner, 2026-11-11).
 - **Introduction:** three screens explain how the app works, namely the hidden
   actions and the hidden gifts (owner, 2026-11-10). Shown once, after the first
   sign-in on a device, and available again from the account screen. They are
@@ -351,8 +352,11 @@ Decided 2026-11-09 (owner's instruction to proceed silently):
   `val.shushgift.com`. The move happens as soon as the domain is live, before
   the iOS and Android store releases, so no store build ships with the old
   hosts. Until then PROD and VAL are subdomains of TraxJourney's domain
-  (hostnames in the owner's VPS notes, not in this public repository); links
-  already shared on them keep working after the move.
+  (hostnames in the owner's VPS notes, not in this repository). The old hosts
+  are removed right after PROD has moved: PROD has no real users yet, so links
+  sent before the move may stop working. Emails come from
+  `hello@shushgift.com`. On a phone with the app installed, occasion links
+  and email links open the app instead of the browser (owner, 2026-11-11).
 - **Stack (agreed ahead of the needs, see
   [`plans/DEVOPS_FOUNDATION_PLAN.md`](plans/DEVOPS_FOUNDATION_PLAN.md)):**
   Flutter; FastAPI, Alembic, PostgreSQL.
