@@ -1620,10 +1620,6 @@
   "@adminColumnEmail": {
     "description": "The admin panel's table: the email address column."
   },
-  "adminColumnName": "Name",
-  "@adminColumnName": {
-    "description": "The admin panel's table: the name column."
-  },
   "adminColumnCreated": "Created",
   "@adminColumnCreated": {
     "description": "The admin panel's tables: the creation date column."
@@ -1667,6 +1663,10 @@
   "adminSignInEmail": "Email and password",
   "@adminSignInEmail": {
     "description": "The admin panel: signs in with an email address and a password."
+  },
+  "adminSignInEmailShort": "Email",
+  "@adminSignInEmailShort": {
+    "description": "The admin panel's table, where space is short: signs in with an email address and a password."
   },
   "adminSignInNone": "No sign-in",
   "@adminSignInNone": {

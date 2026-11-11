@@ -32,13 +32,18 @@ String formatDay(BuildContext context, DateTime date) => DateFormat.yMMMd(
       Localizations.localeOf(context).toString(),
     ).format(date.toLocal());
 
-/// The ways a user signs in, in words.
-String signInLine(AppLocalizations l10n, List<String> providers) {
+/// The ways a user signs in, in words; [compact] for the table's column.
+String signInLine(
+  AppLocalizations l10n,
+  List<String> providers, {
+  bool compact = false,
+}) {
   if (providers.isEmpty) return l10n.adminSignInNone;
   return providers
       .map((provider) => switch (provider) {
             'google' => l10n.adminSignInGoogle,
             'apple' => l10n.adminSignInApple,
+            'email' when compact => l10n.adminSignInEmailShort,
             'email' => l10n.adminSignInEmail,
             _ => provider,
           })

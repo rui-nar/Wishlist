@@ -201,6 +201,46 @@ void main() {
       expect(find.text('Show more'), findsNothing);
     });
 
+    testWidgets('at 1440 wide every column shows without scrolling',
+        (tester) async {
+      // The longest a row gets: a long address, every way of signing in, a
+      // grant, and photos in the gigabytes.
+      admin.rows.insert(
+        0,
+        adminRow(
+          id: '7b0c2f1e-0000-4000-8000-000000000009',
+          email: 'a.very.long.address.for.someone@subdomain.example-company.com',
+          displayName: 'Someone With A Long Name',
+          signIn: const ['apple', 'email', 'google'],
+          plan: const {
+            'plan': 'premium',
+            'source': 'manual',
+            'until': '2027-12-28T12:00:00Z',
+          },
+          listsOwned: 120,
+          photos: const {'count': 120, 'bytes': 1234567890, 'measuring': false},
+        ),
+      );
+      await start(tester, '/admin', size: _wide);
+
+      final scrollable = tester.state<ScrollableState>(find
+          .ancestor(
+            of: find.byType(DataTable),
+            matching: find.byType(Scrollable),
+          )
+          .first);
+      expect(scrollable.position.maxScrollExtent, 0);
+      expect(find.text('Name'), findsNothing);
+      final photos = tester.getRect(find.text('Photos'));
+      expect(photos.right, lessThanOrEqualTo(_wide.width));
+      expect(find.text('120 photos · 1.2 GB'), findsOneWidget);
+      expect(find.text('Apple, Email, Google'), findsOneWidget);
+      final address = tester.widget<Text>(find.text(
+        'a.very.long.address.for.someone@subdomain.example-company.com',
+      ));
+      expect(address.overflow, TextOverflow.ellipsis);
+    });
+
     testWidgets('a cursor the server refuses starts the list again',
         (tester) async {
       admin.pageSize = 2;

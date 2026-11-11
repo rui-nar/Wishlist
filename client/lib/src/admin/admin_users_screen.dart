@@ -229,6 +229,11 @@ class _SearchField extends StatelessWidget {
   }
 }
 
+/// The widest an address gets in the table: with it, every column fits at
+/// the table's full width, Photos included. Narrower windows above the
+/// breakpoint scroll sideways.
+const _kEmailWidth = 4 * Spacing.s64;
+
 /// The users on a wide screen: one row each, opening the account's page.
 class _UsersTable extends StatelessWidget {
   const _UsersTable({required this.users, required this.onOpen});
@@ -248,9 +253,9 @@ class _UsersTable extends StatelessWidget {
             constraints: BoxConstraints(minWidth: constraints.maxWidth),
             child: DataTable(
               showCheckboxColumn: false,
+              columnSpacing: Spacing.s24,
               columns: [
                 DataColumn(label: Text(l10n.adminColumnEmail)),
-                DataColumn(label: Text(l10n.adminColumnName)),
                 DataColumn(label: Text(l10n.adminColumnCreated)),
                 DataColumn(label: Text(l10n.adminColumnSignIn)),
                 DataColumn(label: Text(l10n.adminColumnPlan)),
@@ -262,10 +267,21 @@ class _UsersTable extends StatelessWidget {
                   DataRow(
                     onSelectChanged: (_) => onOpen(user),
                     cells: [
-                      DataCell(Text(user.email)),
-                      DataCell(Text(user.displayName)),
+                      // The whole address and the name are on the
+                      // account's page.
+                      DataCell(ConstrainedBox(
+                        constraints:
+                            const BoxConstraints(maxWidth: _kEmailWidth),
+                        child: Text(
+                          user.email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      )),
                       DataCell(Text(formatDay(context, user.createdAt))),
-                      DataCell(Text(signInLine(l10n, user.signIn))),
+                      DataCell(Text(
+                        signInLine(l10n, user.signIn, compact: true),
+                      )),
                       DataCell(Text(planLine(context, user.plan))),
                       DataCell(Text('${user.listsOwned}')),
                       DataCell(Text(photosLine(context, user.photos))),
