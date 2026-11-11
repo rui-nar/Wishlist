@@ -115,3 +115,28 @@ move, dumped and restored through its own `db` container.
 - Guard: —
 - Override: —
 - Outcome: fixed (NEEDS.md updated)
+
+## Round 3 — 2026-11-11, reviewed at 349d04c
+
+Standing instruction of 2026-11-11, as in round 2. Envelope question answered
+with the recommendation: VAL's move dump is `chmod 600` and deleted once VAL
+is confirmed. This is the last round (§6): the plan goes to delivery after
+these fixes.
+
+### R3-1 — `before-move.dump` is never deleted, so it freezes the purge's horizon
+- Trigger: owner follows D8 and U6 on PROD → `before-move.dump` stays, and after 30 days it is the oldest dump → images released after the move are never purged
+- Scores: trigger=concrete, impact=degraded-ux, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan updated: deleted with the old volume)
+
+### R3-2 — The VAL variant's commands and step order do not run as written
+- Trigger: owner runs D8's VAL commands → the dump targets a directory not yet created, `pg_dump` lacks a role, `pg_restore` lacks `-d` → the cut-over stops, with nothing lost
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified (triage)
+- Decision: Fix now (D6)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan updated)

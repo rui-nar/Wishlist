@@ -217,20 +217,27 @@ Name and domain):
      new role.
   7. Only then bring up the app and the backup service. The purge's first run
      dates its horizon from the moved dumps. The backup service's first dump
-     becomes today's `shushgift_<date>.dump`, and `before-move.dump` stays.
+     becomes today's `shushgift_<date>.dump`, and `before-move.dump` stays
+     until the new stack has a nightly dump. Then it is deleted with the old
+     volume: left in place, it would be the oldest dump and hold the purge's
+     horizon at the move day for good (review R3-1).
   8. Rename the webhook unit, and update its repository filter to
      `rui-nar/shushgift`, the exact name the hook compares (review R1-3).
 
   **VAL** has no backup service, backups directory or dumps
   (`deploy/val/docker-compose.yml`), and keeps its data across the move
   (owner's standing instruction, 2026-11-11, review R2-3). So on VAL:
-  - step 2 dumps through the old `db` container (`docker compose exec db
-    pg_dump -Fc`) into a file in the new directory;
+  - step 2 dumps through the old `db` container into
+    `/opt/wishlist-val/before-move.dump`, which exists before the new
+    directory does. It uses the seed script's forms (`-u postgres`, `-U`,
+    `-d`, as in `deploy/val/seed-from-prod.sh`), then `chmod 600` on the file,
+    since VAL holds data seeded from PROD;
   - step 4 moves `/opt/wishlist-media/val` the same way as PROD's media;
   - step 5 does not apply;
-  - step 6 restores that file through the new `db` container (`docker compose
-    exec -T db pg_restore --no-owner --role=shushgift_val`);
-  - step 7 starts the app only.
+  - step 6 restores that file through the new `db` container, with the same
+    forms, `-d shushgift_val` and `--no-owner`;
+  - step 7 starts the app only;
+  - the file is deleted once VAL is confirmed (review R3-2).
 
   VAL therefore rehearses steps 1–4, 6 and 8. Steps 5 and 7 run first on
   PROD. The runbook gives each one a check before the next step:
@@ -573,7 +580,7 @@ None left. Settled by the owner on 2026-11-11:
     7. Right after PROD and its consoles: removing both old hosts' Caddy
        blocks (D6).
     8. A day later, after a nightly dump: removing the old volumes and
-       directories.
+       directories, and `before-move.dump` (R3-1).
   - Rename the existing sections (paths, units, names), and replace the
     `com.example` placeholders with D3's ids.
   - Rewrite "Getting the files onto the host" and "Updating the files on the
