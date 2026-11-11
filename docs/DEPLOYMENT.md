@@ -49,7 +49,7 @@ below; replace them as you run the commands.
 | `<apple-team-id>` | the 10-character Team ID of the Apple Developer membership ([step 13](#the-sign-in-with-apple-key)). Not a secret, but never committed |
 | `<apple-key-id>` | the 10-character ID of the Sign in with Apple key; its file is `AuthKey_<apple-key-id>.p8`, a secret ([step 13](#the-sign-in-with-apple-key)). Never committed |
 | `<asc-key-id>`, `<asc-issuer-id>` | the ID and the issuer ID of the App Store Connect API key; its file is `AuthKey_<asc-key-id>.p8`, a secret ([step 13](#the-app-store-connect-api-key)). Never committed |
-| `<google-ios-client-id>` | the ID of Wishlist's iOS OAuth client, ending in `.apps.googleusercontent.com` ([step 13](#google-ios-oauth-client)). Public, not a secret, but never committed |
+| `<google-ios-client-id>`, `<google-ios-client-id-val>` | the IDs of the PROD and VAL apps' iOS OAuth clients, one per bundle id, ending in `.apps.googleusercontent.com` ([step 13](#google-ios-oauth-client)). Public, not secrets, but never committed |
 | `<android-application-id>` | the Android applicationId of the build that signs in with Apple ([step 12](#12-apple-sign-in)). Never committed |
 | `<account-address>` | the email address of an account, when it has to be looked up. Never committed |
 | `<user-id>` | an account's id, printed by the query that looked it up |

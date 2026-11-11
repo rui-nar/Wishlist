@@ -62,7 +62,8 @@ before then.
     screen). Rules out a server switch inside the app.
 - **D3 — Google on iOS.** Google requires an **iOS** OAuth client and its
   reversed client ID as a URL scheme in the Info.plist, which is a build-time
-  value. `GOOGLE_IOS_CLIENT_ID` is a repository variable read into the
+  value. `GOOGLE_IOS_CLIENT_ID` (PROD) and `GOOGLE_IOS_CLIENT_ID_VAL` (VAL), one Google
+  iOS client per bundle id, are repository variables read into the
   xcconfig. The app passes the web client ID from `/api/config` as the server
   client ID, so the ID token's audience is the web client and
   `GOOGLE_CLIENT_IDS` on the server needs no change. Without the variable the
@@ -152,7 +153,8 @@ REVIEW.md defaults apply, with these additions:
 - **Environment:** `APPLE_TEAM_ID`, `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY`,
   all optional.
 - **Repository settings:** the variables `IOS_BUNDLE_ID`,
-  `IOS_BUNDLE_ID_VAL`, `GOOGLE_IOS_CLIENT_ID` and `APPLE_TEAM_ID`, and the
+  `IOS_BUNDLE_ID_VAL`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID_VAL` and
+  `APPLE_TEAM_ID`, and the
   secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `API_BASE_URL_VAL` and
   `API_BASE_URL_PROD`.
 
