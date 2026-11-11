@@ -134,6 +134,8 @@ class BillingStatus {
     required this.legal,
   });
 
+  /// The stores' fields may be absent: a server one release older, after a
+  /// rollback, sends none of them (review IAP-R3-2).
   factory BillingStatus.fromJson(Map<String, dynamic> json) {
     final limits = json['limits'] as Map<String, dynamic>?;
     final offer = json['offer'] as Map<String, dynamic>?;
@@ -152,11 +154,11 @@ class BillingStatus {
       appleOffer: appleOffer == null
           ? null
           : AppleOffer(productId: appleOffer['product_id'] as String),
-      appleRenewing: json['apple_renewing'] as bool,
+      appleRenewing: json['apple_renewing'] as bool? ?? false,
       googleOffer: googleOffer == null
           ? null
           : GoogleOffer(productId: googleOffer['product_id'] as String),
-      googleRenewing: json['google_renewing'] as bool,
+      googleRenewing: json['google_renewing'] as bool? ?? false,
       canManage: json['can_manage'] as bool,
       legal: LegalUrls.fromJson(json['legal'] as Map<String, dynamic>),
     );

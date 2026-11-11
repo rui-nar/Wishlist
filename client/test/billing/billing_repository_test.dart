@@ -94,6 +94,31 @@ void main() {
     expect(BillingStatus.fromJson(billingStatus()).managedAtApple, isFalse);
   });
 
+  test('reads the answer of a server one release older (review IAP-R3-2)',
+      () {
+    // GET /api/billing before the store releases: no apple_* or google_*.
+    final status = BillingStatus.fromJson(const {
+      'plan': 'premium',
+      'source': 'stripe',
+      'status': 'active',
+      'renews_at': '2027-03-12T10:00:00Z',
+      'ends_at': null,
+      'limits': {'max_lists': null, 'max_gifts_per_list': null},
+      'enforced': true,
+      'offer': {'amount': '49.00', 'currency': 'EUR', 'interval': 'year'},
+      'can_manage': true,
+      'legal': {'terms_url': null, 'privacy_url': null, 'withdrawal_url': null},
+    });
+
+    expect(status.isPremium, isTrue);
+    expect(status.offer!.amount, '49.00');
+    expect(status.appleOffer, isNull);
+    expect(status.appleRenewing, isFalse);
+    expect(status.googleOffer, isNull);
+    expect(status.googleRenewing, isFalse);
+    expect(status.canManage, isTrue);
+  });
+
   group('what each platform offers (D7, D8)', () {
     tearDown(() {
       debugOnTheWeb = null;

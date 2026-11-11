@@ -1103,8 +1103,10 @@ docker compose logs app | grep 'Apple token revocation is off'                  
 
 A line printed by the last `grep` names what is missing or does not load as
 a key. If the first `grep` shows no `APPLE_TEAM_ID`, the `.env` predates the
-setting: add the three lines from `.env.example` first ([Release-specific
-steps](#release-specific-steps)). The PEM form, with its real line breaks, also
+setting: add the three lines first, as the release with Apple's token
+revocation in [Release-specific steps](#release-specific-steps) says, which
+also installs the `seed-from-prod.sh` that keeps PROD's tokens off VAL. The
+PEM form, with its real line breaks, also
 works, but a `.env` value cannot hold it unquoted.
 
 **[VPS]** PROD the same, before the first PROD build, in `/opt/wishlist` with
@@ -1289,7 +1291,8 @@ purchases](#release-specific-steps) are filled in.
 ### First build from the validation tag
 
 Before it: VAL runs the release with Apple's token revocation (its migration
-adds `apple_tokens`), and its `.env` is filled in as [above](#the-servers-values).
+adds `apple_tokens`; its [release-specific step](#release-specific-steps) is
+done), and its `.env` is filled in as [above](#the-servers-values).
 
 **[dev]** Push the `validation` tag as in [step 8](#8-first-val-deploy). It
 deploys VAL, as always, and starts the iOS release of the VAL app.
@@ -2214,6 +2217,35 @@ Run these on the host **before** deploying the release named, once.
   Nothing needs `docker compose up -d` yet: it is empty, and no one is admin
   until [Admin](#admin) is followed.
 
+- **The release with Apple's token revocation** (the first with
+  `APPLE_TEAM_ID` in the `.env.example` files).
+
+  Its migration runs on deploy, by itself, and only adds the `apple_tokens`
+  table. The previous release ignores it, so a rollback stays image-only.
+  Revocation stays off until the owner fills in the variables below
+  ([The server's values](#the-servers-values), VAL first); until then the app
+  logs at start that it is off.
+
+  **[VPS]** Each `.env` gets the new lines, from the examples at the release
+  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  adding them twice. The new `seed-from-prod.sh` goes in **before the next
+  seed**: the old one would bring PROD's Apple tokens, real secrets, to VAL,
+  where deleting an account would revoke a PROD user's sign-in with Apple.
+
+  ```bash
+  cd /opt/wishlist-val
+  grep -q '^APPLE_TEAM_ID=' .env || \
+      grep -E '^APPLE_(TEAM_ID|KEY_ID|PRIVATE_KEY)=' "$SRC/deploy/val/.env.example" >> .env
+  cd /opt/wishlist
+  grep -q '^APPLE_TEAM_ID=' .env || \
+      grep -E '^APPLE_(TEAM_ID|KEY_ID|PRIVATE_KEY)=' "$SRC/deploy/prod/.env.example" >> .env
+  grep -c -E '^APPLE_(TEAM_ID|KEY_ID|PRIVATE_KEY)=' /opt/wishlist-val/.env /opt/wishlist/.env   # :3 for both
+  install -m 755 "$SRC/deploy/val/seed-from-prod.sh" /opt/wishlist-val/
+  grep -c 'apple_tokens' /opt/wishlist-val/seed-from-prod.sh                                  # 2
+  ```
+
+  Nothing needs `docker compose up -d` yet: all are empty.
+
 - **The release with Apple purchases** (the first with `APPLE_PRODUCT_ID` in
   the `.env.example` files).
 
@@ -2229,10 +2261,10 @@ Run these on the host **before** deploying the release named, once.
 
   ```bash
   cd /opt/wishlist-val
-  grep -q '^APPLE_PRODUCT_ID=' .env || \r
+  grep -q '^APPLE_PRODUCT_ID=' .env || \
       grep -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|IAP_)' "$SRC/deploy/val/.env.example" >> .env
   cd /opt/wishlist
-  grep -q '^APPLE_PRODUCT_ID=' .env || \r
+  grep -q '^APPLE_PRODUCT_ID=' .env || \
       grep -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|APP_APPLE_ID|IAP_|SANDBOX_ACCOUNT_IDS)' "$SRC/deploy/prod/.env.example" >> .env
   grep -c -E '^APPLE_(PRODUCT_ID|BUNDLE_ID|APP_APPLE_ID|IAP_|SANDBOX_ACCOUNT_IDS)' /opt/wishlist-val/.env /opt/wishlist/.env   # :5 for VAL, :7 for PROD
   ```
@@ -2301,6 +2333,7 @@ install -m 644 "$SRC/deploy/prod/docker-compose.yml" /opt/wishlist/
 |---|---|
 | a compose file | `docker compose up -d --wait` in its directory (recreates what changed), with the [cluster check](#checking-the-database-cluster-is-unchanged) before and after. A Postgres **patch or minor** bump (Dependabot) is just this; a **major** one is [below](#postgres-major-upgrade). |
 | `deploy/backup/*.sh` | `docker compose restart backup` in `/opt/wishlist` (it reads the script on start) |
+| `deploy/val/seed-from-prod.sh` | nothing: read on each seed. Install it with mode 755 **before the next seed** |
 | `deploy/webhook/deploy-validation.sh` | nothing: read on each delivery |
 | `deploy/webhook/hooks.yaml.example` | re-create `hooks.yaml` as in step 7, keeping the secret: `SECRET=$(sed -n 's/^ *secret: "\(.*\)"$/\1/p' hooks.yaml)` first, then `sudo systemctl restart wishlist-webhook` |
 | `deploy/webhook/wishlist-webhook.service` | install it as in step 7, then `sudo systemctl daemon-reload && sudo systemctl restart wishlist-webhook` |

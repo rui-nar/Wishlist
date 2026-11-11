@@ -470,9 +470,23 @@ Then the five lines of step 7 (product, bundle, issuer, key id and the key), and
 its `up -d` and `selling on iPhone is off` lines. That log line also names a
 missing or non-numeric `APPLE_APP_APPLE_ID`.
 
-Then make one real purchase on the production app with your own Apple Account,
-check Premium, and refund it from Apple's [report a
-problem](https://reportaproblem.apple.com) page.
+A purchase in an app installed from TestFlight is always a Sandbox one, even
+in the PROD app against PROD, so a real purchase cannot be made before the App
+Store release. Check PROD in two stages.
+
+**Before the release, [dev]:** on an iPhone with the PROD app from TestFlight
+and a Sandbox Apple Account of step 5 (Settings → Developer), sign in to
+Wishlist with the demo account of step 6, the one in
+`APPLE_SANDBOX_ACCOUNT_IDS`. Buy Premium: it appears within seconds, which
+proves PROD's key, bundle id and Sandbox exception. Then cancel the Sandbox subscription (Settings → Apple Account → Subscriptions) and
+check, before submitting the app, that the demo account is free again: the
+reviewer must find a purchase to make.
+
+**After the App Store release, [dev]:** install the PROD app from the App
+Store, sign out of the Sandbox Apple Account, and make one real purchase with
+your own Apple Account and your own Wishlist account. Check Premium, then
+refund it from Apple's [report a problem](https://reportaproblem.apple.com)
+page.
 
 ### 10. What the admin panel shows
 
@@ -816,7 +830,12 @@ again and run `up -d`.
 
 Then make one real purchase on the production app with a Google account that
 is **not** a license tester, check Premium, and refund it from the Play
-Console (Order management), with access revoked.
+Console (Order management), with access revoked. Unlike TestFlight, Play's
+internal track buys for real: only license testing makes a purchase a test
+one, and it covers every app of the developer account. So the account must be
+an internal tester of the PROD app, to install it from Play, and must not be
+on the license testing list of step 6; if your own Google account is on it,
+use another one or take yours off the list for the purchase.
 
 ### 10. What the admin panel shows for Google
 
