@@ -64,7 +64,8 @@ void main() {
           installFakeGoogleSignIn();
 
           final server = FakeServer();
-          FakeAdmin(server);
+          // Bob's Stripe subscription with a grant beside it.
+          FakeAdmin(server).grants[kBobId] = '2027-06-01T12:00:00Z';
           final app = buildApp(
             server,
             store: MemoryTokenStore(server.addSession()),

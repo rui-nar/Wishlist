@@ -254,6 +254,8 @@ class _UsersTable extends StatelessWidget {
             child: DataTable(
               showCheckboxColumn: false,
               columnSpacing: Spacing.s24,
+              // A plan on two lines still shows under a larger text size.
+              dataRowMaxHeight: double.infinity,
               columns: [
                 DataColumn(label: Text(l10n.adminColumnEmail)),
                 DataColumn(label: Text(l10n.adminColumnCreated)),
@@ -282,7 +284,7 @@ class _UsersTable extends StatelessWidget {
                       DataCell(Text(
                         signInLine(l10n, user.signIn, compact: true),
                       )),
-                      DataCell(Text(planLine(context, user.plan))),
+                      DataCell(_PlanLines(user: user)),
                       DataCell(Text('${user.listsOwned}')),
                       DataCell(Text(photosLine(context, user.photos))),
                     ],
@@ -294,6 +296,24 @@ class _UsersTable extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The plan, in the table and on a card: the Stripe subscription and the
+/// grant on lines of their own ([planLines]).
+class _PlanLines extends StatelessWidget {
+  const _PlanLines({required this.user, this.style});
+
+  final AdminUserRow user;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final line in planLines(context, user)) Text(line, style: style),
+        ],
+      );
 }
 
 /// A user on a phone: the address, the name, and the figures below.
@@ -331,7 +351,7 @@ class _UserCard extends StatelessWidget {
                     if (user.displayName.isNotEmpty)
                       Text(user.displayName, style: theme.textTheme.bodyMedium),
                     const SizedBox(height: Spacing.s4),
-                    Text(planLine(context, user.plan), style: small),
+                    _PlanLines(user: user, style: small),
                     Text(
                       l10n.adminFiguresLine(
                         l10n.adminListsOwned(user.listsOwned),

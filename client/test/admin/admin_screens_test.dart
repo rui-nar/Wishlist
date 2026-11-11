@@ -131,7 +131,9 @@ void main() {
       expect(find.byType(DataTable), findsNothing);
       expect(find.text('bob@example.com'), findsOneWidget);
       expect(find.text('Bob Durand'), findsOneWidget);
-      expect(find.text('Premium until Mar 12, 2027 · Stripe'), findsOneWidget);
+      expect(find.text('Stripe · renews Mar 12, 2027'), findsOneWidget);
+      // Neither a subscription nor a grant: the plan itself.
+      expect(find.text('Free'), findsNWidgets(2));
       expect(find.text('2 lists · 3 photos · 1.5 MB'), findsOneWidget);
       expect(find.text('Created May 2, 2026 · Apple, Email and password'),
           findsOneWidget);
@@ -147,7 +149,7 @@ void main() {
       expect(find.text('Email'), findsOneWidget);
       expect(find.text('bob@example.com'), findsOneWidget);
       expect(find.text('3 photos · 1.5 MB'), findsOneWidget);
-      expect(find.text('Premium until Mar 12, 2027 · Stripe'), findsOneWidget);
+      expect(find.text('Stripe · renews Mar 12, 2027'), findsOneWidget);
 
       await tester.tap(find.text('bob@example.com'));
       await tester.pumpAndSettle();
@@ -204,11 +206,13 @@ void main() {
     testWidgets('at 1440 wide every column shows without scrolling',
         (tester) async {
       // The longest a row gets: a long address, every way of signing in, a
-      // grant, and photos in the gigabytes.
+      // subscription's longest state beside a grant, and photos in the
+      // gigabytes.
+      const longId = '7b0c2f1e-0000-4000-8000-000000000009';
       admin.rows.insert(
         0,
         adminRow(
-          id: '7b0c2f1e-0000-4000-8000-000000000009',
+          id: longId,
           email: 'a.very.long.address.for.someone@subdomain.example-company.com',
           displayName: 'Someone With A Long Name',
           signIn: const ['apple', 'email', 'google'],
@@ -217,8 +221,23 @@ void main() {
             'source': 'manual',
             'until': '2027-12-28T12:00:00Z',
           },
+          subscription: stripeSubscription('incomplete'),
           listsOwned: 120,
           photos: const {'count': 120, 'bytes': 1234567890, 'measuring': false},
+        ),
+      );
+      admin.grants[longId] = '2027-12-28T12:00:00Z';
+      // The longest plan line, with neither a subscription nor a grant.
+      admin.rows.insert(
+        1,
+        adminRow(
+          id: '7b0c2f1e-0000-4000-8000-000000000010',
+          email: 'dave@example.com',
+          plan: const {
+            'plan': 'premium',
+            'source': 'google',
+            'until': '2027-12-28T12:00:00Z',
+          },
         ),
       );
       await start(tester, '/admin', size: _wide);
@@ -235,6 +254,10 @@ void main() {
       expect(photos.right, lessThanOrEqualTo(_wide.width));
       expect(find.text('120 photos · 1.2 GB'), findsOneWidget);
       expect(find.text('Apple, Email, Google'), findsOneWidget);
+      expect(find.text('Stripe · first payment not completed'), findsOneWidget);
+      expect(find.text('Granted here until Dec 28, 2027'), findsOneWidget);
+      expect(find.text('Premium until Dec 28, 2027 · Google Play'),
+          findsOneWidget);
       final address = tester.widget<Text>(find.text(
         'a.very.long.address.for.someone@subdomain.example-company.com',
       ));
@@ -379,6 +402,182 @@ void main() {
         find.text('Delete your own account from your account screen.'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('the Stripe subscription and the grant', () {
+    final subscriptionBlock = find.byKey(const ValueKey('admin-subscription'));
+    final grantBlock = find.byKey(const ValueKey('admin-grant'));
+    Finder inBlock(Finder block, Finder finder) =>
+        find.descendant(of: block, matching: finder);
+    final buttons = find.byWidgetPredicate((w) => w is ButtonStyleButton);
+
+    void bobSubscribes(String status, {String? periodEnd}) =>
+        admin.rows.first['subscription'] = stripeSubscription(
+          status,
+          periodEnd: periodEnd ?? '2027-03-12T12:00:00Z',
+        );
+
+    const statuses = [
+      (
+        status: 'active',
+        words: 'Active',
+        end: 'Renews on Mar 12, 2027',
+        periodEnd: null,
+      ),
+      (
+        status: 'past_due',
+        words: 'Payment overdue',
+        end: 'Renews on Mar 12, 2027',
+        periodEnd: null,
+      ),
+      (
+        status: 'canceling',
+        words: 'Cancellation scheduled',
+        end: 'Ends on Mar 12, 2027',
+        periodEnd: null,
+      ),
+      (
+        status: 'incomplete',
+        words: 'First payment not completed',
+        end: 'Ends on Mar 12, 2027',
+        periodEnd: null,
+      ),
+      (
+        status: 'ended',
+        words: 'Ended',
+        end: 'Ended on Mar 12, 2026',
+        periodEnd: '2026-03-12T12:00:00Z',
+      ),
+    ];
+    for (final (:status, :words, :end, :periodEnd) in statuses) {
+      testWidgets('$status: its status, start and end, apart from the grant',
+          (tester) async {
+        bobSubscribes(status, periodEnd: periodEnd);
+        await start(tester, bobPath());
+
+        expect(inBlock(subscriptionBlock, find.text('Stripe subscription')),
+            findsOneWidget);
+        expect(inBlock(subscriptionBlock, find.text(words)), findsOneWidget);
+        expect(inBlock(subscriptionBlock, find.text('Started on May 2, 2026')),
+            findsOneWidget);
+        expect(inBlock(subscriptionBlock, find.text(end)), findsOneWidget);
+        expect(
+          find.text('Payment failed: Stripe is retrying'),
+          status == 'past_due' ? findsOneWidget : findsNothing,
+        );
+        // Nothing granted: the grant's block says so and offers it.
+        expect(inBlock(grantBlock, find.text('Granted here')), findsOneWidget);
+        expect(inBlock(grantBlock, find.text('None')), findsOneWidget);
+        expect(inBlock(grantBlock, find.text('Grant Premium')), findsOneWidget);
+        expect(inBlock(subscriptionBlock, buttons), findsNothing);
+      });
+    }
+
+    testWidgets('never subscribed: no Stripe subscription, nothing granted',
+        (tester) async {
+      await start(tester, '/admin/users/$kCarolId');
+
+      expect(find.text('Free'), findsOneWidget);
+      expect(inBlock(subscriptionBlock, find.text('No Stripe subscription')),
+          findsOneWidget);
+      expect(inBlock(grantBlock, find.text('None')), findsOneWidget);
+      expect(inBlock(grantBlock, find.text('Grant Premium')), findsOneWidget);
+      expect(inBlock(subscriptionBlock, buttons), findsNothing);
+    });
+
+    for (final status in ['active', 'past_due']) {
+      testWidgets('a grant beside a $status subscription: both show, the '
+          'changes in the grant only', (tester) async {
+        bobSubscribes(status);
+        admin.grants[kBobId] = '2027-06-01T12:00:00Z';
+        await start(tester, bobPath());
+
+        // The effective plan stays the summary above both.
+        expect(find.text('Premium until Mar 12, 2027 · Stripe'), findsOneWidget);
+        expect(inBlock(subscriptionBlock, find.text('Renews on Mar 12, 2027')),
+            findsOneWidget);
+        expect(
+          inBlock(subscriptionBlock,
+              find.text('Payment failed: Stripe is retrying')),
+          status == 'past_due' ? findsOneWidget : findsNothing,
+        );
+        expect(inBlock(grantBlock, find.text('Until Jun 1, 2027')),
+            findsOneWidget);
+        expect(inBlock(grantBlock, find.text('Change the end date')),
+            findsOneWidget);
+        expect(inBlock(grantBlock, find.text('End granted Premium')),
+            findsOneWidget);
+        expect(inBlock(grantBlock, buttons), findsNWidgets(2));
+        expect(inBlock(subscriptionBlock, buttons), findsNothing);
+      });
+    }
+
+    testWidgets('on a phone, the blocks are stacked', (tester) async {
+      admin.grants[kBobId] = '2027-06-01T12:00:00Z';
+      await start(tester, bobPath());
+
+      final subscription = tester.getRect(subscriptionBlock);
+      final grant = tester.getRect(grantBlock);
+      expect(grant.top, greaterThanOrEqualTo(subscription.bottom));
+      expect(grant.left, subscription.left);
+      expect(grant.width, subscription.width);
+    });
+
+    testWidgets('on a wide screen, side by side, as tall, never overlapping',
+        (tester) async {
+      bobSubscribes('past_due');
+      admin.grants[kBobId] = '2027-06-01T12:00:00Z';
+      await start(tester, bobPath(), size: _wide);
+
+      final subscription = tester.getRect(subscriptionBlock);
+      final grant = tester.getRect(grantBlock);
+      expect(grant.top, subscription.top);
+      expect(grant.height, subscription.height);
+      expect(grant.left, greaterThan(subscription.right));
+      expect(subscription.overlaps(grant), isFalse);
+    });
+
+    testWidgets('the users cards: the subscription and the grant on lines of '
+        'their own', (tester) async {
+      admin.grants[kBobId] = '2027-06-01T12:00:00Z';
+      await start(tester, '/admin');
+
+      final stripe = find.text('Stripe · renews Mar 12, 2027');
+      final granted = find.text('Granted here until Jun 1, 2027');
+      expect(stripe, findsOneWidget);
+      expect(granted, findsOneWidget);
+      expect(tester.getRect(granted).top,
+          greaterThanOrEqualTo(tester.getRect(stripe).bottom));
+    });
+
+    testWidgets('the users table: the same two lines in the plan cell',
+        (tester) async {
+      bobSubscribes('past_due');
+      admin.grants[kBobId] = '2027-06-01T12:00:00Z';
+      await start(tester, '/admin', size: _wide);
+
+      final stripe = find.text('Stripe · payment failed');
+      final granted = find.text('Granted here until Jun 1, 2027');
+      expect(stripe, findsOneWidget);
+      expect(granted, findsOneWidget);
+      expect(tester.getRect(granted).top,
+          greaterThanOrEqualTo(tester.getRect(stripe).bottom));
+      expect(tester.getRect(granted).left, tester.getRect(stripe).left);
+    });
+
+    testWidgets('in French', (tester) async {
+      bobSubscribes('past_due');
+      admin.grants[kBobId] = '2027-06-01T12:00:00Z';
+      await start(tester, bobPath(), locale: const Locale('fr'));
+
+      expect(find.text('Abonnement Stripe'), findsOneWidget);
+      expect(find.text('Paiement en retard'), findsOneWidget);
+      expect(find.text('Commencé le 2 mai 2026'), findsOneWidget);
+      expect(find.text('Renouvellement le 12 mars 2027'), findsOneWidget);
+      expect(find.text('Paiement échoué : Stripe réessaie'), findsOneWidget);
+      expect(find.text('Accordé ici'), findsOneWidget);
+      expect(find.text("Jusqu'au 1 juin 2027"), findsOneWidget);
     });
   });
 

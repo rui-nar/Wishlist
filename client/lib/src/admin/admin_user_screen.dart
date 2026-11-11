@@ -24,7 +24,8 @@ DateTime _yearsAfter(DateTime day, int years) {
 }
 
 /// `/admin/users/:id`: one account, its lists as counts (D6), its plan with
-/// the grant and its end (D8), and its deletion (D9). Each change asks first.
+/// its Stripe subscription apart from the grant and its end (D8), and its
+/// deletion (D9). Each change asks first.
 class AdminUserScreen extends StatefulWidget {
   const AdminUserScreen({super.key, required this.userId});
 
@@ -80,7 +81,7 @@ class _AdminUserScreenState extends State<AdminUserScreen> {
       context: context,
       builder: (context) => _GrantDialog(
         email: detail.user.email,
-        initial: detail.manualGrantEnd?.toLocal() ??
+        initial: detail.user.manualGrantEnd?.toLocal() ??
             _yearsAfter(today, _kDefaultGrantYears),
         first: today.add(const Duration(days: 1)),
         last: _yearsAfter(today, _kMaxGrantYears),
@@ -211,7 +212,7 @@ class _AdminUserScreenState extends State<AdminUserScreen> {
           _Section(
             title: l10n.adminPlanTitle,
             child: _Plan(
-              detail: detail,
+              user: detail.user,
               busy: _busy,
               onGrant: () => _grant(detail),
               onEnd: () => _endGrant(detail),
@@ -310,16 +311,22 @@ class _Identity extends StatelessWidget {
   }
 }
 
-/// The plan, the grant and its end when there is one, and the two changes.
+/// Wide enough for the subscription and the grant side by side: each block
+/// keeps room for its dates and the grant's buttons. Stacked below.
+const _kBlocksSideBySide = 2 * 4 * Spacing.s64 + Spacing.s12;
+
+/// The effective plan, then the Stripe subscription and the grant in blocks
+/// of their own: neither hides the other, and the grant's changes are in its
+/// block only.
 class _Plan extends StatelessWidget {
   const _Plan({
-    required this.detail,
+    required this.user,
     required this.busy,
     required this.onGrant,
     required this.onEnd,
   });
 
-  final AdminUserDetail detail;
+  final AdminUserRow user;
   final bool busy;
   final VoidCallback onGrant;
   final VoidCallback onEnd;
@@ -327,14 +334,152 @@ class _Plan extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final grantEnd = detail.manualGrantEnd;
+    final subscription = _Block(
+      key: const ValueKey('admin-subscription'),
+      title: l10n.adminSubscriptionTitle,
+      child: _Subscription(subscription: user.subscription),
+    );
+    final grant = _Block(
+      key: const ValueKey('admin-grant'),
+      title: l10n.adminGrantBlockTitle,
+      child: _Grant(
+        end: user.manualGrantEnd,
+        busy: busy,
+        onGrant: onGrant,
+        onEnd: onEnd,
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(planLine(context, user.plan)),
+        const SizedBox(height: Spacing.s12),
+        LayoutBuilder(
+          builder: (context, constraints) =>
+              constraints.maxWidth >= _kBlocksSideBySide
+                  // As tall as each other, so they read as a pair.
+                  ? IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: subscription),
+                          const SizedBox(width: Spacing.s12),
+                          Expanded(child: grant),
+                        ],
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        subscription,
+                        const SizedBox(height: Spacing.s12),
+                        grant,
+                      ],
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A titled, outlined block inside the plan section.
+class _Block extends StatelessWidget {
+  const _Block({super.key, required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(Radii.md),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.labelLarge),
+            const SizedBox(height: Spacing.s8),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Stripe subscription: its status, since when, when it renews or ends,
+/// and a failed payment Stripe is retrying.
+class _Subscription extends StatelessWidget {
+  const _Subscription({required this.subscription});
+
+  final AdminSubscription? subscription;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final subscription = this.subscription;
+    if (subscription == null) return Text(l10n.adminNoSubscription);
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final started = subscription.startedAt;
+    final end = subscriptionEndLine(context, subscription);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(planLine(context, detail.user.plan)),
-        // Already said by the plan line when the grant is what it shows.
-        if (grantEnd != null && detail.user.plan.source != 'manual')
-          Text(l10n.adminGrantedUntil(formatDay(context, grantEnd))),
+        Text(subscriptionStatus(l10n, subscription.status)),
+        if (started != null)
+          Text(
+            l10n.adminSubscriptionStarted(formatDay(context, started)),
+            style: small,
+          ),
+        if (end != null) Text(end, style: small),
+        if (subscription.status == 'past_due') ...[
+          const SizedBox(height: Spacing.s4),
+          Text(
+            l10n.adminSubscriptionRetrying,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// The Premium granted here: until when, and its changes.
+class _Grant extends StatelessWidget {
+  const _Grant({
+    required this.end,
+    required this.busy,
+    required this.onGrant,
+    required this.onEnd,
+  });
+
+  final DateTime? end;
+  final bool busy;
+  final VoidCallback onGrant;
+  final VoidCallback onEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final end = this.end;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          end == null
+              ? l10n.adminGrantBlockNone
+              : l10n.adminGrantBlockUntil(formatDay(context, end)),
+        ),
         const SizedBox(height: Spacing.s12),
         Wrap(
           spacing: Spacing.s8,
@@ -343,10 +488,10 @@ class _Plan extends StatelessWidget {
             FilledButton.tonal(
               onPressed: busy ? null : onGrant,
               child: Text(
-                grantEnd == null ? l10n.adminGrantPremium : l10n.adminChangeGrant,
+                end == null ? l10n.adminGrantPremium : l10n.adminChangeGrant,
               ),
             ),
-            if (grantEnd != null)
+            if (end != null)
               OutlinedButton(
                 onPressed: busy ? null : onEnd,
                 child: Text(l10n.adminEndGrant),
