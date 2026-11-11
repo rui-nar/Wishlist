@@ -1,0 +1,66 @@
+# Review ledger — Android release
+
+Subject: docs/plans/ANDROID_RELEASE_PLAN.md
+Envelope: the plan's `## Review envelope`, with APPLE_IAP_PLAN's, IOS_APP_PLAN's and REVIEW.md defaults
+
+Decisions approved as triaged, floors enforced, under the owner's standing
+instruction of 2026-11-11. Envelope questions answered with the
+recommendation: a Google subscription is cancelled before deletion like
+Stripe's; VAL refuses purchases not flagged as test purchases; an out-of-app
+resubscription is resolved through its expired token's stored row.
+
+## Round 1 — 2026-11-11, reviewed at the plan's first draft (uncommitted)
+
+### R1-1 — A Play Store resubscription carries no account id
+- Trigger: an expired subscriber resubscribes in Play → no account resolved → charged, Free, then refunded.
+- Scores: trigger=concrete (corrected from plausible), impact=silent-wrong, detect=logged, later=cheap, fix=M/local, confidence=inferred
+- Decision: Fix now (D3)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan D6, Account)
+
+### R1-2 — Google's selling state does not require the notification settings
+- Trigger: the owner sets the product but not the Pub/Sub settings → every push refused, renewals and refunds unrecorded.
+- Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D3)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan D6, Selling on Android)
+
+### R1-3 — Only the client's report acknowledges a purchase
+- Trigger: the app dies before posting → the notification records Premium, nothing acknowledges → Google refunds on day 3.
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible (corrected from logged), later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: the Play Console shows an order refunded for not being acknowledged, or the client does not re-post unacknowledged purchases at launch
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R1-4 — A voided notification ends the row without a re-read
+- Trigger: a refund without revoking → the row ends while Play still renews → deletion escapes cancelling, or Restore brings Premium back.
+- Scores: trigger=plausible, impact=silent-wrong, detect=silent, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D3)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan D6, Notifications)
+
+### R1-5 — Purchase tokens may not fit `external_id`
+- Trigger: a token over 255 characters → the insert fails, nothing recorded → refund.
+- Scores: trigger=plausible, impact=wrong-visible, detect=logged, later=expensive, fix=S/shared, confidence=inferred
+- Decision: Fix now (D5)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan D6, Storage; Boundaries: one migration)
+
+### R1-6 — The first Play upload must be manual
+- Trigger: the owner pushes the validation tag first → the API refuses an app with no manual upload.
+- Scores: trigger=concrete, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Fix now (D7)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (plan D4, U5)

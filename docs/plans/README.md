@@ -26,3 +26,4 @@ the plan.
 | [ADMIN_PANEL_PLAN](ADMIN_PANEL_PLAN.md) | — | feat/admin-panel |
 | [IOS_APP_PLAN](IOS_APP_PLAN.md) | — | feat/ios-app |
 | [APPLE_IAP_PLAN](APPLE_IAP_PLAN.md) | — | feat/ios-app |
+| [ANDROID_RELEASE_PLAN](ANDROID_RELEASE_PLAN.md) | — | feat/android-release |
