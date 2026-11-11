@@ -23,4 +23,16 @@ GOOGLE_IOS_REVERSED_CLIENT_ID = com.googleusercontent.apps.unset
 
 PRODUCT_BUNDLE_IDENTIFIER = $(SHUSHGIFT_BUNDLE_ID)
 
+// The host whose links open the app (SHUSH_GIFT_PLAN D7): the host of the
+// build's API_BASE_URL_* secret, set by ios-release.yml. None here.
+SHUSHGIFT_APP_LINK_HOST =
+
+// The app's entitlements: Sign in with Apple only, unless a build with an
+// app-link host replaces this with Runner/RunnerAppLinks.entitlements, which
+// adds the Associated Domains entitlement applinks:$(SHUSHGIFT_APP_LINK_HOST).
+// An entitlements file cannot leave a key out by itself, hence two files.
+// The Runner target does not set it, so this value applies; the tests'
+// target sets it empty, as it signs with none.
+CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements
+
 #include? "Identity.local.xcconfig"

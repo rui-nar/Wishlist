@@ -44,6 +44,10 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- A link that opens the app reaches its router, whole, fragment
+	     included (SHUSH_GIFT_PLAN D7), as on Android. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
 	<!-- HTTPS only: no export compliance documents (IOS_APP_PLAN D6). -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
