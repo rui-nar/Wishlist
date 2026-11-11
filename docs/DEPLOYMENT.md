@@ -1243,10 +1243,9 @@ address of `LEGAL_PRIVACY_URL`. Then Get Started → **Yes, we collect data**:
 | Identifiers → User ID (the account's id) | App Functionality | Yes | No |
 | User Content → Photos or Videos (gift images) | App Functionality | Yes | No |
 | User Content → Other User Content (lists, gifts, comments) | App Functionality | Yes | No |
+| Purchases → Purchase History (the Premium subscription) | App Functionality | Yes | No |
 
 Nothing else: no analytics, no advertising, no location, no tracking. Publish.
-When in-app purchase ships (`APPLE_IAP_PLAN.md`), Purchases → Purchase
-History joins the table.
 
 ### Selling Premium in the app
 
