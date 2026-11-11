@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import Engine, create_engine, make_url, text
@@ -101,3 +102,28 @@ def make_account(engine: Engine) -> Callable[..., Account]:
         return Account(id=user_id, token=token)
 
     return make
+
+
+@pytest.fixture
+def set_email(engine: Engine) -> Callable[[uuid.UUID, str], None]:
+    def set_(user_id: uuid.UUID, email: str) -> None:
+        with engine.begin() as connection:
+            connection.execute(
+                text("UPDATE users SET email = :email WHERE id = :id"),
+                {"email": email, "id": user_id},
+            )
+
+    return set_
+
+
+@pytest.fixture
+def admin(make_account: Callable[..., Account]) -> Account:
+    return make_account()
+
+
+@pytest.fixture
+def client(make_client: Callable[..., Any], admin: Account, now: datetime) -> Any:
+    """An app whose one admin is `admin`, on the clock `now`."""
+    client = make_client(admin_user_ids=str(admin.id))
+    client.app.state.clock = lambda: now
+    return client

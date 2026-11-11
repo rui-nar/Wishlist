@@ -2,8 +2,9 @@
 everyone else, exactly as an unknown path does, and `RecentAdminUser` asks the
 admin to sign in again after 12 hours.
 
-U1 has no admin route yet: each test adds two probes to its app, one reading
-and one changing, behind the two dependencies.
+Each test adds two probes to its app, one reading and one changing, behind the
+two dependencies; outside `/api/admin`, whose catch-all answers first. The
+routes themselves are in `test_admin_routes.py`.
 """
 
 from datetime import datetime, timedelta
@@ -14,8 +15,8 @@ from sqlalchemy import text
 
 from app.accounts.deps import AdminUser, RecentAdminUser
 
-READ = "/api/admin/probe"
-CHANGE = "/api/admin/probe-change"
+READ = "/api/probe"
+CHANGE = "/api/probe-change"
 
 
 def with_probes(client: TestClient, now: datetime) -> TestClient:

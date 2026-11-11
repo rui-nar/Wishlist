@@ -92,6 +92,14 @@ def owner_visible(list_id: ListId, now: datetime) -> ColumnElement[bool]:
     )
 
 
+def owner_visible_anywhere(now: datetime) -> ColumnElement[bool]:
+    """`owner_visible`, for gifts of any list: every gift its list's owners
+    may see, on whichever list it is or is for. The admin panel's photo
+    figures count these only (admin panel plan D7, review R1-1): a hidden
+    gift is a giver's activity until revealed."""
+    return or_(Gift.list_id.is_not(None), owner_visible(Gift.for_list_id, now))
+
+
 def received(list_id: ListId) -> ColumnElement[bool]:
     """The list's "Received": every gift of it its owners marked received,
     on the list or revealed, whatever its occasion's date became since (D5,

@@ -23,6 +23,7 @@ from app.accounts.apple_router import router as apple_router
 from app.accounts.email_router import router as email_router
 from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
+from app.admin.router import router as admin_router
 from app.billing.router import router as billing_router
 from app.billing.stripe_gateway import StripeGateway
 from app.comments.router import router as comments_router
@@ -211,6 +212,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.include_router(comments_router)
     app.include_router(notifications_router)
     app.include_router(billing_router)
+    app.include_router(admin_router)
     app.add_exception_handler(RequestValidationError, _validation_error)
 
     # Registered last, so every /api route above takes precedence.

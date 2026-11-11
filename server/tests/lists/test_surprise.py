@@ -253,6 +253,15 @@ IMAGE = "/api/images/{image_id}/{variant}"
 OCCASION_IMAGE = "/api/occasions/{occasion_id}/images/{image_id}/{variant}"
 ACTIVITY_ROUTES = {route for _, route, _ in ACTIVITY} | {CLAIMS}
 MEMBERS = "/api/occasions/{occasion_id}/members"
+# The admin routes, each with its body: the recipient is no admin, and gets
+# what any unknown path answers (admin panel plan D2).
+ADMIN_ROUTES = [
+    ("GET", "/api/admin/users", None),
+    ("GET", "/api/admin/users/{user_id}", None),
+    ("POST", "/api/admin/users/{user_id}/premium", {}),
+    ("DELETE", "/api/admin/users/{user_id}/premium", None),
+    ("DELETE", "/api/admin/users/{user_id}", {"email": "someone@example.test"}),
+]
 
 # What only a giver may read (D6): never a key of an answer to the recipient.
 ACTIVITY_KEYS = {
@@ -747,6 +756,8 @@ def reads(
     rec.call("POST", "/api/billing/checkout")
     rec.call("POST", "/api/billing/portal")
     rec.call("POST", "/api/billing/webhook", content=b"{}")
+    for method, route, body in ADMIN_ROUTES:
+        rec.call(method, route, json=body, user_id=OWNER)
     rec.call("GET", "/api/lists")
     detail = rec.call("GET", "/api/lists/{list_id}", list_id="list")
     assert_twin_gifts(rec, detail.json()["gifts"], gifts)
