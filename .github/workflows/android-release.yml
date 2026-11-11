@@ -1,0 +1,340 @@
+name: Android release
+
+# Signs the Android app and uploads it to Google Play's internal testing track
+# (ANDROID_RELEASE_PLAN D4). Two apps (D1, D2): the `validation` tag builds the
+# VAL flavour against VAL, a release tag (vX.Y.Z, as in docker-build.yml)
+# builds the PROD flavour against PROD, and a manual run chooses. It never runs
+# for a pull request, so no fork's code ever sees the signing secrets.
+on:
+  push:
+    tags:
+      - 'v*'
+      # 'v*' already matches it; listed so the trigger does not rely on that,
+      # as in docker-build.yml.
+      - 'validation'
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which app to build. PROD needs a vX.Y.Z tag as the ref.
+        type: choice
+        options: [val, prod]
+        default: val
+
+permissions:
+  contents: read
+
+# One upload per ref at a time, and never a cancelled one.
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Refuses what would upload a wrong app before anything is signed, as
+  # ios-release.yml's gate.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      app: ${{ steps.gate.outputs.app }}
+      app_id: ${{ steps.gate.outputs.app_id }}
+      package_name: ${{ steps.gate.outputs.package_name }}
+      build_name: ${{ steps.gate.outputs.build_name }}
+    steps:
+      - name: Check the configuration
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_APP: ${{ inputs.app }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          ANDROID_APP_ID: ${{ vars.ANDROID_APP_ID }}
+          ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          API_BASE_URL_PROD: ${{ secrets.API_BASE_URL_PROD }}
+          API_BASE_URL_VAL: ${{ secrets.API_BASE_URL_VAL }}
+        run: |
+          names=(ANDROID_APP_ID ANDROID_UPLOAD_KEYSTORE_B64 ANDROID_UPLOAD_KEYSTORE_PASSWORD
+                 ANDROID_UPLOAD_KEY_ALIAS ANDROID_UPLOAD_KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON)
+          missing=()
+          for name in "${names[@]}"; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          # None of them: the owner has not registered with Google Play yet,
+          # which is not a failure.
+          if [ "${#missing[@]}" -eq "${#names[@]}" ]; then
+            echo "::notice title=Android release skipped::No Google Play configuration (${names[*]}): nothing was built or uploaded."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Some of them: a configuration left half done.
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing: ${missing[*]}"
+            exit 1
+          fi
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            app="$INPUT_APP"
+          elif [ "$REF_NAME" = "validation" ]; then
+            app="val"
+          else
+            app="prod"
+          fi
+
+          build_name=""
+          if [ "$app" = "prod" ]; then
+            api="$API_BASE_URL_PROD"
+            package_name="$ANDROID_APP_ID"
+            # The PROD app's version is the release's, as on iOS.
+            if [ "$REF_TYPE" != "tag" ] || ! [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::The PROD app is built from a vX.Y.Z tag only, not from '$REF_NAME'"
+              exit 1
+            fi
+            build_name="${REF_NAME#v}"
+          else
+            api="$API_BASE_URL_VAL"
+            # The val flavour's applicationIdSuffix (D1).
+            package_name="$ANDROID_APP_ID.val"
+          fi
+
+          # The placeholder is not the real id, and an id cannot change after
+          # the first upload (D1). The format check also keeps the value safe
+          # to pass to Gradle and to put in the Play API's URLs.
+          if [[ "$ANDROID_APP_ID" == com.example.* ]]; then
+            echo "::error::ANDROID_APP_ID is the placeholder: set the real application id"
+            exit 1
+          fi
+          if ! [[ "$ANDROID_APP_ID" =~ ^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$ ]]; then
+            echo "::error::ANDROID_APP_ID '$ANDROID_APP_ID' is not an application id"
+            exit 1
+          fi
+          # Android refuses cleartext traffic by default, and iOS shares these
+          # secrets.
+          if [[ "$api" != https://?* ]]; then
+            echo "::error::The $app app's server address is empty or not https: set the API_BASE_URL_VAL or API_BASE_URL_PROD secret"
+            exit 1
+          fi
+          # A wrong paste fails here, before anything is built. Nothing of the
+          # key is printed, jq's messages included.
+          if ! jq -e '.type == "service_account" and (.client_email | type == "string") and (.private_key | type == "string")' \
+              <<< "$PLAY_SERVICE_ACCOUNT_JSON" > /dev/null 2>&1; then
+            echo "::error::PLAY_SERVICE_ACCOUNT_JSON is not a service account's JSON key"
+            exit 1
+          fi
+
+          {
+            echo "ready=true"
+            echo "app=$app"
+            echo "app_id=$ANDROID_APP_ID"
+            echo "package_name=$package_name"
+            echo "build_name=$build_name"
+          } >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: client
+
+    env:
+      APP: ${{ needs.gate.outputs.app }}
+      BUNDLE: build/app/outputs/bundle/${{ needs.gate.outputs.app }}Release/app-${{ needs.gate.outputs.app }}-release.aab
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # As in test.yml's android job, without its Gradle cache: the signing
+      # build resolves its dependencies itself.
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Pinned as in test.yml's client job: move them together.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.1"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      # A temporary file, never committed or cached; removed at the end.
+      - name: Write the upload key
+        env:
+          ANDROID_UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/upload-key"
+          if ! printf '%s' "$ANDROID_UPLOAD_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/upload-key/upload.keystore" 2> /dev/null; then
+            echo "::error::ANDROID_UPLOAD_KEYSTORE_B64 is not base64"
+            exit 1
+          fi
+
+      # Gradle signs with the upload key from the environment (D3), and
+      # wishlistRequireUploadKey makes it fail rather than sign with the debug
+      # key. The version code is the run number: Play needs it to grow.
+      - name: Build the bundle
+        id: build
+        env:
+          APP_ID: ${{ needs.gate.outputs.app_id }}
+          BUILD_NAME: ${{ needs.gate.outputs.build_name }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          API_BASE_URL_PROD: ${{ secrets.API_BASE_URL_PROD }}
+          API_BASE_URL_VAL: ${{ secrets.API_BASE_URL_VAL }}
+          ANDROID_UPLOAD_KEYSTORE_PATH: ${{ runner.temp }}/upload-key/upload.keystore
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          if [ "$APP" = "prod" ]; then
+            api="$API_BASE_URL_PROD"
+            version="$REF_NAME"
+          else
+            api="$API_BASE_URL_VAL"
+            # As the VAL image's version (docker-build.yml).
+            version="validation-$(git rev-parse --short HEAD)"
+          fi
+          # Flutter hands the dart-defines to Gradle base64-encoded, which the
+          # secret's own mask does not cover.
+          echo "::add-mask::$(printf '%s' "API_BASE_URL=$api" | base64 | tr -d '\n')"
+          args=(
+            --release --flavor "$APP"
+            -P wishlistAppId="$APP_ID"
+            -P wishlistRequireUploadKey=true
+            --build-number="$BUILD_NUMBER"
+            --dart-define=API_BASE_URL="$api"
+            --dart-define=APP_VERSION="$version"
+          )
+          if [ -n "$BUILD_NAME" ]; then
+            args+=(--build-name="$BUILD_NAME")
+          fi
+          flutter build appbundle "${args[@]}"
+          if [ ! -f "$BUNDLE" ]; then
+            echo "::error::No bundle at $BUNDLE"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Android $APP app::$version, build $BUILD_NUMBER"
+
+      # The Play Developer API's edit: insert, upload the bundle, put it on
+      # the internal track, commit. curl, jq and openssl only, so the service
+      # account's key reaches no third-party code. Play refuses a bundle whose
+      # package is not the edit's, or signed with another key than the
+      # app's upload key.
+      - name: Upload to the internal track
+        id: publish
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PACKAGE_NAME: ${{ needs.gate.outputs.package_name }}
+          RELEASE_NAME: ${{ steps.build.outputs.version }} (${{ github.run_number }})
+        run: |
+          b64url() { base64 -w 0 | tr '+/' '-_' | tr -d '='; }
+
+          # An access token from the service account's key: Google's OAuth 2.0
+          # for service accounts, a JWT signed with the key. The key is in a
+          # temporary file only while it signs.
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          jq -r '.private_key' <<< "$PLAY_SERVICE_ACCOUNT_JSON" > "$key"
+          email=$(jq -r '.client_email' <<< "$PLAY_SERVICE_ACCOUNT_JSON")
+          now=$(date +%s)
+          header=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          claims=$(jq -nc --arg iss "$email" --argjson now "$now" \
+            '{iss: $iss, scope: "https://www.googleapis.com/auth/androidpublisher",
+              aud: "https://oauth2.googleapis.com/token", iat: $now, exp: ($now + 3600)}' | b64url)
+          signature=$(printf '%s.%s' "$header" "$claims" | openssl dgst -sha256 -binary -sign "$key" | b64url)
+          rm -f "$key"
+          if ! response=$(curl -sS --fail-with-body \
+              --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer' \
+              --data-urlencode "assertion=$header.$claims.$signature" \
+              https://oauth2.googleapis.com/token); then
+            echo "::error::Google refused the service account: $(jq -r '.error_description // .error // "no answer"' <<< "$response" 2> /dev/null)"
+            exit 1
+          fi
+          token=$(jq -r '.access_token' <<< "$response")
+          echo "::add-mask::$token"
+
+          base="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME"
+          upload="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PACKAGE_NAME"
+
+          # Prints the answer. On a refusal, prints Google's message to stderr
+          # and returns 3 when Play takes draft releases only, 1 otherwise.
+          api() {
+            local response message
+            if response=$(curl -sS --fail-with-body -H "Authorization: Bearer $token" "$@"); then
+              printf '%s' "$response"
+              return 0
+            fi
+            message=$(jq -r '.error.message // empty' <<< "$response" 2> /dev/null)
+            echo "Google Play: ${message:-no answer}" >&2
+            if [[ "$message" == *"status draft"* ]]; then
+              return 3
+            fi
+            return 1
+          }
+
+          # One edit, with the release in the given status.
+          publish() {
+            local status="$1" response edit code release
+            response=$(api -X POST -H 'Content-Type: application/json' -d '{}' "$base/edits") || return
+            edit=$(jq -r '.id' <<< "$response")
+            response=$(api -X POST -H 'Content-Type: application/octet-stream' --data-binary "@$BUNDLE" \
+              "$upload/edits/$edit/bundles?uploadType=media") || { local failed=$?; cancel "$edit"; return "$failed"; }
+            code=$(jq -r '.versionCode' <<< "$response")
+            release=$(jq -nc --arg name "$RELEASE_NAME" --arg code "$code" --arg status "$status" \
+              '{track: "internal", releases: [{name: $name, versionCodes: [$code], status: $status}]}')
+            api -X PUT -H 'Content-Type: application/json' -d "$release" \
+              "$base/edits/$edit/tracks/internal" > /dev/null || { local failed=$?; cancel "$edit"; return "$failed"; }
+            api -X POST -d '' "$base/edits/$edit:commit" > /dev/null || { local failed=$?; cancel "$edit"; return "$failed"; }
+            echo "versionCode $code"
+          }
+
+          # An edit left open would conflict with the next one.
+          cancel() {
+            api -X DELETE "$base/edits/$1" > /dev/null 2>&1 || true
+          }
+
+          # A completed release, so internal testers get it at once; a draft
+          # while the app has never been published, as Play allows nothing
+          # else then (D4).
+          status=0
+          publish completed || status=$?
+          if [ "$status" -eq 3 ]; then
+            echo "::notice title=Draft release::The app has never been published, so Play takes a draft release only: roll it out from the Play Console."
+            status=0
+            publish draft || status=$?
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Google Play refused the release (its message is in the log above). An app's first bundle is uploaded by hand from the Play Console: this run's bundle is kept as the artefact android-bundle."
+            exit 1
+          fi
+
+      # Only when Play refused the bundle: an app's first upload is manual
+      # (review R1-6), and that is how it fails. Not on every run: anyone can
+      # download a public repository's artefacts, and the bundle holds the
+      # server address, which is a secret to stay out of the logs.
+      - name: Keep the bundle
+        if: failure() && steps.publish.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-bundle
+          path: client/${{ env.BUNDLE }}
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Remove the upload key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/upload-key"
