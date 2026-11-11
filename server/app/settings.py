@@ -110,6 +110,22 @@ class Settings(BaseSettings):
     # (D6): the demo account given to Apple's review. Ignored elsewhere, where
     # only Sandbox purchases are accepted.
     apple_sandbox_account_ids: str = ""
+    # Premium bought on Android (Android release plan D6): the subscription
+    # sold, the app it is sold in, and the service account that reads it from
+    # the Play Developer API, as its JSON key, a secret.
+    google_play_product_id: str = ""
+    google_play_package_name: str = ""
+    google_play_service_account_json: str = ""
+    # Who may push Play's notifications: the audience their Pub/Sub token is
+    # for, and the service account it names. Without them, renewals, grace
+    # and refunds could not be recorded, so nothing is sold (review R1-2).
+    # Any of the five empty: no purchase is offered on Android and none is
+    # recorded.
+    google_play_pubsub_audience: str = ""
+    google_play_pubsub_service_account: str = ""
+    # Comma-separated account ids whose test purchases production accepts
+    # (D6). Elsewhere only test purchases are accepted, from anyone.
+    google_play_test_account_ids: str = ""
     # Comma-separated account ids of the admins (admin panel plan D1), never
     # addresses. Empty: no admin, and /api/admin answers 404 to everyone.
     admin_user_ids: str = ""
@@ -167,6 +183,31 @@ class Settings(BaseSettings):
                 if app_apple_id.isascii() and app_apple_id.isdigit()
                 else ""
             )
+        return [name for name, value in values.items() if not value.strip()]
+
+    @property
+    def google_play_test_ids(self) -> frozenset[uuid.UUID]:
+        # As ADMIN_USER_IDS: an entry that is not an id names no one.
+        ids = set()
+        for entry in self.google_play_test_account_ids.split(","):
+            with contextlib.suppress(ValueError):
+                ids.add(uuid.UUID(entry.strip()))
+        return frozenset(ids)
+
+    @property
+    def missing_google_settings(self) -> list[str]:
+        """The variables that keep the app from selling on Android (Android
+        release plan D6). Whether the key loads is known only by loading it:
+        the gateway's construction says so."""
+        values = {
+            "GOOGLE_PLAY_PRODUCT_ID": self.google_play_product_id,
+            "GOOGLE_PLAY_PACKAGE_NAME": self.google_play_package_name,
+            "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON": self.google_play_service_account_json,
+            "GOOGLE_PLAY_PUBSUB_AUDIENCE": self.google_play_pubsub_audience,
+            "GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT": (
+                self.google_play_pubsub_service_account
+            ),
+        }
         return [name for name, value in values.items() if not value.strip()]
 
     @property

@@ -28,10 +28,13 @@ def delete_account(
 ) -> JSONResponse | None:
     """Deletes the account, or answers the refusal to send, with nothing
     changed (premium plan D15). The caller holds no lock on the account:
-    Stripe is asked first, for up to 45 s a call, then Apple."""
+    Stripe is asked first, for up to 45 s a call, then Google, then Apple."""
     # Before any lock, so that none of their requests waits on Stripe (premium
-    # plan D15). A refusal has changed nothing.
-    stopped = stop_billing(db, state.stripe_gateway, user_id, state.clock())
+    # plan D15) or Google (Android release plan D6). A refusal has changed
+    # nothing.
+    stopped = stop_billing(
+        db, state.stripe_gateway, state.google_gateway, user_id, state.clock()
+    )
     if isinstance(stopped, JSONResponse):
         return stopped
     # Apple's tokens revoked once billing can no longer refuse the deletion,

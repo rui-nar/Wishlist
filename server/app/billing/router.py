@@ -1,12 +1,12 @@
 """The billing routes: the plan, Stripe's Checkout and Portal, and its webhook
 (premium plan D11 to D14); Apple's purchases and notifications (Apple IAP
-plan D3, D4).
+plan D3, D4); Google Play's (Android release plan D6).
 
-No row lock is ever held across a call to Stripe or Apple: checkout, portal
-and Apple's transactions authenticate with `unlocked_session` and lock the
-user only after their last call, and the webhook and Apple's notifications
-read the subscription before their first write. A refusal is returned, not
-raised, so it keeps its `code`.
+No row lock is ever held across a call to Stripe, Apple or Google: checkout,
+portal and the stores' purchases authenticate with `unlocked_session` and lock
+the user only after their last call, and the webhook and the stores'
+notifications read the subscription before their first write. A refusal is
+returned, not raised, so it keeps its `code`.
 """
 
 import json
@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.accounts.deps import CurrentUser, UnlockedSession, lock_signed_in
 from app.accounts.models import User
-from app.billing import apple_events, stripe_events
+from app.billing import apple_events, google_events, stripe_events
 from app.billing.apple_events import SANDBOX
 from app.billing.apple_gateway import AppleError, InvalidSignedData, MissingAtApple
 from app.billing.entitlements import (
@@ -35,6 +35,12 @@ from app.billing.entitlements import (
     is_premium,
     record_consent,
     summary,
+)
+from app.billing.google_gateway import (
+    GoogleError,
+    GoogleGateway,
+    InvalidPush,
+    MissingAtGoogle,
 )
 from app.billing.models import (
     ACTIVE,
@@ -49,6 +55,8 @@ from app.billing.schemas import (
     AppleTransactionReport,
     BillingRefusal,
     BillingStatus,
+    GoogleOffer,
+    GooglePurchaseReport,
     LegalLinks,
     Limits,
     Offer,
@@ -94,6 +102,10 @@ OTHER_ACCOUNT = "other_account"
 OTHER_PRODUCT = "other_product"
 SANDBOX_REFUSED = "sandbox_refused"
 UNKNOWN_TRANSACTION = "unknown_transaction"
+INVALID_PURCHASE = "invalid_purchase"
+UNKNOWN_PURCHASE = "unknown_purchase"
+TEST_REFUSED = "test_refused"
+REAL_REFUSED = "real_refused"
 
 _REFUSALS: dict[str, tuple[int, str]] = {
     ALREADY_PREMIUM: (status.HTTP_409_CONFLICT, "Already premium"),
@@ -108,6 +120,10 @@ _REFUSALS: dict[str, tuple[int, str]] = {
     OTHER_PRODUCT: (status.HTTP_409_CONFLICT, "Not the product sold"),
     SANDBOX_REFUSED: (status.HTTP_409_CONFLICT, "Sandbox purchases are refused"),
     UNKNOWN_TRANSACTION: (status.HTTP_409_CONFLICT, "Unknown to Apple"),
+    INVALID_PURCHASE: (status.HTTP_400_BAD_REQUEST, "Invalid purchase"),
+    UNKNOWN_PURCHASE: (status.HTTP_409_CONFLICT, "Unknown to Google"),
+    TEST_REFUSED: (status.HTTP_409_CONFLICT, "Test purchases are refused"),
+    REAL_REFUSED: (status.HTTP_409_CONFLICT, "Only test purchases are accepted"),
 }
 
 _REFUSAL = {"model": BillingRefusal}
@@ -132,6 +148,8 @@ def billing_status(request: Request, user: CurrentUser, db: DbSession) -> Billin
         offer=_offer(settings),
         apple_offer=_apple_offer(request),
         apple_renewing=bool(apple_events.renewing(db, user.id)),
+        google_offer=_google_offer(request),
+        google_renewing=bool(google_events.renewing(db, user.id)),
         can_manage=_can_manage(request, db, user.id),
         legal=LegalLinks(
             terms_url=settings.legal_terms_url.strip() or None,
@@ -569,6 +587,252 @@ def _signed_payload(body: bytes | None) -> str | None:
     return found if isinstance(found, str) and found else None
 
 
+@router.post(
+    "/google/purchases",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={400: _REFUSAL, 409: _REFUSAL, 502: _REFUSAL},
+)
+def google_purchase(
+    request: Request,
+    report: GooglePurchaseReport,
+    session: UnlockedSession,
+    db: DbSession,
+) -> Response:
+    """A purchase or a restore on Android (Android release plan D6). The token
+    only says which purchase; what is recorded is Google's answer for it, and
+    an accepted purchase is acknowledged before it is recorded, so that no
+    lock is held across that call. Recorded whatever the plan: a purchase
+    made is never dropped. A refused one is left unacknowledged, and Google
+    refunds it."""
+    settings: Settings = request.app.state.settings
+    gateway: GoogleGateway | None = request.app.state.google_gateway
+    if gateway is None:
+        raise not_found()
+    token = report.purchase_token
+    if not google_events.is_token(token):
+        return _refusal(INVALID_PURCHASE)
+    # Before the read, so a later handler always wins (premium plan D13).
+    read_at = request.app.state.clock()
+    try:
+        purchase = gateway.subscription(token)
+    except MissingAtGoogle:
+        _log.warning("google: a reported purchase is unknown to Google")
+        return _refusal(UNKNOWN_PURCHASE)
+    except GoogleError:
+        return _refusal(BILLING_UNAVAILABLE)
+    product = settings.google_play_product_id.strip()
+    order = google_events.order_id(purchase, product)
+    owner = _google_owner(db, purchase, token)
+    refused = _google_refusal(settings, purchase, order, session.user_id, owner)
+    if refused is not None:
+        return _refusal(refused)
+    facts = google_events.facts(purchase, token, session.user_id, product)
+    if facts is None:
+        # Google answered what it does not document: the app retries later.
+        _log.error("google: purchase %s could not be read", order)
+        return _refusal(BILLING_UNAVAILABLE)
+    if not _acknowledged(gateway, purchase, token, order):
+        return _refusal(BILLING_UNAVAILABLE)
+    lock_signed_in(request, db, session)
+    apply(db, facts, read_at)
+    google_events.end_replaced(db, google_events.linked_token(purchase), read_at)
+    return _no_content()
+
+
+# No session: Pub/Sub's token speaks for Google.
+@router.post(
+    "/google/notifications",
+    responses={400: {"description": "Invalid"}, 502: _REFUSAL},
+)
+async def google_notification(request: Request, db: DbSession) -> Response:
+    """Play's real-time developer notifications, pushed by Pub/Sub (D6): the
+    push's token verified, then the notification trusted only as a pointer
+    to the purchase, read back from Google. An accepted purchase not yet
+    acknowledged is acknowledged here too (review R2-1). Answered 200
+    whenever Pub/Sub's retrying would change nothing."""
+    gateway: GoogleGateway | None = request.app.state.google_gateway
+    if gateway is None:
+        raise not_found()
+    notification = google_events.developer_notification(await _capped_body(request))
+    if notification is None:
+        raise _invalid_notification()
+    try:
+        # Off the event loop: Google's certificates are fetched.
+        await run_in_threadpool(
+            gateway.verify_push, request.headers.get("authorization")
+        )
+    except InvalidPush:
+        _warn_of_bad_push(request)
+        raise _invalid_notification() from None
+    except GoogleError:
+        return _refusal(BILLING_UNAVAILABLE)
+    return await run_in_threadpool(
+        _handle_google_notification, request, db, notification
+    )
+
+
+def _handle_google_notification(
+    request: Request, db: Session, notification: dict[str, Any]
+) -> Response:
+    settings: Settings = request.app.state.settings
+    gateway: GoogleGateway = request.app.state.google_gateway
+    product = settings.google_play_product_id.strip()
+    if (
+        google_events.notification_package(notification)
+        != settings.google_play_package_name.strip()
+    ):
+        _log.warning("google: a notification for another app")
+        return _ok()
+    token = google_events.notification_token(notification)
+    if token is None:
+        # A test notification, or about no subscription.
+        return _ok()
+    if not google_events.is_token(token):
+        _log.error("google: a notification points at no purchase")
+        return _ok()
+    read_at = request.app.state.clock()
+    try:
+        purchase = gateway.subscription(token)
+    except MissingAtGoogle:
+        _log.warning(
+            "google: a notified purchase is unknown to Google (order %s)",
+            google_events.notification_order(notification) or "unknown",
+        )
+        return _ok()
+    except GoogleError:
+        return _refusal(BILLING_UNAVAILABLE)
+    order = google_events.order_id(purchase, product)
+    user_id = _google_owner(db, purchase, token)
+    if user_id is None:
+        _log.warning("google: purchase %s of no known account", order)
+        return _ok()
+    if google_events.line_item(purchase, product) is None:
+        _log.warning("google: purchase %s is of another product", order)
+        return _ok()
+    refused = _google_test_refusal(settings, purchase, user_id)
+    if refused is not None:
+        _log.warning(
+            "google: purchase %s refused for account %s (%s)", order, user_id, refused
+        )
+        return _ok()
+    facts = google_events.facts(purchase, token, user_id, product)
+    if facts is None:
+        _log.error("google: purchase %s could not be read", order)
+        return _ok()
+    # A Play Store resubscription involves no app to report it: unless
+    # acknowledged here, Google refunds it on the third day (review R2-1).
+    # Before `apply`, so no lock is held across the call; on failure nothing
+    # is written and Pub/Sub retries.
+    if not _acknowledged(gateway, purchase, token, order):
+        return _refusal(BILLING_UNAVAILABLE)
+    if apply(db, facts, read_at) is Applied.USER_GONE:
+        return _cancel_google_orphan(gateway, purchase, token, order, product)
+    google_events.end_replaced(db, google_events.linked_token(purchase), read_at)
+    return _ok()
+
+
+def _cancel_google_orphan(
+    gateway: GoogleGateway,
+    purchase: dict[str, Any],
+    token: str,
+    order: str,
+    product: str,
+) -> Response:
+    """The purchase outlived its account, as Stripe's can (premium plan D15):
+    no charge may follow."""
+    if not google_events.can_charge(purchase, product):
+        return _ok()
+    _log.warning("google: cancelling purchase %s of a gone account", order)
+    try:
+        gateway.cancel(token)
+    except GoogleError:
+        return _refusal(BILLING_UNAVAILABLE)
+    return _ok()
+
+
+def _google_owner(
+    db: Session, purchase: dict[str, Any], token: str
+) -> uuid.UUID | None:
+    """Whose the purchase is (D6, review R1-1), in this order: the account its
+    `obfuscatedExternalAccountId` names, when it exists; the stored row's, or
+    that of the token it replaces; for a resubscription made in the Play
+    Store after expiry, the expired subscription's stored row."""
+    account = google_events.account_id(purchase)
+    if account is not None:
+        found = db.scalar(select(User.id).where(User.id == account))
+        if found is not None:
+            return found
+    return (
+        google_events.stored_owner(db, token)
+        or google_events.stored_owner(db, google_events.linked_token(purchase))
+        or google_events.stored_owner(db, google_events.expired_token(purchase))
+    )
+
+
+def _google_refusal(
+    settings: Settings,
+    purchase: dict[str, Any],
+    order: str,
+    user_id: uuid.UUID,
+    owner: uuid.UUID | None,
+) -> str | None:
+    """Why this purchase may not grant Premium to this account, whose it is
+    being `owner` (D6), logged with ids only, or None."""
+    product = settings.google_play_product_id.strip()
+    if google_events.line_item(purchase, product) is None:
+        _log.warning("google: purchase %s is of another product", order)
+        return OTHER_PRODUCT
+    if owner != user_id:
+        _log.warning(
+            "google: purchase %s names another account (%s)", order, owner or "none"
+        )
+        return OTHER_ACCOUNT
+    refused = _google_test_refusal(settings, purchase, user_id)
+    if refused is not None:
+        _log.warning(
+            "google: purchase %s refused for account %s (%s)", order, user_id, refused
+        )
+    return refused
+
+
+def _google_test_refusal(
+    settings: Settings, purchase: dict[str, Any], user_id: uuid.UUID
+) -> str | None:
+    """D6: production takes a test purchase from a listed account only, so
+    that a tester's free purchase grants nothing there. Elsewhere only test
+    purchases are taken: VAL's data is wiped at each seed, so a real purchase
+    there is refused, left unacknowledged, and refunded by Google."""
+    test = google_events.is_test(purchase)
+    if settings.app_env == "production":
+        if test and user_id not in settings.google_play_test_ids:
+            return TEST_REFUSED
+        return None
+    return None if test else REAL_REFUSED
+
+
+def _acknowledged(
+    gateway: GoogleGateway, purchase: dict[str, Any], token: str, order: str
+) -> bool:
+    """The purchase acknowledged, as Google requires within three days: true
+    once Google holds it acknowledged."""
+    if not google_events.needs_acknowledgement(purchase):
+        return True
+    try:
+        gateway.acknowledge(token)
+        return True
+    except GoogleError:
+        pass
+    # A report racing this one may have acknowledged it: Google says.
+    try:
+        again = gateway.subscription(token)
+    except GoogleError:
+        again = purchase
+    if google_events.needs_acknowledgement(again):
+        _log.warning("google: purchase %s could not be acknowledged", order)
+        return False
+    return True
+
+
 def _customer_owner(db: Session, customer_id: str | None) -> uuid.UUID | None:
     if customer_id is None:
         return None
@@ -614,6 +878,15 @@ def _apple_offer(request: Request) -> AppleOffer | None:
         return None
     settings: Settings = request.app.state.settings
     return AppleOffer(product_id=settings.apple_product_id.strip())
+
+
+def _google_offer(request: Request) -> GoogleOffer | None:
+    """As Apple's: the gateway exists only once every variable of selling on
+    Android is set and the key loads (D6, D7)."""
+    if request.app.state.google_gateway is None:
+        return None
+    settings: Settings = request.app.state.settings
+    return GoogleOffer(product_id=settings.google_play_product_id.strip())
 
 
 def _misconfigured_variable(price: Price, settings: Settings) -> str | None:
@@ -688,6 +961,21 @@ def _warn_of_bad_apple_signature(request: Request) -> None:
     )
 
 
+def _warn_of_bad_push(request: Request) -> None:
+    """As `_warn_of_bad_signature`, in fixed words (D6): a wrong audience or
+    service account leaves every renewal, grace and refund unrecorded."""
+    state = request.app.state
+    now = state.clock()
+    last = getattr(state, "bad_google_push_warned_at", None)
+    if last is not None and now - last < BAD_SIGNATURE_WARNING_INTERVAL:
+        return
+    state.bad_google_push_warned_at = now
+    _log.warning(
+        "google: a push failed its check: if every one does, check"
+        " GOOGLE_PLAY_PUBSUB_AUDIENCE and GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT"
+    )
+
+
 def _invalid_webhook() -> HTTPException:
     # One body for every case, so nothing says what was wrong.
     return HTTPException(
@@ -706,7 +994,7 @@ def _no_content() -> Response:
 
 
 def _ok() -> Response:
-    # What Apple takes for delivered (D4).
+    # What Apple (D4) and Pub/Sub take for delivered.
     return Response(status_code=status.HTTP_200_OK)
 
 

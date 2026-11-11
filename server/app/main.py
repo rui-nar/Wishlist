@@ -24,7 +24,7 @@ from app.accounts.email_router import router as email_router
 from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
 from app.admin.router import router as admin_router
-from app.billing import apple_gateway
+from app.billing import apple_gateway, google_gateway
 from app.billing.router import router as billing_router
 from app.billing.stripe_gateway import StripeGateway
 from app.comments.router import router as comments_router
@@ -157,8 +157,12 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     # None until every variable it needs is set and its key loads (Apple IAP
     # plan D7); replaced by tests, which never reach Apple.
     app.state.apple_gateway, apple_gaps = apple_gateway.from_settings(settings)
+    # The same for Google Play (Android release plan D6); replaced by tests,
+    # which never reach Google.
+    app.state.google_gateway, google_gaps = google_gateway.from_settings(settings)
     _log_billing_gaps(settings)
     _log_apple_purchase_gaps(settings, apple_gaps)
+    _log_google_purchase_gaps(settings, google_gaps)
     _log_email_sign_in_gap(settings)
     _log_admin_gap(settings)
     _log_apple_revocation_gap(settings, revocation_gaps)
@@ -265,6 +269,26 @@ def _log_apple_purchase_gaps(settings: Settings, gaps: list[str]) -> None:
     if asked and gaps:
         _log.warning(
             "selling on iPhone is off; missing or invalid: %s", ", ".join(gaps)
+        )
+
+
+def _log_google_purchase_gaps(settings: Settings, gaps: list[str]) -> None:
+    """Names what keeps the app from selling on Android, once, when it is
+    asked for (Android release plan D6). Never a value: the key is a
+    secret."""
+    asked = any(
+        value.strip()
+        for value in (
+            settings.google_play_product_id,
+            settings.google_play_package_name,
+            settings.google_play_service_account_json,
+            settings.google_play_pubsub_audience,
+            settings.google_play_pubsub_service_account,
+        )
+    )
+    if asked and gaps:
+        _log.warning(
+            "selling on Android is off; missing or invalid: %s", ", ".join(gaps)
         )
 
 

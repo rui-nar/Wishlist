@@ -288,6 +288,8 @@ def test_a_row_says_who_how_they_sign_in_their_plan_lists_and_photos(
         },
         "apple_subscription": None,
         "apple_renewing": False,
+        "google_subscription": None,
+        "google_renewing": False,
         "manual_grant": None,
         "lists_owned": 3,
         "photos": {
