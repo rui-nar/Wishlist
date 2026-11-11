@@ -353,4 +353,76 @@ void main() {
     expect(auth.status, AuthStatus.signedIn);
     expect(store.token, isNotNull);
   });
+
+  group('isAdmin (admin panel plan D2)', () {
+    test('restore reads it from /api/me', () async {
+      server.isAdmin = true;
+      final auth = controller(MemoryTokenStore(server.addSession()));
+      expect(auth.isAdmin, isFalse);
+
+      await auth.restore();
+
+      expect(auth.isAdmin, isTrue);
+    });
+
+    test('false for anyone else', () async {
+      final auth = controller(MemoryTokenStore(server.addSession()));
+      await auth.restore();
+
+      expect(auth.status, AuthStatus.signedIn);
+      expect(auth.isAdmin, isFalse);
+    });
+
+    test('a sign-in reads /api/me, which its answer does not say', () async {
+      server.isAdmin = true;
+      final auth = controller(MemoryTokenStore());
+      await auth.restore();
+
+      await auth.signInWithGoogle(kValidIdToken);
+
+      expect(
+        server.calls.sublist(server.calls.length - 2),
+        ['POST /api/auth/google', 'GET /api/me'],
+      );
+      expect(auth.status, AuthStatus.signedIn);
+      expect(auth.isAdmin, isTrue);
+    });
+
+    test('a failed read signs in all the same, not as the admin', () async {
+      server.isAdmin = true;
+      server.status['GET /api/me'] = 500;
+      final auth = controller(MemoryTokenStore());
+      await auth.restore();
+
+      await auth.signInWithEmail('alice@example.com', kEmailPassword);
+
+      expect(auth.status, AuthStatus.signedIn);
+      expect(auth.user!.email, 'alice@example.com');
+      expect(auth.isAdmin, isFalse);
+    });
+
+    test('a 401 to that read leaves the user signed out', () async {
+      server.status['GET /api/me'] = 401;
+      final store = MemoryTokenStore();
+      final auth = controller(store);
+      await auth.restore();
+
+      await auth.signInWithGoogle(kValidIdToken);
+      await pumpEventQueue();
+
+      expect(auth.status, AuthStatus.signedOut);
+      expect(auth.isAdmin, isFalse);
+      expect(store.token, isNull);
+    });
+
+    test('signing out forgets it', () async {
+      server.isAdmin = true;
+      final auth = controller(MemoryTokenStore(server.addSession()));
+      await auth.restore();
+
+      await auth.signOut();
+
+      expect(auth.isAdmin, isFalse);
+    });
+  });
 }

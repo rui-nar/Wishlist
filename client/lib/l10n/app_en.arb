@@ -1555,5 +1555,433 @@
   "emailLinkNotAccepted": "Check your name and password, then try again.",
   "@emailLinkNotAccepted": {
     "description": "The server refused what was typed on the create-account or reset-password page."
+  },
+  "planGrantedUntil": "Premium, granted until {date}",
+  "@planGrantedUntil": {
+    "description": "The plan, when the admin granted Premium by hand: the day it ends.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 March 2027"
+      }
+    }
+  },
+  "notFoundTitle": "Page not found",
+  "@notFoundTitle": {
+    "description": "The page of an address the app does not have: its title."
+  },
+  "notFoundBody": "This page does not exist.",
+  "@notFoundBody": {
+    "description": "The page of an address the app does not have: its text."
+  },
+  "notFoundHome": "Go to home",
+  "@notFoundHome": {
+    "description": "The page of an address the app does not have: the button back to the home screen."
+  },
+  "adminPanel": "Admin panel",
+  "@adminPanel": {
+    "description": "The admin panel's title, and its button on the admin's account screen."
+  },
+  "adminSearchHint": "Search by email address",
+  "@adminSearchHint": {
+    "description": "The admin panel: the search field's hint."
+  },
+  "adminSearch": "Search",
+  "@adminSearch": {
+    "description": "The admin panel: the search button's tooltip."
+  },
+  "adminClearSearch": "Clear search",
+  "@adminClearSearch": {
+    "description": "The admin panel: the button clearing the search."
+  },
+  "adminNoUsers": "No accounts yet.",
+  "@adminNoUsers": {
+    "description": "The admin panel, with no account at all."
+  },
+  "adminNoMatch": "No address contains “{query}”.",
+  "@adminNoMatch": {
+    "description": "The admin panel: no account's address matches the search.",
+    "placeholders": {
+      "query": {
+        "type": "String",
+        "example": "alice"
+      }
+    }
+  },
+  "adminShowMore": "Show more",
+  "@adminShowMore": {
+    "description": "The admin panel: the button loading the next accounts."
+  },
+  "adminLoadMoreFailed": "More accounts could not be loaded. Try again.",
+  "@adminLoadMoreFailed": {
+    "description": "The admin panel: loading the next accounts failed."
+  },
+  "adminColumnEmail": "Email",
+  "@adminColumnEmail": {
+    "description": "The admin panel's table: the email address column."
+  },
+  "adminColumnCreated": "Created",
+  "@adminColumnCreated": {
+    "description": "The admin panel's tables: the creation date column."
+  },
+  "adminColumnSignIn": "Sign-in",
+  "@adminColumnSignIn": {
+    "description": "The admin panel's table: how the person signs in."
+  },
+  "adminColumnPlan": "Plan",
+  "@adminColumnPlan": {
+    "description": "The admin panel's table: the plan column."
+  },
+  "adminColumnLists": "Lists",
+  "@adminColumnLists": {
+    "description": "The admin panel's table: how many lists the person owns."
+  },
+  "adminColumnPhotos": "Photos",
+  "@adminColumnPhotos": {
+    "description": "The admin panel's table: the photos the person sent, and their space."
+  },
+  "adminColumnTitle": "Title",
+  "@adminColumnTitle": {
+    "description": "An account's lists in the admin panel: the title column."
+  },
+  "adminColumnGifts": "Gifts",
+  "@adminColumnGifts": {
+    "description": "An account's lists in the admin panel: how many gifts the owners see."
+  },
+  "adminColumnOwners": "Owners",
+  "@adminColumnOwners": {
+    "description": "An account's lists in the admin panel: how many owners the list has."
+  },
+  "adminSignInGoogle": "Google",
+  "@adminSignInGoogle": {
+    "description": "The admin panel: signs in with Google."
+  },
+  "adminSignInApple": "Apple",
+  "@adminSignInApple": {
+    "description": "The admin panel: signs in with Apple."
+  },
+  "adminSignInEmail": "Email and password",
+  "@adminSignInEmail": {
+    "description": "The admin panel: signs in with an email address and a password."
+  },
+  "adminSignInEmailShort": "Email",
+  "@adminSignInEmailShort": {
+    "description": "The admin panel's table, where space is short: signs in with an email address and a password."
+  },
+  "adminSignInNone": "No sign-in",
+  "@adminSignInNone": {
+    "description": "The admin panel: the account has no way of signing in left."
+  },
+  "adminPlanFree": "Free",
+  "@adminPlanFree": {
+    "description": "The admin panel: the free plan."
+  },
+  "adminPlanPremiumUntil": "Premium until {date}",
+  "@adminPlanPremiumUntil": {
+    "description": "The admin panel: Premium, and the day it renews or ends.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2027"
+      }
+    }
+  },
+  "adminSourceManual": "granted here",
+  "@adminSourceManual": {
+    "description": "The admin panel: Premium granted by the admin, after the plan."
+  },
+  "adminSourceStripe": "Stripe",
+  "@adminSourceStripe": {
+    "description": "The admin panel: Premium paid through Stripe, after the plan."
+  },
+  "adminSourceApple": "App Store",
+  "@adminSourceApple": {
+    "description": "The admin panel: Premium paid through the App Store, after the plan."
+  },
+  "adminSourceGoogle": "Google Play",
+  "@adminSourceGoogle": {
+    "description": "The admin panel: Premium paid through Google Play, after the plan."
+  },
+  "adminFiguresLine": "{first} · {second}",
+  "@adminFiguresLine": {
+    "description": "The admin panel: two facts about an account on one line.",
+    "placeholders": {
+      "first": {
+        "type": "String",
+        "example": "2 lists"
+      },
+      "second": {
+        "type": "String",
+        "example": "3 photos"
+      }
+    }
+  },
+  "adminCreated": "Created {date}",
+  "@adminCreated": {
+    "description": "The admin panel: the day the account was created.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2026"
+      }
+    }
+  },
+  "adminListsOwned": "{count, plural, =0{No lists} =1{1 list} other{{count} lists}}",
+  "@adminListsOwned": {
+    "description": "The admin panel: how many lists the account owns.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "adminPhotoCount": "{count, plural, =0{No photos} =1{1 photo} other{{count} photos}}",
+  "@adminPhotoCount": {
+    "description": "The admin panel: how many photos the account sent that a list's owners see.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "adminPhotosMeasuring": "measuring",
+  "@adminPhotosMeasuring": {
+    "description": "The admin panel: in place of the photos' space while older photos are not measured yet."
+  },
+  "sizeBytes": "{size} B",
+  "@sizeBytes": {
+    "description": "A size in bytes.",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "640"
+      }
+    }
+  },
+  "sizeKilobytes": "{size} KB",
+  "@sizeKilobytes": {
+    "description": "A size in kilobytes (1000 bytes).",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "12.5"
+      }
+    }
+  },
+  "sizeMegabytes": "{size} MB",
+  "@sizeMegabytes": {
+    "description": "A size in megabytes (1000 kilobytes).",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "1.5"
+      }
+    }
+  },
+  "sizeGigabytes": "{size} GB",
+  "@sizeGigabytes": {
+    "description": "A size in gigabytes (1000 megabytes).",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "2.1"
+      }
+    }
+  },
+  "adminUserTitle": "Account details",
+  "@adminUserTitle": {
+    "description": "The admin panel's page of one account: its title."
+  },
+  "adminUserGone": "This account no longer exists.",
+  "@adminUserGone": {
+    "description": "The admin panel: the account was deleted meanwhile."
+  },
+  "adminBackToPanel": "Back to the admin panel",
+  "@adminBackToPanel": {
+    "description": "The admin panel: the button back to the accounts, after an account is gone."
+  },
+  "adminPlanTitle": "Plan",
+  "@adminPlanTitle": {
+    "description": "The admin panel's page of one account: the plan section."
+  },
+  "adminListsTitle": "Lists",
+  "@adminListsTitle": {
+    "description": "The admin panel's page of one account: the lists it owns."
+  },
+  "adminNoLists": "No lists.",
+  "@adminNoLists": {
+    "description": "The admin panel's page of one account: it owns no list."
+  },
+  "adminOwnerCount": "{count, plural, =1{1 owner} other{{count} owners}}",
+  "@adminOwnerCount": {
+    "description": "The admin panel: how many owners a list has.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "adminListLine": "Created {date} · {gifts} · {owners}",
+  "@adminListLine": {
+    "description": "The admin panel, on a phone: a list's creation day, gift count and owner count.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2026"
+      },
+      "gifts": {
+        "type": "String",
+        "example": "3 gifts"
+      },
+      "owners": {
+        "type": "String",
+        "example": "1 owner"
+      }
+    }
+  },
+  "adminGrantedUntil": "Granted here until {date}",
+  "@adminGrantedUntil": {
+    "description": "The admin panel: the end of the Premium the admin granted, beside a paid one.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2027"
+      }
+    }
+  },
+  "adminGrantPremium": "Grant Premium",
+  "@adminGrantPremium": {
+    "description": "The admin panel: the button granting Premium by hand."
+  },
+  "adminChangeGrant": "Change the end date",
+  "@adminChangeGrant": {
+    "description": "The admin panel: the button changing when the granted Premium ends."
+  },
+  "adminEndGrant": "End granted Premium",
+  "@adminEndGrant": {
+    "description": "The admin panel: the button ending the Premium the admin granted."
+  },
+  "adminGrantTitle": "Grant Premium",
+  "@adminGrantTitle": {
+    "description": "The dialog granting Premium by hand: its title."
+  },
+  "adminGrantBody": "{email} will have Premium until {date}.",
+  "@adminGrantBody": {
+    "description": "The dialog granting Premium by hand: whom, and until when.",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "alice@example.com"
+      },
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2027"
+      }
+    }
+  },
+  "adminGrantChangeDate": "Change date",
+  "@adminGrantChangeDate": {
+    "description": "The dialog granting Premium by hand: the button choosing another end date."
+  },
+  "adminGrantConfirm": "Grant",
+  "@adminGrantConfirm": {
+    "description": "The dialog granting Premium by hand: the button granting it."
+  },
+  "adminGrantDone": "Premium granted until {date}.",
+  "@adminGrantDone": {
+    "description": "The admin panel: Premium was granted.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "12 Mar 2027"
+      }
+    }
+  },
+  "adminEndGrantTitle": "End granted Premium?",
+  "@adminEndGrantTitle": {
+    "description": "The dialog ending the Premium the admin granted: its title."
+  },
+  "adminEndGrantBody": "{email} loses the Premium granted here now. A subscription they pay for is not affected.",
+  "@adminEndGrantBody": {
+    "description": "The dialog ending the Premium the admin granted: what it does.",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "alice@example.com"
+      }
+    }
+  },
+  "adminEndGrantConfirm": "End it",
+  "@adminEndGrantConfirm": {
+    "description": "The dialog ending the Premium the admin granted: the button ending it."
+  },
+  "adminEndGrantDone": "Granted Premium ended.",
+  "@adminEndGrantDone": {
+    "description": "The admin panel: the granted Premium was ended."
+  },
+  "adminNoGrant": "There is no granted Premium to end.",
+  "@adminNoGrant": {
+    "description": "The admin panel: the granted Premium had already ended."
+  },
+  "adminDateOutOfRange": "Choose a date between tomorrow and ten years from now.",
+  "@adminDateOutOfRange": {
+    "description": "The admin panel: the server refused the end date of a grant."
+  },
+  "adminDeleteAccount": "Delete this account",
+  "@adminDeleteAccount": {
+    "description": "The admin panel: the button deleting an account."
+  },
+  "adminDeleteTitle": "Delete this account?",
+  "@adminDeleteTitle": {
+    "description": "The dialog deleting an account from the admin panel: its title."
+  },
+  "adminDeleteBody": "Everything in the account {email} is deleted for good, and its subscription is stopped. Type its email address to confirm.",
+  "@adminDeleteBody": {
+    "description": "The dialog deleting an account from the admin panel: what it does.",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "alice@example.com"
+      }
+    }
+  },
+  "adminDeleteField": "Email address of the account",
+  "@adminDeleteField": {
+    "description": "The dialog deleting an account from the admin panel: the field where its address is typed."
+  },
+  "adminDeleteConfirm": "Delete the account",
+  "@adminDeleteConfirm": {
+    "description": "The dialog deleting an account from the admin panel: the button deleting it."
+  },
+  "adminDeleteMismatch": "The address does not match. Nothing was deleted.",
+  "@adminDeleteMismatch": {
+    "description": "The admin panel: the server found the typed address differs from the account's."
+  },
+  "adminDeleteBilling": "The subscription could not be stopped, so nothing was deleted. Try again later.",
+  "@adminDeleteBilling": {
+    "description": "The admin panel: the account was not deleted because its subscription could not be stopped."
+  },
+  "adminDeleteDone": "Account deleted.",
+  "@adminDeleteDone": {
+    "description": "The admin panel: the account was deleted."
+  },
+  "adminOwnAccount": "Delete your own account from your account screen.",
+  "@adminOwnAccount": {
+    "description": "The admin panel, on the admin's own account: where to delete it."
+  },
+  "adminReauthTitle": "Sign in again",
+  "@adminReauthTitle": {
+    "description": "The admin panel: a change needs a recent sign-in; the dialog's title."
+  },
+  "adminReauthBody": "Changes in the admin panel need a sign-in from the last 12 hours. Sign in again, then make the change.",
+  "@adminReauthBody": {
+    "description": "The admin panel: a change needs a recent sign-in; the dialog's text."
+  },
+  "adminReauthAction": "Sign in again",
+  "@adminReauthAction": {
+    "description": "The admin panel: the button signing out to sign in again."
   }
 }

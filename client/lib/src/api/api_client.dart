@@ -15,6 +15,17 @@ class UnauthorizedException implements Exception {
   String toString() => 'UnauthorizedException';
 }
 
+/// An admin change refused because the session is over 12 hours old (admin
+/// panel plan D3): 401 `reauth_required`. The session still holds, so the
+/// user is not signed out here; the panel asks them to sign in again. Not an
+/// [UnauthorizedException], which screens read as "already signed out".
+class ReauthRequiredException implements Exception {
+  const ReauthRequiredException();
+
+  @override
+  String toString() => 'ReauthRequiredException';
+}
+
 /// The server answered with a status other than 2xx and 401.
 class ApiException implements Exception {
   const ApiException(this.statusCode, [this.body]);
@@ -41,6 +52,9 @@ class ApiUnreachableException implements Exception {
 
 const _kTimeout = Duration(seconds: 10);
 
+/// A 401's `detail` when an admin change needs a recent sign-in (D3).
+const _kReauthRequired = 'reauth_required';
+
 /// Image bytes take longer than JSON: 60 s up, 30 s down (GIFT_IMAGES D13).
 const _kUploadTimeout = Duration(seconds: 60);
 const _kDownloadTimeout = Duration(seconds: 30);
@@ -48,6 +62,7 @@ const _kDownloadTimeout = Duration(seconds: 30);
 /// Calls `<baseUrl>/api/...` with the session's bearer token, if any.
 ///
 /// Errors are typed, never the server's text: [UnauthorizedException] on 401,
+/// [ReauthRequiredException] on a 401 `reauth_required`,
 /// [ApiException] on any other error status, [ApiUnreachableException] when
 /// there is no usable answer.
 class ApiClient {
@@ -122,8 +137,11 @@ class ApiClient {
   /// A POST whose answer has no body (204).
   Future<void> post(String path) => _send('POST', path);
 
-  /// A DELETE whose answer has no body (204).
-  Future<void> delete(String path) => _send('DELETE', path);
+  /// A DELETE whose answer has no body (204), with a JSON [body] for the
+  /// route that reads one (an admin's deletion names the address, admin
+  /// panel plan D9).
+  Future<void> delete(String path, {Map<String, dynamic>? body}) =>
+      _send('DELETE', path, body: body);
 
   Future<http.Response> _send(
     String method,
@@ -157,6 +175,10 @@ class ApiClient {
       throw const ApiUnreachableException();
     }
     if (response.statusCode == 401) {
+      // Not a lost session: it stays, and only a change was refused.
+      if (_errorBody(response)?['detail'] == _kReauthRequired) {
+        throw const ReauthRequiredException();
+      }
       if (sentToken != null) onUnauthorized?.call(sentToken);
       throw const UnauthorizedException();
     }
