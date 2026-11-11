@@ -191,4 +191,4 @@ def test_the_app_fetches_with_a_safe_fetcher_named_by_its_version(make_client):
     app = make_client(app_version="v1.2.3").app
 
     assert isinstance(app.state.url_fetcher, SafeFetcher)
-    assert app.state.url_fetcher._user_agent == "Wishlist/v1.2.3"
+    assert app.state.url_fetcher._user_agent == "ShushGift/v1.2.3"

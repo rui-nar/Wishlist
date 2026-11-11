@@ -20,7 +20,7 @@ FUTURE_REVISION = "ffffffffffff"
 @pytest.fixture
 def scratch_database_url(database_url: str):
     """A freshly created database, dropped afterwards (as test_migrations.py)."""
-    name = f"wishlist_migrate_{uuid.uuid4().hex[:12]}"
+    name = f"shushgift_migrate_{uuid.uuid4().hex[:12]}"
     admin = create_engine(database_url, isolation_level="AUTOCOMMIT")
     try:
         with admin.connect() as connection:
@@ -107,7 +107,7 @@ def test_a_database_ahead_of_the_image_starts_without_migrating(
 def test_any_other_failure_exits_non_zero(database_url):
     missing = (
         make_url(database_url)
-        .set(database=f"wishlist_missing_{uuid.uuid4().hex[:12]}")
+        .set(database=f"shushgift_missing_{uuid.uuid4().hex[:12]}")
         .render_as_string(hide_password=False)
     )
 

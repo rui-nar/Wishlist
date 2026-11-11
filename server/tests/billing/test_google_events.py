@@ -164,7 +164,7 @@ def test_a_push_carries_a_developer_notification():
     decoded = google_events.developer_notification(encoded(notification))
     assert decoded == notification
     assert google_events.notification_token(decoded) == TOKEN
-    assert google_events.notification_package(decoded) == "com.example.wishlist"
+    assert google_events.notification_package(decoded) == "com.example.shushgift"
 
 
 def test_a_voided_subscription_is_a_pointer():

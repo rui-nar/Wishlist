@@ -12,16 +12,16 @@ LOCAL = {
     "stripe_webhook_secret": "whsec_placeholder",
     "stripe_price_id": "price_placeholder",
     "billing_price_amount": "10.00",
-    "public_base_url": "https://wishlist.example.test",
+    "public_base_url": "https://shushgift.example.test",
 }
 PRODUCTION_ONLY = {
     "stripe_automatic_tax": True,
     "billing_terms_version": "2026-11",
     "billing_consent_text_en": "Placeholder consent",
     "billing_consent_text_fr": "Consentement fictif",
-    "legal_terms_url": "https://wishlist.example.test/terms",
-    "legal_privacy_url": "https://wishlist.example.test/privacy",
-    "legal_withdrawal_url": "https://wishlist.example.test/withdrawal",
+    "legal_terms_url": "https://shushgift.example.test/terms",
+    "legal_privacy_url": "https://shushgift.example.test/privacy",
+    "legal_withdrawal_url": "https://shushgift.example.test/withdrawal",
 }
 PRODUCTION = (
     LOCAL

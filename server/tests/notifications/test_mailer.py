@@ -38,7 +38,9 @@ def mailer_with(
         requests.append(request)
         return handler(request)
 
-    mailer = BrevoMailer(KEY, SENDER, "Wishlist", transport=httpx.MockTransport(record))
+    mailer = BrevoMailer(
+        KEY, SENDER, "Shush Gift", transport=httpx.MockTransport(record)
+    )
     return mailer, requests
 
 
@@ -64,7 +66,7 @@ def test_the_request_is_the_one_brevo_documents():
     assert request.headers["api-key"] == KEY
     assert request.headers["content-type"] == "application/json"
     assert json.loads(request.content) == {
-        "sender": {"name": "Wishlist", "email": SENDER},
+        "sender": {"name": "Shush Gift", "email": SENDER},
         "to": [{"email": TO, "name": "Ana"}],
         "subject": "A subject",
         "htmlContent": MESSAGE.html,

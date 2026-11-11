@@ -170,7 +170,7 @@ def test_an_allowed_url_gives_the_body_and_its_media_type(servers):
     path, headers = allowed.requests[0]
     assert headers["Host"] == f"allowed.test:{allowed.port}"
     assert headers["Accept"] == "image/png"
-    assert headers["User-Agent"] == "Wishlist/dev"
+    assert headers["User-Agent"] == "ShushGift/dev"
 
 
 @pytest.mark.parametrize(

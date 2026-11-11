@@ -39,7 +39,7 @@ NOW = datetime(2026, 11, 8, 12, tzinfo=UTC)
 FUTURE: date = NOW.date() + timedelta(days=60)
 PASSED: date = NOW.date() - timedelta(days=30)
 MINUTE = timedelta(minutes=1)
-BASE_URL = "https://wishlist.example.test"
+BASE_URL = "https://shushgift.example.test"
 SECRET = "a-test-notification-secret"
 
 

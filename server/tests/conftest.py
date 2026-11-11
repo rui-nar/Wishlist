@@ -95,7 +95,7 @@ def billing_on() -> dict[str, Any]:
         "stripe_webhook_secret": "whsec_placeholder",
         "stripe_price_id": "price_placeholder",
         "billing_price_amount": "10.00",
-        "public_base_url": "https://wishlist.example.test",
+        "public_base_url": "https://shushgift.example.test",
     }
 
 

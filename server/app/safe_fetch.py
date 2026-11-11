@@ -158,7 +158,7 @@ class SafeFetcher:
         }
         self._total_timeout = total_timeout
         self._transport = transport
-        self._user_agent = f"Wishlist/{version}"
+        self._user_agent = f"ShushGift/{version}"
 
     def fetch(
         self, url: str, accept: Collection[str], max_bytes: int

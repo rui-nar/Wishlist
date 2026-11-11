@@ -24,7 +24,7 @@ from app.accounts import sessions
 from app.billing.apple_events import AppleSubscription
 from app.billing.apple_gateway import MissingAtApple, SignedData
 
-BUNDLE_ID = "com.example.wishlist"
+BUNDLE_ID = "com.example.shushgift"
 PRODUCT_ID = "example.premium.yearly"
 APP_APPLE_ID = 1234567890
 # The extensions Apple's library requires on its leaf and intermediate.

@@ -24,6 +24,7 @@ from app.notifications.email_content import (
     EmailMessage,
     build_links,
     render,
+    render_sign_in_link,
 )
 
 GOLDEN_DIR = Path(__file__).parent / "emails"
@@ -287,3 +288,20 @@ def test_no_external_image_and_only_our_own_links():
 
 def test_a_recipient_with_no_name_is_greeted_without_one():
     assert render(replace(BASE_DIGEST, recipient_name=" ")).text.startswith("Hello,\n")
+
+
+@pytest.mark.parametrize(
+    ("language", "creating", "subject"),
+    [
+        ("en", True, "Create your Shush Gift account"),
+        ("en", False, "Reset your Shush Gift password"),
+        ("fr", True, "Créez votre compte Shush Gift"),
+        ("fr", False, "Réinitialisez votre mot de passe Shush Gift"),
+    ],
+)
+def test_a_sign_in_email_names_the_app(language, creating, subject):
+    # The product name (Shush Gift plan D2), in both languages.
+    message = render_sign_in_link(language, creating, f"{BASE}/create-account#t")
+
+    assert message.subject == subject
+    assert "Shush Gift" in message.text

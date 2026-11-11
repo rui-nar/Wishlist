@@ -301,7 +301,7 @@ def settings(**values):
         "brevo_api_key": "key",
         "email_sender_address": "sender@example.test",
         "notification_secret": SECRET,
-        "public_base_url": "https://wishlist.example.test",
+        "public_base_url": "https://shushgift.example.test",
     }
     return Settings(**(base | values))
 
@@ -327,7 +327,7 @@ def test_settings_defaults_and_the_runbook_rules(monkeypatch):
     # The conftest turns the worker off for every app it does not build.
     monkeypatch.delenv("NOTIFICATIONS_WORKER", raising=False)
     assert settings().notifications_worker is True
-    assert settings().email_sender_name == "Wishlist"
+    assert settings().email_sender_name == "Shush Gift"
 
     monkeypatch.setenv("EMAIL_SENDER_NAME", "")
     assert settings().email_sender_name == ""
@@ -410,7 +410,7 @@ def test_a_fully_configured_start_names_no_variable(database_url, caplog, mailer
         brevo_api_key="key",
         email_sender_address="sender@example.test",
         notification_secret=SECRET,
-        public_base_url="https://wishlist.example.test",
+        public_base_url="https://shushgift.example.test",
     )
     app = create_app(configured)
     app.state.mailer = mailer

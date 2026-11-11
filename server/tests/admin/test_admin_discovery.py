@@ -34,7 +34,7 @@ def test_the_schema_is_still_built_in_process(make_client, env):
 def test_only_dev_keeps_the_schema(make_client):
     client = make_client(app_env="dev")
 
-    assert client.get("/openapi.json").json()["info"]["title"] == "Wishlist"
+    assert client.get("/openapi.json").json()["info"]["title"] == "Shush Gift"
     assert client.get("/docs").status_code == 200
 
 

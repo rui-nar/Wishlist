@@ -22,7 +22,7 @@ from app.accounts.models import EmailLink
 from app.notifications.email_content import Digest, build_links, render
 
 SECRET = "a-test-notification-secret"
-BASE_URL = "https://wishlist.example.test"
+BASE_URL = "https://shushgift.example.test"
 ADDRESS = "ada@example.test"
 PASSWORD = "correct horse battery"
 OTHER_PASSWORD = "a different long password"

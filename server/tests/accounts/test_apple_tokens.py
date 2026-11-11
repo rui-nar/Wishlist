@@ -31,7 +31,7 @@ from app.accounts.sessions import utc_now
 from app.billing.models import Entitlement
 from app.billing.stripe_gateway import GatewayUnavailable
 
-PUBLIC_BASE_URL = "https://wishlist.example.test"
+PUBLIC_BASE_URL = "https://shushgift.example.test"
 REDIRECT_URI = f"{PUBLIC_BASE_URL}/api/auth/apple/callback"
 TEAM_ID = "TEAM123456"
 SIGNING_KEY_ID = "KEY1234567"

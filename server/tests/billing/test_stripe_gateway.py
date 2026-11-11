@@ -259,7 +259,7 @@ def test_the_customer_carries_the_marker_and_the_idempotency_key(gateway):
                 "name": "Ada",
                 "metadata": {"user_id": str(user_id), "app": "wishlist"},
             },
-            {"idempotency_key": f"wishlist-customer-{user_id}"},
+            {"idempotency_key": f"shushgift-customer-{user_id}"},
         )
     ]
 

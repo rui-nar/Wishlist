@@ -36,7 +36,7 @@ WEB_CLIENT_ID = "web-client.apps.googleusercontent.com"
 @pytest.fixture(scope="session")
 def accounts_database_url() -> Iterator[str]:
     base_url = os.environ["DATABASE_URL"]
-    name = f"wishlist_accounts_{uuid.uuid4().hex[:12]}"
+    name = f"shushgift_accounts_{uuid.uuid4().hex[:12]}"
     admin = create_engine(base_url, isolation_level="AUTOCOMMIT")
     try:
         with admin.connect() as connection:

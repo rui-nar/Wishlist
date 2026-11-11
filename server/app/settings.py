@@ -17,6 +17,21 @@ from pydantic_settings import BaseSettings
 # ASCII digits, in major units of a two-decimal currency (premium plan D12):
 # what Decimal alone would also take, NaN, exponents or a sign, is no price.
 _PRICE_AMOUNT = re.compile(r"[0-9]+(\.[0-9]{1,2})?")
+# The app-link values (Shush Gift plan D7): `<team id>.<bundle id>`, a Java
+# package name, and a SHA-256 fingerprint as the Play Console shows it.
+_APPLE_APP_ID = re.compile(r"[A-Z0-9]{10}\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*")
+_ANDROID_PACKAGE = re.compile(r"[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+")
+_SHA256_FINGERPRINT = re.compile(r"[0-9A-F]{2}(:[0-9A-F]{2}){31}")
+
+
+def _entries(value: str) -> list[tuple[int, str]]:
+    """The non-empty entries of a comma-separated value, with their positions,
+    counted from 1 between commas."""
+    return [
+        (position, entry.strip())
+        for position, entry in enumerate(value.split(","), start=1)
+        if entry.strip()
+    ]
 
 
 class Settings(BaseSettings):
@@ -64,7 +79,7 @@ class Settings(BaseSettings):
     brevo_api_key: str = ""
     email_sender_address: str = ""
     # An empty value, unlike an absent one, means no sender name.
-    email_sender_name: str = "Wishlist"
+    email_sender_name: str = "Shush Gift"
     # Comma-separated. Outside production, the only addresses ever emailed: VAL
     # holds PROD's real addresses (D19). Empty there: nobody is emailed.
     email_allowed_recipients: str = ""
@@ -129,6 +144,62 @@ class Settings(BaseSettings):
     # Comma-separated account ids of the admins (admin panel plan D1), never
     # addresses. Empty: no admin, and /api/admin answers 404 to everyone.
     admin_user_ids: str = ""
+    # The app-link files, which let the phones open this host's links in the
+    # installed app (Shush Gift plan D7); each environment lists its own app.
+    # Comma-separated `<team id>.<bundle id>` for iOS; for Android, the package
+    # and the comma-separated SHA-256 fingerprints of its signing certificates
+    # (Play's app signing key and the upload key). Empty: that file answers 404.
+    app_links_apple_app_ids: str = ""
+    app_links_android_package: str = ""
+    app_links_android_sha256: str = ""
+
+    @property
+    def app_links_apple_ids(self) -> list[str]:
+        # As ADMIN_USER_IDS: an invalid entry is ignored, and does not stop
+        # the app.
+        return [
+            entry
+            for _position, entry in _entries(self.app_links_apple_app_ids)
+            if _APPLE_APP_ID.fullmatch(entry)
+        ]
+
+    @property
+    def app_links_android_app(self) -> str:
+        package = self.app_links_android_package.strip()
+        return package if _ANDROID_PACKAGE.fullmatch(package) else ""
+
+    @property
+    def app_links_android_fingerprints(self) -> list[str]:
+        # Upper case, as Google lists them, whatever the case typed.
+        return [
+            entry
+            for _position, entry in _entries(self.app_links_android_sha256.upper())
+            if _SHA256_FINGERPRINT.fullmatch(entry)
+        ]
+
+    @property
+    def app_links_invalid(self) -> list[str]:
+        """The app-link variables holding an entry that is ignored, with the
+        positions of the entries in a list."""
+        invalid = []
+        for name, value, pattern in (
+            ("APP_LINKS_APPLE_APP_IDS", self.app_links_apple_app_ids, _APPLE_APP_ID),
+            (
+                "APP_LINKS_ANDROID_SHA256",
+                self.app_links_android_sha256.upper(),
+                _SHA256_FINGERPRINT,
+            ),
+        ):
+            positions = [
+                str(position)
+                for position, entry in _entries(value)
+                if not pattern.fullmatch(entry)
+            ]
+            if positions:
+                invalid.append(f"{name} at positions {', '.join(positions)}")
+        if self.app_links_android_package.strip() and not self.app_links_android_app:
+            invalid.append("APP_LINKS_ANDROID_PACKAGE")
+        return invalid
 
     @property
     def admin_ids(self) -> frozenset[uuid.UUID]:
