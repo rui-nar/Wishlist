@@ -41,6 +41,9 @@ A person can own lists and be an invitee on other people's.
   never gifts, reservations, pledges or comments. The admin is a user too:
   nothing the admin sees may change with invitee activity, on their own lists
   or anyone else's, so a hidden gift's photo counts for no one.
+  For each account the admin sees, apart, its Stripe subscription (status,
+  start date, renewal or end date) and a Premium granted by hand with its
+  controls; one never hides the other (owner, 2026-11-11).
 
 ## Core rules
 
