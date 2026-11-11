@@ -54,7 +54,14 @@ below; replace them as you run the commands.
 | `<apple-app-apple-id>` | the PROD app's Apple ID in App Store Connect, digits only ([Billing, Part 3](BILLING.md#9-fill-in-prod)). Never committed |
 | `<demo-account-id>`, `<demo-account-address>` | the id and the address of the account given to Apple's review ([Billing, Part 3](BILLING.md#6-create-the-app-review-demo-account)). Never committed |
 | `<google-ios-client-id>`, `<google-ios-client-id-val>` | the IDs of the PROD and VAL apps' iOS OAuth clients, one per bundle id, ending in `.apps.googleusercontent.com` ([step 13](#google-ios-oauth-client)). Public, not secrets, but never committed |
-| `<android-application-id>` | the Android applicationId of the build that signs in with Apple ([step 12](#12-apple-sign-in)). Never committed |
+| `<android-application-id>` | the Android applicationId of the PROD app, the same value as `<ios-bundle-id>` ([step 14](#the-two-apps)); it is also what the PROD server's `APPLE_ANDROID_PACKAGE` holds ([step 12](#12-apple-sign-in), [step 11](#android-oauth-client)). Never committed |
+| `<android-application-id-val>` | the Android applicationId of the VAL app, `<android-application-id>.val` ([step 14](#the-two-apps)); the VAL server's `APPLE_ANDROID_PACKAGE`. Never committed |
+| `<upload-key-sha1>`, `<play-signing-sha1>`, `<play-signing-sha1-val>`, `<debug-sha1>` | the SHA-1 fingerprints of the upload key, the PROD and the VAL app's Play App Signing keys, and a dev machine's debug key ([step 11](#android-oauth-client)). Never committed |
+| `<play-upload-service-account-email>`, `<play-server-service-account-email>`, `<pubsub-push-service-account-email>` | the email addresses of the service accounts that upload builds ([step 14](#the-service-account-for-uploads)), read subscriptions for the server ([Billing, Part 4](BILLING.md#3-create-the-servers-service-account)) and sign the Pub/Sub push ([Billing, Part 4](BILLING.md#4-create-the-pubsub-topic-and-the-push-subscription)). Never committed |
+| `<service-account-key-file>` | the downloaded JSON key of a service account, a secret. Never committed |
+| `<google-product-id>` | the id of the yearly Google Play subscription, the same in both apps ([Billing, Part 4](BILLING.md#2-create-the-subscription-in-each-app)). Never committed |
+| `<gcp-project-id>`, `<pubsub-topic>` | the id of Wishlist's Google Cloud project and the id of an environment's Pub/Sub topic ([Billing, Part 4](BILLING.md#4-create-the-pubsub-topic-and-the-push-subscription)). Never committed |
+| `<owner-account-id>` | the id of the owner's own Wishlist account, for `GOOGLE_PLAY_TEST_ACCOUNT_IDS` ([Billing, Part 4](BILLING.md#9-fill-in-prod-for-android)). Never committed |
 | `<account-address>` | the email address of an account, when it has to be looked up. Never committed |
 | `<user-id>` | an account's id, printed by the query that looked it up |
 | `<admin-user-id>` | the id of the account that is admin, found in [Admin](#admin). Never committed |
@@ -75,7 +82,8 @@ Stripe account selling Wishlist: a sandbox for VAL, live mode for PROD),
 **[Google Cloud]** (the Google Cloud console, in Wishlist's project) or
 **[Apple]** (the Apple Developer account, at
 <https://developer.apple.com/account/resources>, or App Store Connect, at
-<https://appstoreconnect.apple.com>, as the step says).
+<https://appstoreconnect.apple.com>, as the step says) or **[Play]** (the
+Google Play Console, at <https://play.google.com/console>).
 
 ## What Wishlist adds to the VPS
 
@@ -771,7 +779,7 @@ has to be enabled. Details of rows 6 and 7 follow below.
 | 4 | Google Auth Platform → Audience | User type **External**. Add your own account under Test users | Once |
 | 5 | Google Auth Platform → Data Access | Add nothing. Sign-in asks only for `openid`, `email` and `profile`, and any other scope changes what Google demands | Never |
 | 6 | Google Auth Platform → Clients | The web client `Wishlist web`, with the origin of each environment ([below](#web-oauth-client)) | Once, then a line per environment |
-| 7 | Google Auth Platform → Clients | One Android client per signing key ([below](#android-oauth-client)) | Once the real application id and release key exist; a debug client for a dev machine |
+| 7 | Google Auth Platform → Clients | One Android client per app and signing key ([below](#android-oauth-client)) | Once each app has its first upload to Play ([step 14](#14-android-app)); a debug client for a dev machine |
 | 8 | Branding → App domain | Home page `https://<prod-host>/welcome`, privacy policy the address of `LEGAL_PRIVACY_URL`, terms of service the address of `LEGAL_TERMS_URL` | Before row 9 |
 | 9 | Audience → **Publish app** | Status **In production**: open to any Google account | Before PROD serves the public |
 | 10 | Verification Centre | Only for showing the name `Wishlist` or a logo on Google's screen. It needs the ownership of `<top-private-domain>` proven in Google Search Console | Optional |
@@ -852,43 +860,65 @@ the installed app. Without it, the Google button fails on the device; the web
 is not affected. No client secret is involved, and its client ID goes
 nowhere: Google matches the installed app against the registration.
 
-**Not possible for VAL and PROD yet**, for two reasons:
+The real application ids now exist, through the two flavours of the Android
+app ([step 14](#14-android-app)): `<android-application-id-val>` for the VAL
+app and `<android-application-id>` for the PROD app. Each client has one
+package name and one SHA-1, so **each app needs several**, one per key that
+can sign an installed copy:
 
-- **The package name is a placeholder.** The Android application id is
-  `com.example.wishlist` (`client/android/app/build.gradle.kts`, and
-  `client/README.md`, "Placeholder application id"). The real one is an open
-  decision of the DevOps plan. A registration made with the placeholder stops
-  matching when the id changes and has to be replaced then.
-- **There is no release key.** Release builds are signed with the debug key
-  for now (`build.gradle.kts`). The release key is the app's identity: an
-  update signed with another key cannot be installed over an existing copy,
-  and a published app cannot be re-keyed.
+| Key | Its SHA-1 | Known |
+|---|---|---|
+| Play App Signing key, which signs what Play delivers: the internal testers' installs and the public ones. A different one per app | `<play-signing-sha1-val>`, `<play-signing-sha1>` | After the app's first upload to Play |
+| The upload key, which signs the bundle (the same key for both apps) | `<upload-key-sha1>` | Once the key is made ([step 14](#the-upload-key)) |
+| The debug key of a dev machine, which signs `flutter run` | `<debug-sha1>` | At once, on each machine |
 
-Until then, a client registered with the placeholder and the debug key lets
-debug builds sign in on the dev machine. Each key needs its own Android
-client (one package name and one SHA-1 each), and every machine has its own
-debug key.
+**[Play]** The Play App Signing key's SHA-1 is in the app's Test and release →
+App integrity → App signing (the path is from memory and was not checked),
+under the app signing key certificate. Take the SHA-1, not the SHA-256.
 
-**[dev]** The debug key's SHA-1 (`keytool` comes with the JDK Flutter uses):
+**[dev]** The upload key's and the debug key's SHA-1 (`keytool` comes with the
+JDK Flutter uses):
 
 ```powershell
+keytool -list -v -keystore $HOME\wishlist-upload.keystore -alias upload
 keytool -list -v -keystore $HOME\.android\debug.keystore -alias androiddebugkey -storepass android
 ```
 
-**[Google Cloud]** Google Auth Platform → Clients → Create client:
+**[Google Cloud]** Google Auth Platform → Clients → Create client, once per
+row of this table:
 
-| Field | Value |
-|---|---|
-| Application type | **Android** |
-| Name | `Wishlist Android debug` (and later `Wishlist Android release`) |
-| Package name | the application id: `com.example.wishlist` today, the real one once chosen |
-| SHA-1 certificate fingerprint | the `SHA1:` line printed by `keytool` |
+| Name | Package name | SHA-1 |
+|---|---|---|
+| `Wishlist Android VAL (Play)` | `<android-application-id-val>` | `<play-signing-sha1-val>` |
+| `Wishlist Android VAL (upload)` | `<android-application-id-val>` | `<upload-key-sha1>` |
+| `Wishlist Android (Play)` | `<android-application-id>` | `<play-signing-sha1>` |
+| `Wishlist Android (upload)` | `<android-application-id>` | `<upload-key-sha1>` |
+| `Wishlist Android debug` | the id of the build you run: `com.example.wishlist.val` with no `-P wishlistAppId`, or `<android-application-id-val>` with it | `<debug-sha1>` |
 
-Once the real application id and the release key exist, register a second
-client with the release key's SHA-1 (`keytool -list -v -keystore` on the
-release keystore). If Google Play ends up signing the app with a key other
-than the release key (a key Google generated for Play App Signing), register
-that key's SHA-1 too, as Play Console shows it under App integrity.
+For all of them the application type is **Android**. Only the Play App Signing
+row is needed for testers installing from Play; the upload row covers a bundle
+installed another way, signed with the upload key. A client registered with
+the old placeholder `com.example.wishlist` stops matching any build: replace
+it with the debug row. A new client can take a few minutes to reach Google,
+and none of these values goes in a file of the repository.
+
+**[VPS]** `APPLE_ANDROID_PACKAGE` is the id of the Android app the server
+hands Apple's sign-in back to, so each environment has its own: VAL's ends in
+`.val`, PROD's does not. It follows [step 12](#12-apple-sign-in), which
+filled it in with the build's id:
+
+```bash
+cd /opt/wishlist-val                     # VAL; PROD in /opt/wishlist with <android-application-id>
+sed -i 's/^APPLE_ANDROID_PACKAGE=.*/APPLE_ANDROID_PACKAGE=<android-application-id-val>/' .env
+grep -n '^APPLE_ANDROID_PACKAGE=' .env   # VAL: the id ending .val
+docker compose up -d --wait --wait-timeout 300
+```
+
+**[dev]** None of it was committed:
+
+```powershell
+git grep -n -F -e <android-application-id> -e <play-signing-sha1> -e <upload-key-sha1> -e <debug-sha1>   # nothing
+```
 
 ## 12. Apple sign-in
 
@@ -1317,6 +1347,267 @@ second `validation` push, or a manual run of "iOS release" for `val`).
   `docs/reviews/IOS_APP_PLAN.md` and take it through the adversarial review.
   Do not revoke certificates by hand to make room: that is for the triage to
   decide.
+
+## 14. Android app
+
+The Android app is built and signed on GitHub's Linux runners and uploaded to
+Google Play's internal testing track (Android release plan, D1 to D4). There
+are **two apps**, as on iOS: the VAL app, "Wishlist VAL", built from the
+`validation` tag and talking to VAL, which testers use; and the PROD app,
+built from a release tag and talking to PROD. Until the secrets of [GitHub
+variables and secrets](#github-variables-and-secrets-for-android) exist, the
+`Android release` workflow ends with a notice and builds nothing.
+
+This step needs [step 11](#11-google-sign-in) done first, at least on VAL: its
+web client. It also needs the application id of the [bundle
+id](#the-bundle-id) chosen, since Android shares it with iOS.
+
+**The Play Console's menu names below were written from memory of Google's
+documentation and were not checked against the Play Console on 2026-11-11.**
+Google renames its menus from time to time, so follow the meaning when a name
+differs. A detail that could not be confirmed is marked "unconfirmed".
+
+### Play developer registration
+
+**[Play]** At <https://play.google.com/console>, with a Google account that
+the owner will keep for good: it is the developer account, and the apps belong
+to it.
+
+- A one-time registration fee, and an identity check by Google (unconfirmed:
+  the amount and the documents asked). An organisation account also needs a
+  D-U-N-S number; a personal account shows the owner's legal name to buyers.
+- Google's rules for accounts created recently require a closed test with a
+  minimum number of testers over a minimum number of days before an app can go
+  to production (from memory: 12 testers for 14 days, and these numbers have
+  changed before; unconfirmed). This does not affect the internal track used
+  below, but it sets how soon the PROD app can reach the public: check it
+  before planning that date.
+- Selling needs a merchant account, set up in [Billing, Part 4, step
+  1](BILLING.md#1-set-up-the-merchant-account). Registration does not need it.
+
+Nothing below can start before Google has accepted the registration.
+
+### The two apps
+
+`<android-application-id>` is the PROD app's identity, the value chosen in
+[The bundle id](#the-bundle-id) (the same as `<ios-bundle-id>`), and **cannot
+change** once Google Play uses it. The VAL app's is `<android-application-id-val>`,
+which is `<android-application-id>.val`: the `val` flavour adds that suffix
+(`client/android/app/build.gradle.kts`).
+
+**[Play]** All apps → Create app, once for each app:
+
+| Field | VAL app | PROD app |
+|---|---|---|
+| App name | Wishlist VAL | Wishlist |
+| Default language | the language of the store listing | the same |
+| App or game | **App** | **App** |
+| Free or paid | **Free** (Premium is an in-app subscription; a free app cannot be made paid later, unconfirmed) | the same |
+
+Tick the declarations (developer programme policies, US export laws).
+
+Creating the app does not give it an application id: the **first bundle
+uploaded** does, and it can never change afterwards. That is why the next
+steps matter before anything is uploaded. Do VAL first.
+
+### The upload key
+
+The upload key signs the bundle that CI sends to Play (plan D3). With **Play
+App Signing**, Google holds the key that signs what users install, and the
+upload key is only a credential for sending: if it is lost or leaked, Google
+can reset it from the Play Console, and the app is never stuck. The same
+upload key serves both apps.
+
+**[dev]** Create it once, outside the repository (the file is `*.keystore`,
+and ignored by Git, but a checkout is the wrong place anyway):
+
+```powershell
+keytool -genkeypair -v -storetype PKCS12 -keystore $HOME\wishlist-upload.keystore -alias upload -keyalg RSA -keysize 2048 -validity 10000
+```
+
+`keytool` asks for a keystore password, then for the key's, and a name and
+organisation for the certificate: neither shows in the app. Answer both
+passwords with the same long random value, which a PKCS12 keystore requires
+(unconfirmed), and write down the file, the alias `upload` and the passwords
+in the password manager, with a second copy of the file somewhere else. Note
+its SHA-1 for [step 11](#android-oauth-client), `<upload-key-sha1>`:
+
+```powershell
+keytool -list -v -keystore $HOME\wishlist-upload.keystore -alias upload
+```
+
+**Keep it safe:** whoever has the file and its passwords can upload to your
+apps, though only to the track the service account may use. A lost upload key
+is replaceable through Google (the Play Console's app signing page offers an
+upload key reset; the path is unconfirmed); a lost app signing key is not,
+and Google holds that one.
+
+**[Play]** Play App Signing is on for a new app, and the first upload (below)
+enrols it: the key signing the first bundle becomes the upload key, and Google
+generates the app signing key (from memory; unconfirmed). Once the first
+bundle is uploaded, the Console shows the app signing key's SHA-1 under
+Test and release → App integrity → App signing: `<play-signing-sha1-val>` for
+the VAL app, `<play-signing-sha1>` for the PROD app. They differ, and
+[step 11](#android-oauth-client) needs both.
+
+### The service account for uploads
+
+CI sends the bundle through the Play Developer API as a Google service
+account, which the workflow signs in as with its JSON key.
+
+**[Google Cloud]** In Wishlist's project, IAM & Admin → Service Accounts →
+Create service account, such as `wishlist-play-upload`, with no project role.
+Keys → Add key → Create new key → **JSON**; the file downloads once, and it
+is a secret. Make sure the Google Play Android Developer API is enabled in
+the project (APIs & Services → Library; unconfirmed).
+
+**[Play]** Users and permissions → Invite new users: the service account's
+email address, `<play-upload-service-account-email>`. Under App permissions,
+add both apps, and tick (names unconfirmed):
+
+- **View app information and download bulk reports (read-only)**;
+- **Release to testing tracks**.
+
+Nothing at the account level, no permission to release to production, and no
+permission to manage orders: the server's account of [Billing, Part 4, step
+3](BILLING.md#3-create-the-servers-service-account) is separate. Send the
+invitation; access can take some time to start working (unconfirmed).
+
+### GitHub variables and secrets for Android
+
+The release workflow reads these from the repository (Settings → Secrets and
+variables → Actions), not from an environment. It builds when all of the
+first six of the table exist, ends with a notice and builds nothing when none
+exist, and fails, naming what is missing, when only some do: set them in one
+sitting, before any tag is pushed. The two server addresses
+are the ones iOS uses ([step 13](#github-secrets-and-variables)).
+
+| Name | Kind | Value |
+|---|---|---|
+| `ANDROID_APP_ID` | variable | `<android-application-id>`, the PROD app's. The workflow adds `.val` for the VAL app itself, and refuses the `com.example` placeholder |
+| `ANDROID_UPLOAD_KEYSTORE_B64` | secret | the keystore file, base64 on one line |
+| `ANDROID_UPLOAD_KEYSTORE_PASSWORD` | secret | the keystore's password |
+| `ANDROID_UPLOAD_KEY_ALIAS` | secret | `upload` |
+| `ANDROID_UPLOAD_KEY_PASSWORD` | secret | the key's password |
+| `PLAY_SERVICE_ACCOUNT_JSON` | secret | the whole JSON key of the upload service account |
+| `API_BASE_URL_VAL` | secret | `https://<val-host>`, as in step 13 |
+| `API_BASE_URL_PROD` | secret | `https://<prod-host>`, as in step 13 |
+
+**[dev]** With the GitHub CLI, in the checkout. The key and the keystore are
+piped, and the passwords are typed at the prompt `gh` shows, never pasted into
+a command:
+
+```powershell
+gh variable set ANDROID_APP_ID --body <android-application-id>
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\wishlist-upload.keystore")) | gh secret set ANDROID_UPLOAD_KEYSTORE_B64
+gh secret set ANDROID_UPLOAD_KEYSTORE_PASSWORD
+gh secret set ANDROID_UPLOAD_KEY_ALIAS --body upload
+gh secret set ANDROID_UPLOAD_KEY_PASSWORD
+Get-Content -Raw $HOME\Downloads\<service-account-key-file>.json | gh secret set PLAY_SERVICE_ACCOUNT_JSON
+gh secret list                           # the five ANDROID_ and PLAY_ secrets, among the others
+gh variable list                         # ANDROID_APP_ID, among the others
+```
+
+Then delete the service account's key file from Downloads once it is in the
+password manager.
+
+### The first upload, by hand
+
+Google Play refuses the Developer API an app that has no upload made by hand
+in the Play Console: the API cannot make the first release, and subscription
+products need one too (review R1-6 of the plan). So **each app's first signed
+bundle is uploaded manually**, once, using the bundle the workflow builds
+itself.
+
+**[dev]** Push the `validation` tag as in [step 8](#8-first-val-deploy) for the
+VAL app. The PROD app waits for its own `vX.Y.Z` tag (or a manual run of
+"Android release" from a tag, for `prod`).
+
+**[GitHub]** Actions → "Android release" for that run. The `gate` job passes,
+the bundle builds, then the step "Upload to the internal track" **fails** with
+Google's message: that is the expected refusal. Only on that failure, the run
+keeps the signed bundle as the artefact `android-bundle`, for 7 days. Download
+it (Artifacts, at the bottom of the run's page) and unzip it: it holds
+`app-val-release.aab` (`app-prod-release.aab` for PROD).
+
+**[Play]** Wishlist VAL → Test and release → Testing → Internal testing →
+Create new release: if the Console asks, accept Play App Signing. Upload the
+`.aab`, give the release a name, save, review and roll it out to internal
+testing. The Console may ask for a testers list before it lets the release
+go: do the next section first, then return. The app now has its application id
+and its first upload; Billing, Part 4 can create its subscription.
+
+**[GitHub]** Delete the artefact from the run's page. A public repository's
+artefacts can be downloaded by anyone, and the bundle holds the server's
+address, which is kept out of the logs.
+
+Later runs upload through the API by themselves. While an app has never been
+published, Play accepts only a draft release from the API: the workflow then
+prints the notice "Draft release", and the release has to be rolled out from
+the Play Console, as above (this restriction is the workflow author's
+reading of Play's message). Each build's version code is the run's number,
+which only grows.
+
+### Internal testers
+
+Internal testers get every VAL build in minutes, without Google's review.
+
+**[Play]** Wishlist VAL → Test and release → Testing → Internal testing →
+Testers tab:
+
+1. Create an email list named `Testers`, and add the testers' Google accounts,
+   as the accounts on their phones. Tick the list for the track. The number of
+   internal testers is limited (100, from memory; unconfirmed).
+2. Copy the **opt-in link** under "How testers join your test". It is private
+   to the testers: never commit it.
+3. On their phone, each tester opens the link signed in with that account,
+   accepts, and installs "Wishlist VAL" from Play.
+
+Testers use the VAL app, never the PROD one (plan D1): VAL is seeded from PROD
+and what they do there is lost at the next seed ([Seeding VAL from
+PROD](#seeding-val-from-prod)). Buying Premium needs license testers on top:
+[Billing, Part 4, step 6](BILLING.md#6-add-license-testers).
+
+### Selling Premium on Android
+
+Premium bought on Android, through Google Play Billing, is set up once both
+apps exist in the Play Console with their first upload, in [Billing, Part
+4](BILLING.md#part-4-selling-on-android): the merchant account, the
+subscription of each app, the service account, Pub/Sub, the license testers
+and the test on VAL. The apps offer no purchase until the variables of the
+[release with Android and Google
+purchases](#release-specific-steps) are filled in.
+
+### First Android build from the validation tag
+
+Before it: the VAL app exists in the Play Console with its first upload and an
+internal testers list; VAL's web client and Android OAuth clients are
+registered ([step 11](#android-oauth-client)); and VAL's `.env` has
+`APPLE_ANDROID_PACKAGE=<android-application-id-val>`.
+
+**[dev]** Push the `validation` tag again as in [step 8](#8-first-val-deploy).
+It deploys VAL, as always, and starts the Android release of the VAL app.
+
+**[GitHub]** Actions → "Android release" for `validation`: the `gate` job, then
+`release`, which this time ends green. Its notice says `Android val app:
+validation-<short sha>, build <n>`. The run's log shows no hostname: the
+secrets are masked.
+
+**[Play]** Wishlist VAL → Test and release → Testing → Internal testing: the
+new release is there, completed (or a draft, to roll out, as above). It
+reaches the testers' phones within minutes to an hour (unconfirmed).
+
+**[dev]** On an Android phone, with the VAL app updated from Play:
+
+1. The name under the icon is "Wishlist VAL", and the app shows the version
+   `validation-<short sha>`.
+2. Sign in with Google, with Apple, then with email: each one signs in. A
+   Google button that fails with a developer error means the Android OAuth
+   client does not match the installed key: compare the SHA-1 of
+   [step 11](#android-oauth-client) with the one the Console shows (unconfirmed
+   error text).
+3. A gift's photo can be taken with the camera and picked from the library,
+   each after the system's permission prompt.
 
 ## Admin
 
@@ -1947,6 +2238,50 @@ Run these on the host **before** deploying the release named, once.
   ```
 
   Nothing needs `docker compose up -d` yet: all are empty.
+
+- **The release with Android and Google purchases** (the first with
+  `GOOGLE_PLAY_PRODUCT_ID` in the `.env.example` files).
+
+  Its migration runs on deploy, by itself. It widens `entitlements.external_id`
+  from 255 characters to text, because a Google purchase token can be longer.
+  The previous release reads and writes the column as a string whatever its
+  length, so a rollback stays image-only. Rolling back across it leaves the
+  schema at the wider type. Only a downgrade of the database, which nothing
+  here asks for, would delete the Google rows whose id is longer than 255
+  characters. Selling on Android stays absent until the owner fills in the
+  variables below ([Billing, Part
+  4](BILLING.md#part-4-selling-on-android), VAL first).
+
+  **While the previous release runs after a rollback,** it has no Google
+  route: Pub/Sub's pushes are refused and retried, and **deleting an account
+  does not cancel its Google subscription**: it keeps charging. If Google
+  purchases exist, keep the rollback short, and cancel by hand, in the Play
+  Console (Order management), the subscription of any account deleted
+  meanwhile.
+
+  **[VPS]** Each `.env` gets the new lines, from the examples at the release
+  (step 2 with `REF=<release>`). The first `grep` keeps a second run from
+  adding them twice. VAL gets five lines, PROD six: the one more is
+  `GOOGLE_PLAY_TEST_ACCOUNT_IDS`.
+
+  ```bash
+  cd /opt/wishlist-val
+  grep -q '^GOOGLE_PLAY_PRODUCT_ID=' .env || \
+      grep -E '^GOOGLE_PLAY_' "$SRC/deploy/val/.env.example" >> .env
+  cd /opt/wishlist
+  grep -q '^GOOGLE_PLAY_PRODUCT_ID=' .env || \
+      grep -E '^GOOGLE_PLAY_' "$SRC/deploy/prod/.env.example" >> .env
+  grep -c '^GOOGLE_PLAY_' /opt/wishlist-val/.env /opt/wishlist/.env   # :5 for VAL, :6 for PROD
+  ```
+
+  Nothing needs `docker compose up -d` yet: all are empty. `APPLE_ANDROID_PACKAGE`
+  is already in the `.env` files since the Apple sign-in release; its value
+  for each environment is set in [Android OAuth
+  client](#android-oauth-client).
+
+  **Never clear these while a Google subscription runs:** its renewals would go
+  unrecorded, Premium would end for someone who paid, and deleting their
+  account would be refused, since it cancels the subscription first.
 
 ### Updating the files on the host
 

@@ -29,7 +29,9 @@ stable than the names.
 | **Limits on** | Selling and `BILLING_ENFORCE_LIMITS=true` | Free accounts cannot grow past the limits |
 
 Premium bought on iPhone, through Apple, is a separate set-up with its own
-steps: [Part 3](#part-3-selling-on-iphone). It does not change the states above.
+steps: [Part 3](#part-3-selling-on-iphone). Premium bought on Android, through
+Google, has its own too: [Part 4](#part-4-selling-on-android). Neither changes
+the states above.
 
 The app refuses a live key on VAL and a test key on PROD, as if the key were
 empty. Limits never apply unless the app is selling, so nobody is blocked with
@@ -483,6 +485,347 @@ settings. The panel's deletion dialog warns the admin when the person still
 has a renewing one, and the deletion goes ahead, as for the person's own. The
 server logs it, by ids only.
 
+## Part 4: selling on Android
+
+Google Play requires its own billing for a subscription sold inside an app
+distributed through Play, so Premium on Android is bought from Google and not
+from Stripe ([plan](plans/ANDROID_RELEASE_PLAN.md)). Stripe's and Apple's
+set-ups are unchanged and independent: any store grants the same Premium, and
+the app offers no purchase while Premium is already in force from another.
+
+Each step says where it happens, as above, with **[Play]** for the Play
+Console (<https://play.google.com/console>) and **[Google Cloud]** for the
+Google Cloud console, in Wishlist's project. **The menu names below were
+written from memory of Google's documentation and were not checked against the
+Play Console or Google Cloud on 2026-11-11**: Google renames its menus from
+time to time, so follow the meaning when a name differs. A detail that could
+not be confirmed is marked "unconfirmed".
+
+What the server does, so the steps make sense:
+
+- The app sends each purchase to the server, which asks the Google Play
+  Developer API what the subscription is, records Google's answer, and
+  acknowledges the purchase (Google refunds one left unacknowledged for 3
+  days). The service account of step 3 is what lets it ask.
+- Google also sends real-time developer notifications (renewal, cancellation,
+  grace, refund) through Cloud Pub/Sub to the URL of step 4. The server
+  verifies the push's token, treats the notification as a pointer only, and
+  asks Google again.
+- **VAL** accepts test purchases only, which cost nothing: a real purchase
+  there is refused and left unacknowledged, so Google refunds it, since VAL's
+  data is wiped at each seed. **PROD** accepts real purchases, and test
+  purchases only from the accounts listed in `GOOGLE_PLAY_TEST_ACCOUNT_IDS`.
+  Any other test purchase on PROD is refused (409 `test_refused`) and logged.
+- Premium lasts through Google's grace period and no longer. On hold, paused,
+  expired, and a refund with access revoked all end it. A cancelled
+  subscription stays in force to the end of the paid period.
+- Unlike Apple, the server can cancel: deleting an account **cancels** its
+  renewing Google subscription first, and is refused (409) when Google cannot
+  be reached.
+- Selling on Android does not turn the free limits on: they depend on Stripe
+  selling ([Part 2](#6-turn-the-limits-on)). Only the Android app offers the
+  Google purchase.
+
+It needs the Android apps of [DEPLOYMENT step 14](DEPLOYMENT.md#14-android-app)
+to exist in the Play Console first, each with its **first manual upload**:
+**two apps** with different application ids, the VAL app and the PROD app. Do
+VAL first, test it, then PROD. The bundle uploaded should come from a build
+with the client's purchase code (unit U4 of the plan), which declares Play's
+billing permission. Without it the Console may refuse to create a subscription
+(unconfirmed): upload a later build.
+
+### 1. Set up the merchant account
+
+**[Play]** Set up a payments profile and a merchant account for the developer
+account (Monetize with Play, Monetization setup; unconfirmed). It asks for the
+legal name and address, the bank account and the tax information. Until it is
+done, no subscription can be sold. Tax and banking are yours to settle with
+your accountant: nothing in this repository is advice on them.
+
+The price per country is also yours to decide before PROD sells. The app
+always shows Google's own price for the buyer's country, never
+`BILLING_PRICE_AMOUNT`.
+
+### 2. Create the subscription in each app
+
+**[Play]** Do this once in the VAL app, then again in the PROD app, after the
+app's first manual upload. The two apps do not share subscriptions, but give
+the product **the same id** in both, so that the variable is the same on both
+servers.
+
+| # | Where | What to set |
+|---|---|---|
+| 1 | App → Monetize with Play → Products → Subscriptions → Create subscription | A product id, `<google-product-id>` (it cannot be changed or reused once created; the characters allowed were not checked), and a name |
+| 2 | The subscription's details | A description, in English and in French if Play offers both |
+| 3 | Add a base plan | A base plan id such as `yearly`, type **auto-renewing**, billing period **yearly** (1 year, not 12 months of 1 month) |
+| 4 | Its price | Any price for VAL. For PROD, the real price per country |
+| 5 | Grace period (the base plan's settings) | **On.** Pick its length: Premium lasts through it and no longer, so it is how long a failed renewal keeps Premium. Play's own default is acceptable; the lengths it offers were not checked |
+| 6 | Account hold | Leave Play's default. The server reads on hold as `ended`; if the payment is recovered, Play's notification brings Premium back |
+| 7 | Resubscribe | **On.** See below |
+| 8 | Free trials, introductory prices, other offers | None |
+| 9 | Activate the base plan | A draft base plan cannot be bought |
+
+**Resubscribe** lets a person whose subscription is cancelled or expired start
+it again from the Play Store without opening the app. Such a purchase carries
+no account id. The server finds the account through the expired subscription's
+stored row (plan D6, account rule), so Premium returns with no manual step, as
+long as that row exists, which it does until the account is deleted, and
+deleting the account cancels the subscription. It is left on because people
+expect it, and it is tested on VAL in step 8 (point 3). If the test shows
+Premium missing after a Play Store resubscription, turn Resubscribe off and
+record it in `docs/reviews/ANDROID_RELEASE_PLAN.md`.
+
+Keep `<google-product-id>` and each app's application id
+(`<android-application-id-val>` for VAL, `<android-application-id>` for PROD)
+for steps 7 and 9.
+
+### 3. Create the server's service account
+
+The server needs a Google service account to ask the Play Developer API
+about a subscription, to acknowledge it, and to cancel it. It may be the same
+as the one that uploads builds ([DEPLOYMENT, step
+14](DEPLOYMENT.md#the-service-account-for-uploads)), but **make separate
+ones**, one per environment, as with the Apple keys:
+
+- The upload account lives in GitHub and can publish releases. The server's
+  lives on the VPS and can read and cancel customers' subscriptions. Neither
+  should hold the other's power, and either can be revoked on its own.
+- Play Console permissions are given per app, so VAL's account sees the VAL
+  app only and PROD's the PROD app only. A leak from VAL, the lower-risk
+  server, then never reaches PROD's customers.
+
+**[Google Cloud]** IAM & Admin → Service Accounts → Create service account,
+named for the environment, such as `wishlist-play-val`, with no project role.
+Keys → Add key → Create new key → **JSON**; the file is downloaded once. It
+is a secret: keep it outside this repository, in your password manager. Make
+sure the Google Play Android Developer API is enabled in the project
+(APIs & Services → Library; unconfirmed). A project under an organisation may
+forbid creating service account keys, which then has to be allowed first.
+
+**[Play]** Users and permissions → Invite new users: the service account's
+email address, `<play-server-service-account-email>`. Under App permissions,
+add the one app the environment sells, and tick (names unconfirmed):
+
+- **View app information and download bulk reports (read-only)**;
+- **Manage orders and subscriptions**: it is what lets the server acknowledge
+  and cancel.
+
+Nothing at the account level, and nothing for releases. Send the invitation.
+A service account's access can take some time to start working (unconfirmed).
+
+The server needs the key on one line. **[dev]** In PowerShell:
+
+```powershell
+(Get-Content -Raw $HOME\Downloads\<service-account-key-file>.json | ConvertFrom-Json | ConvertTo-Json -Compress) | Set-Clipboard
+```
+
+The clipboard now holds the line to paste in steps 7 and 9. Delete the file
+from Downloads once the key is in the password manager.
+
+### 4. Create the Pub/Sub topic and the push subscription
+
+Google publishes each notification to a Cloud Pub/Sub topic, and Pub/Sub
+pushes it to the server. Make one topic and one subscription **per
+environment**: the server of one app refuses another app's notifications (it
+logs `a notification for another app`).
+
+**[Google Cloud]** In Wishlist's project:
+
+1. APIs & Services → Library: enable the **Cloud Pub/Sub API**, once. Pub/Sub
+   may need a billing account on the project even when its free quota covers
+   Wishlist (unconfirmed).
+2. IAM & Admin → Service Accounts → Create service account, named for the
+   environment, such as `wishlist-play-push-val`, with **no role**. Its email
+   address, `<pubsub-push-service-account-email>`, is what the push signs as:
+   it is `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT`. It is not the account of
+   step 3.
+3. Pub/Sub → Topics → Create topic: an id such as `wishlist-play-val`, with
+   no schema. Its name is `projects/<gcp-project-id>/topics/<pubsub-topic>`.
+   Add no default subscription.
+4. The topic → Permissions → Add principal
+   `google-play-developer-notifications@system.gserviceaccount.com`, role
+   **Pub/Sub Publisher**. This is the address Google's documentation gives
+   for Play, from memory (unconfirmed): without it, Play cannot publish.
+5. Pub/Sub → Subscriptions → Create subscription:
+
+   | Field | Value |
+   |---|---|
+   | Subscription ID | such as `wishlist-play-val-push` |
+   | Topic | the one of point 3 |
+   | Delivery type | **Push** |
+   | Endpoint URL | `https://<val-host>/api/billing/google/notifications` (VAL), `https://<prod-host>/api/billing/google/notifications` (PROD) |
+   | Enable authentication | **On** |
+   | Service account | the push account of point 2 |
+   | Audience | **the same address as the endpoint URL**, character for character: it is `GOOGLE_PLAY_PUBSUB_AUDIENCE` |
+   | Retry policy | **Retry after exponential backoff delay** (recommended: the default retries at once) |
+
+   Pub/Sub's own service agent must be allowed to create tokens for the push
+   account (role **Service Account Token Creator** on it). The console offers
+   to grant it when authentication is enabled (unconfirmed): accept, or grant
+   it by hand.
+
+Pub/Sub retries an undelivered message and keeps it for a while (seven days by
+default; unconfirmed). The push reaches the server only once it runs with the
+variables of steps 7 and 9. Until then Pub/Sub retries, and nothing is lost:
+the app also reports every purchase itself.
+
+### 5. Turn on the real-time notifications
+
+**[Play]** Each app → Monetize with Play → Monetization setup → Real-time
+developer notifications (path unconfirmed): tick **Enable real-time
+notifications**, and set:
+
+| Field | Value |
+|---|---|
+| Topic name | `projects/<gcp-project-id>/topics/<pubsub-topic>`: VAL's topic in the VAL app, PROD's in the PROD app |
+| Notification content | **Subscriptions and all voided purchases** (wording unconfirmed): the server also acts on a refund |
+
+Save. Once the server runs with step 7's variables, use **Send test
+notification**: the server answers it with no log line, and the subscription's
+Pub/Sub metrics show it delivered. A `google: a push failed its check` line is
+the audience or the service account being wrong ([If something goes
+wrong](#if-something-goes-wrong)).
+
+### 6. Add license testers
+
+License testers buy for free, with Play's test cards, and Google marks their
+purchases as test purchases, the only ones VAL accepts.
+
+**[Play]** Settings → License testing (at the developer account level, not an
+app's; unconfirmed): add the Google accounts of the testers, as the accounts
+on their phones, to a list, and save. The setting applies to **every app of
+the developer account**, so a tester's purchase in the PROD app is a test
+purchase too: that is why PROD refuses them unless the tester's Wishlist
+account is in `GOOGLE_PLAY_TEST_ACCOUNT_IDS` (step 9). Never commit the
+addresses.
+
+A tester must also be an internal tester of the VAL app
+([DEPLOYMENT](DEPLOYMENT.md#internal-testers)), to install it from Play.
+
+### 7. Fill in VAL for Android
+
+**[VPS]** The key is typed at a hidden prompt, so that it stays out of the
+shell history, and written with `printf`, not `sed`, which would turn a `\n`
+into a line break. The release's lines must be in `.env` first ([release
+steps](DEPLOYMENT.md#release-specific-steps), "The release with Android and
+Google purchases").
+
+```bash
+cd /opt/wishlist-val
+grep -c '^GOOGLE_PLAY_' .env                                                # 5
+sed -i 's|^GOOGLE_PLAY_PRODUCT_ID=.*|GOOGLE_PLAY_PRODUCT_ID=<google-product-id>|' .env
+sed -i 's|^GOOGLE_PLAY_PACKAGE_NAME=.*|GOOGLE_PLAY_PACKAGE_NAME=<android-application-id-val>|' .env
+sed -i 's|^GOOGLE_PLAY_PUBSUB_AUDIENCE=.*|GOOGLE_PLAY_PUBSUB_AUDIENCE=https://<val-host>/api/billing/google/notifications|' .env
+sed -i 's|^GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT=.*|GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT=<pubsub-push-service-account-email>|' .env
+read -rs PLAY_KEY                                  # paste the key's one line, then Enter
+sed -i '/^GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=/d' .env
+printf 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=%s\n' "$PLAY_KEY" >> .env
+unset PLAY_KEY
+grep -c '^GOOGLE_PLAY_SERVICE_ACCOUNT_JSON={"type":"service_account"' .env   # 1
+ls -l .env                                         # -rw-------
+docker compose up -d --wait --wait-timeout 300
+docker compose logs app | grep 'selling on Android is off'                  # nothing
+```
+
+A line printed names what is still missing or does not load, never a value.
+`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` there also means a key that does not load:
+it must be the one line of step 3. How Docker Compose reads a `.env` value
+that holds braces and quotes was not checked: if the key does not load though
+the line looks right, suspect that first. Use `up -d` after every change to
+`.env`, as in Part 1.
+
+### 8. Test the Android app on VAL
+
+**[dev]** On an Android phone, with the VAL app installed from Play
+([DEPLOYMENT](DEPLOYMENT.md#first-android-build-from-the-validation-tag)), a Google
+account that is a license tester (step 6) and an internal tester, and signed
+in to Wishlist with a free account on VAL. Play speeds subscriptions up for
+license testers: a yearly one renews about every half hour, for a few renewals
+only (Google's documented test timings, from memory; unconfirmed), so each
+result below arrives within minutes or the hour. Check each one in the app and
+in the admin panel ([step 10](#10-what-the-admin-panel-shows-for-google)).
+
+1. **Purchase.** The plan screen shows the subscription's name, length and
+   Play's price, the renewal disclosure, the terms and privacy links, and
+   Restore. Buy it with Play's test card that always approves. Premium appears
+   within seconds and no list limit applies. The plan screen offers no second
+   purchase. On the web, signed in with the same account, Premium is there
+   too and checkout is refused.
+2. **Renewal.** Wait for the first test renewal. Premium stays, and the end
+   date moves forward.
+3. **Cancellation.** In the Play Store, Payments & subscriptions →
+   Subscriptions, cancel it. Premium stays until the end of the paid period,
+   then ends. The plan screen's Manage button opens that same page. Then
+   resubscribe from the Play Store, once before the end (Premium simply
+   stays) and once after the end, from the Play Store and not from the app:
+   Premium is back with no manual step (step 2, Resubscribe).
+4. **Grace.** In the Play Store, change the payment method to the test card
+   that always declines (unconfirmed name), and wait for a renewal. While
+   Google is in its grace period, Premium stays and the admin panel reads
+   `past_due`; once the grace period is over, Premium ends. How long the
+   test timings make the grace period was not checked.
+5. **Refund.** **[Play]** Order management: find the test order and refund it
+   **with access revoked**. Premium ends at once. A refund **without**
+   revoking access leaves the subscription running, and so Premium in force:
+   the server asks Google again and Google's state decides, by design. Whether
+   Play lets a test order be refunded was not checked; if it does not, cancel
+   and revoke it.
+6. **Restore.** With the same Wishlist account, delete the app and install it
+   again, or sign in on another phone. Premium is back for the account
+   already, since the server holds it: Restore then finds the subscription
+   again without a second charge. Signed in with a *different* Wishlist
+   account, Restore is refused, since the purchase belongs to the first.
+7. **Deletion.** With a renewing subscription, delete the account. The server
+   cancels the Google subscription before deleting: the Play Store shows it
+   cancelled, and nothing is charged afterwards. If Google cannot be reached,
+   the deletion is refused ([Account deletion refused with
+   409](DEPLOYMENT.md#account-deletion-refused-with-409)).
+
+A purchase by a Google account that is **not** a license tester is real, and
+VAL refuses it: it stays unacknowledged and Google refunds it after three
+days. Do not test with one.
+
+In the server's logs, `docker compose logs app | grep 'google:'` lists what
+Google sent and what was refused, by order id. It never shows a key or a
+purchase token.
+
+### 9. Fill in PROD for Android
+
+**[VPS]** Only after the test above, and once the PROD app is in the Play
+Console with its subscription (step 2), its topic and subscription (step 4)
+and its notification setting (step 5). The same lines as [step
+7](#7-fill-in-val-for-android), in `/opt/wishlist`, with the PROD app's
+application id, `<android-application-id>`, PROD's own service account key,
+PROD's audience (`https://<prod-host>/api/billing/google/notifications`) and
+PROD's push account, plus one more variable, so the count is 6:
+
+```bash
+cd /opt/wishlist
+grep -c '^GOOGLE_PLAY_' .env                                                # 6
+sed -i 's|^GOOGLE_PLAY_TEST_ACCOUNT_IDS=.*|GOOGLE_PLAY_TEST_ACCOUNT_IDS=<owner-account-id>|' .env
+```
+
+`GOOGLE_PLAY_TEST_ACCOUNT_IDS` lists the Wishlist account ids (never
+addresses; found as in [Part 3, step
+6](#6-create-the-app-review-demo-account)) whose test purchases PROD accepts.
+Because license testing covers every app of the developer account (step 6),
+it is what lets you check the PROD app once with a tester's free purchase.
+Leave it **empty** otherwise: PROD then refuses every test purchase, which is
+the safe state. Put your own account's id in for that check, then empty it
+again and run `up -d`.
+
+Then make one real purchase on the production app with a Google account that
+is **not** a license tester, check Premium, and refund it from the Play
+Console (Order management), with access revoked.
+
+### 10. What the admin panel shows for Google
+
+The Google subscription has its own block in the user's row, beside Stripe's
+and Apple's ([plan](plans/ANDROID_RELEASE_PLAN.md) D8). The statuses are the
+same ones: `active`, `past_due` while Google is in its grace period,
+`canceling` when it is set to stop, `ended`. The block was not checked
+against the finished screen.
+
 ## Running it day to day
 
 - **A refund or a withdrawal:** in Stripe, refund the payment, then cancel the
@@ -494,6 +837,10 @@ server logs it, by ids only.
 - **An Apple refund:** Apple decides it, and the person asks Apple. The
   server ends Premium when Apple's notification arrives. There is nothing to do
   here, and nothing to refund by hand.
+- **A Google refund:** Google decides it, and the person asks Google, or you
+  refund from the Play Console (Order management), with access revoked to end
+  Premium at once. The server ends Premium when Google's notification arrives.
+  There is nothing to refund by hand elsewhere.
 - **Stop selling:** clear `STRIPE_PRICE_ID` or `BILLING_PRICE_AMOUNT`. Sales and
   limits stop, and existing subscribers carry on. **Never clear the two secrets
   while a subscription runs**: renewals would go unrecorded, and its owner could
@@ -516,4 +863,9 @@ Logs are in `docker compose logs app`, in the environment's directory.
 | `apple: a notification failed its check` | If every notification does: `APPLE_BUNDLE_ID`, `APPLE_APP_APPLE_ID` (PROD) or the URL's environment in [step 4 of Part 3](#4-set-the-notification-urls) is wrong |
 | `apple: Sandbox transaction … refused for account …` | A Sandbox purchase on PROD from an account that is not in `APPLE_SANDBOX_ACCOUNT_IDS`. Expected for testers; for the review's demo account, see [step 6](#6-create-the-app-review-demo-account) |
 | Bought on iPhone, but Premium does not appear | `docker compose logs app \| grep 'apple:'`. A transaction `of another product` is a wrong `APPLE_PRODUCT_ID`; `names another account` is a purchase made under a different Wishlist account than the signed-in one |
+| `selling on Android is off; missing or invalid: X` | Set X. `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` here also means a key that does not load: it must be the JSON key on one line |
+| `google: a push failed its check` | If every push does: `GOOGLE_PLAY_PUBSUB_AUDIENCE` (it must be the push subscription's audience, the environment's notifications URL) or `GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT` is wrong ([step 4 of Part 4](#4-create-the-pubsub-topic-and-the-push-subscription)) |
+| `google: purchase … refused for account … (real_refused)` | A real purchase on VAL, which accepts test purchases only. Expected for anyone who is not a license tester |
+| `google: purchase … refused for account … (test_refused)` | A test purchase on PROD from an account that is not in `GOOGLE_PLAY_TEST_ACCOUNT_IDS`. Expected for testers ([step 9](#9-fill-in-prod-for-android)) |
+| Bought on Android, but Premium does not appear | `docker compose logs app \| grep 'google:'`. `of another product` is a wrong `GOOGLE_PLAY_PRODUCT_ID`; `names another account` is a purchase made under a different Wishlist account than the signed-in one; `could not be acknowledged` can be a service account without the permission to manage orders and subscriptions ([step 3](#3-create-the-servers-service-account)) |
 | An account deletion refused with 409 | [Account deletion refused with 409](DEPLOYMENT.md#account-deletion-refused-with-409) |

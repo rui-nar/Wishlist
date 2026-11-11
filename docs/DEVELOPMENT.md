@@ -121,8 +121,8 @@ sign-in servers; until then the button may fail with an origin error.
 
 Android builds take their server client ID from `/api/config` too, but signing
 in on a device also needs an Android OAuth client registered with the app's
-package name and signing key, and the package name is still a placeholder:
-see [DEPLOYMENT](DEPLOYMENT.md#android-oauth-client).
+package name and signing key: see
+[DEPLOYMENT](DEPLOYMENT.md#android-oauth-client).
 
 ## Apple and email sign-in in DEV
 
@@ -227,6 +227,27 @@ On a Mac, the same build as CI is `flutter build ios --release --no-codesign`
 in `client/`, with `--dart-define=API_BASE_URL=…` to reach a server. A local
 identity goes into `client/ios/Flutter/Identity.local.xcconfig`, gitignored,
 never into `Identity.xcconfig`, whose committed values stay placeholders.
+
+## Running on Android
+
+The Android app has two flavours, `val` and `prod`
+([`client/README.md`](../client/README.md#android)), and **every Android
+command needs `--flavor`**: without one Flutter stops with "Gradle build
+failed to produce an .apk file". On a device or an emulator, use `val`: it
+installs beside the PROD app and never replaces it.
+
+```powershell
+flutter run -d <device> --flavor val --dart-define=API_BASE_URL=http://<host>:8000
+```
+
+`<host>` is the dev machine as the device sees it: `10.0.2.2` from the Android
+emulator (unconfirmed), the machine's address on the network from a phone. The
+build's application id is `com.example.wishlist.val` unless `-P
+wishlistAppId=<id>` gives another, and a debug build is signed with the
+machine's debug key. Google sign-in on it needs an Android OAuth client for
+that id and that key ([DEPLOYMENT, Android OAuth
+client](DEPLOYMENT.md#android-oauth-client)). A build for the store is CI's job
+([DEPLOYMENT, step 14](DEPLOYMENT.md#14-android-app)).
 
 ## Tests
 
