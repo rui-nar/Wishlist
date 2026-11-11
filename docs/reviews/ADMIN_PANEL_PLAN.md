@@ -115,3 +115,47 @@ can see, with no instance-wide total.
 - Guard: —
 - Override: —
 - Outcome: open
+
+## Round 4 — 2026-11-11, integrated review, reviewed at 48f631a
+
+### R4-1 — The branch predates the introduction screens on master
+- Trigger: merging the branch as cut would drop or conflict with the introduction screens, untested together with the admin panel.
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=M/shared, confidence=verified
+- Decision: Fix now (D6)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: fixed (1f1491f: master merged, both kept; client analyze, 862 tests and 154 goldens pass on the result)
+
+### R4-2 — A manual grant outlasting a Stripe subscription hides its renewal and failed-payment lines
+- Trigger: the admin grants Premium to a Stripe payer → their plan page shows only the grant, while Stripe keeps charging or dunning.
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: a manual grant is in force alongside an active or past_due Stripe subscription, a user asks about a charge while their plan says "granted", or grants to paying users become routine
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R4-3 — A failed `/api/me` read after sign-in silently hides the admin entry
+- Trigger: the owner signs in and the one `/api/me` read fails → no admin entry, nothing logged, and the runbook points at the configuration.
+- Scores: trigger=plausible, impact=degraded-ux, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Guard (D9)
+- Revisit when: —
+- Guard: a console log of the failed read, and a runbook line to reload and check `/api/me` first
+- Override: —
+- Outcome: guard added (12b79ff)
+
+## Delivery
+
+Delivered under the owner's standing instruction of 2026-11-10, with no stop
+after the split.
+
+| Unit | Goal | Route | Rule | Attempts | Escalated | Verified first time | Findings traced |
+|---|---|---|---|---|---|---|---|
+| U1 | Admin identity, schema, photo sizes | Opus | S4 | 1 (+ review fixes) | X3: one test file outside Scope | yes | R1-2, R1-4, R1-6, R2-1, R2-2, R2-3 |
+| U2 | Admin routes and shared deletion | Opus | S5 | 1 (+ review fix) | X3: deps.py for R3-1 | yes | R1-1, R1-3, R1-5, R3-1, R3-2 |
+| U3 | Client panel and the manual plan | Opus | S5 | 1 (+ a layout fix) | X3: api_client.dart (a body on delete, reauth) | yes | R4-2, R4-3 |
+| U4 | Runbook | Sonnet | — | 1 | — | yes | — |
+
+The branch was cut before the introduction screens reached master; master
+was merged in at integration (R4-1), with both sides kept.
