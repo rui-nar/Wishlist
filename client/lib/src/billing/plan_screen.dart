@@ -20,8 +20,9 @@ const kPaymentRereadDelay = Duration(seconds: 2);
 const _kSuccess = 'success';
 const _kCancelled = 'cancelled';
 
-/// Free or Premium, the date that matters, and the failed-payment line. The
-/// account screen and the plan page say the same thing.
+/// Free or Premium, the date that matters, and the failed-payment line, or
+/// the end of a Premium the admin granted. The account screen and the plan
+/// page say the same thing.
 class PlanSummary extends StatelessWidget {
   const PlanSummary({super.key, required this.status});
 
@@ -39,6 +40,14 @@ class PlanSummary extends StatelessWidget {
     // A renewal date beside "your last payment failed" would promise what the
     // line below it doubts.
     final renewsAt = status.isPastDue ? null : status.renewsAt;
+    // Granted by the admin (admin panel plan D8): it ends, nothing renews.
+    // The Manage button still follows `can_manage` alone (review R1-3).
+    if (status.isManual && renewsAt != null) {
+      return Text(
+        l10n.planGrantedUntil(_date(context, renewsAt)),
+        style: theme.textTheme.titleMedium,
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

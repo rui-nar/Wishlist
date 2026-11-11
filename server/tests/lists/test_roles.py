@@ -606,6 +606,7 @@ GUARDED_PREFIXES = (
     "/api/shared",
     "/api/images",
     "/api/billing",
+    "/api/admin",
 )
 
 # Routes under those prefixes that name no object of a list, so they cannot
@@ -622,6 +623,13 @@ COVERED_ELSEWHERE = {
     ("POST", "/api/billing/checkout"),  # test_billing_sessions_by_role
     ("POST", "/api/billing/portal"),  # test_billing_sessions_by_role
     ("POST", "/api/billing/webhook"),  # test_stripe_webhook_by_role
+    # The admin routes: every role but the admin gets 404, in
+    # tests/admin/test_admin_routes.py (admin panel plan Conventions).
+    ("GET", "/api/admin/users"),
+    ("GET", "/api/admin/users/{user_id}"),
+    ("POST", "/api/admin/users/{user_id}/premium"),
+    ("DELETE", "/api/admin/users/{user_id}/premium"),
+    ("DELETE", "/api/admin/users/{user_id}"),
 }
 
 

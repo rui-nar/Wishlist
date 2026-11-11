@@ -23,6 +23,7 @@ from app.accounts.apple_router import router as apple_router
 from app.accounts.email_router import router as email_router
 from app.accounts.google import GoogleVerifier
 from app.accounts.router import router as accounts_router
+from app.admin.router import router as admin_router
 from app.billing.router import router as billing_router
 from app.billing.stripe_gateway import StripeGateway
 from app.comments.router import router as comments_router
@@ -74,17 +75,16 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         # the directory as not writable.
         with contextlib.suppress(OSError):
             settings.media_dir.mkdir(parents=True, exist_ok=True)
-        # Only where dumps can be dated (gift images plan D10); stopped
-        # before the engine goes.
-        app.state.media_purge = None
-        if settings.backup_dir is not None:
-            app.state.media_purge = MediaPurge(
-                app.state.session_factory,
-                settings.media_dir,
-                settings.backup_dir,
-                lambda: app.state.clock(),
-            )
-            app.state.media_purge.start()
+        # Everywhere, for the photo sizes (admin panel plan D7); it purges
+        # only where dumps can be dated (gift images plan D10). Stopped before
+        # the engine goes.
+        app.state.media_purge = MediaPurge(
+            app.state.session_factory,
+            settings.media_dir,
+            settings.backup_dir,
+            lambda: app.state.clock(),
+        )
+        app.state.media_purge.start()
         # Stopped before the engine goes too (comments plan D16).
         app.state.notification_worker = None
         if settings.notifications_worker:
@@ -98,11 +98,21 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
         yield
         if app.state.notification_worker is not None:
             app.state.notification_worker.stop()
-        if app.state.media_purge is not None:
-            app.state.media_purge.stop()
+        app.state.media_purge.stop()
         engine.dispose()
 
-    app = FastAPI(title="Wishlist", version=settings.app_version, lifespan=lifespan)
+    # Outside DEV, no schema or docs page lists the admin routes (admin panel
+    # plan D2, reviews R1-2, R2-1: VAL is public too); `app.openapi()` still
+    # builds the schema.
+    hidden = settings.app_env != "dev"
+    app = FastAPI(
+        title="Wishlist",
+        version=settings.app_version,
+        lifespan=lifespan,
+        openapi_url=None if hidden else "/openapi.json",
+        docs_url=None if hidden else "/docs",
+        redoc_url=None if hidden else "/redoc",
+    )
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
@@ -137,6 +147,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     )
     _log_billing_gaps(settings)
     _log_email_sign_in_gap(settings)
+    _log_admin_gap(settings)
 
     # The DEV client is served by `flutter run` on its own port, so it is
     # cross-origin; in VAL and PROD the web client comes from the same origin.
@@ -201,6 +212,7 @@ def create_app(settings: Settings | None = None, web_dir: Path = WEB_DIR) -> Fas
     app.include_router(comments_router)
     app.include_router(notifications_router)
     app.include_router(billing_router)
+    app.include_router(admin_router)
     app.add_exception_handler(RequestValidationError, _validation_error)
 
     # Registered last, so every /api route above takes precedence.
@@ -225,6 +237,17 @@ def _log_billing_gaps(settings: Settings) -> None:
         _log.warning(
             "billing is not selling; missing or invalid: %s",
             ", ".join(settings.missing_selling_settings),
+        )
+
+
+def _log_admin_gap(settings: Settings) -> None:
+    """An entry of ADMIN_USER_IDS that is not an id makes no one admin (admin
+    panel plan D1, review R2-3). Named by its position only: the value may be
+    an address, and no address is logged."""
+    if settings.admin_ids_invalid:
+        _log.warning(
+            "ADMIN_USER_IDS: entries at positions %s are not account ids; ignored",
+            ", ".join(str(position) for position in settings.admin_ids_invalid),
         )
 
 

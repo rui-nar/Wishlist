@@ -47,6 +47,8 @@ const kEmailLinkToken = 'bGluaw.c2lnbmF0dXJl';
 /// nothing on sale and no limit applied.
 Map<String, Object?> billingStatus({
   String plan = 'free',
+  // `stripe` for premium unless given: `manual` is the admin's grant.
+  String? source,
   String? status,
   String? renewsAt,
   String? endsAt,
@@ -65,7 +67,7 @@ Map<String, Object?> billingStatus({
 }) =>
     {
       'plan': plan,
-      'source': plan == 'premium' ? 'stripe' : null,
+      'source': source ?? (plan == 'premium' ? 'stripe' : null),
       'status': status,
       'renews_at': renewsAt,
       'ends_at': endsAt,
@@ -138,6 +140,17 @@ class FakeServer {
   String portalUrl = 'https://billing.stripe.test/session';
   int _next = 0;
 
+  /// `is_admin` in `/api/me` for Alice (admin panel plan D2).
+  bool isAdmin = false;
+
+  /// Answers the calls this server does not know, before its 404: given the
+  /// request and the session's user (null when signed out). Null lets the
+  /// 404 through.
+  Future<http.Response?> Function(
+    http.Request request,
+    Map<String, String>? user,
+  )? extra;
+
   late final http.Client client = MockClient(_handle);
 
   /// A session for Alice, as if she had signed in earlier.
@@ -209,7 +222,9 @@ class FakeServer {
         sessions.remove(token);
         return http.Response('', 204);
       case 'GET /api/me':
-        return user == null ? unauthorized : json(user);
+        return user == null
+            ? unauthorized
+            : json({...user, 'is_admin': isAdmin});
       case 'DELETE /api/me':
         if (user == null) return unauthorized;
         sessions.clear();
@@ -234,6 +249,7 @@ class FakeServer {
       case 'POST /api/billing/portal':
         return user == null ? unauthorized : json({'url': portalUrl});
     }
+    if (await extra?.call(request, user) case final answer?) return answer;
     // Any later endpoint depends on current_user (D5).
     return user == null ? unauthorized : http.Response('', 404);
   }

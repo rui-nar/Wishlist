@@ -22,17 +22,21 @@ from app.db import Base
 STRIPE = "stripe"
 APPLE = "apple"
 GOOGLE = "google"
+# Granted by an admin (admin panel plan D8): no provider stands behind it, and
+# its `external_id` is a new uuid.
+MANUAL = "manual"
 
 ACTIVE = "active"
 PAST_DUE = "past_due"
 INCOMPLETE = "incomplete"
 ENDED = "ended"
 
-_SOURCES = f"source IN ('{STRIPE}', '{APPLE}', '{GOOGLE}')"
+_SOURCES = f"source IN ('{STRIPE}', '{APPLE}', '{GOOGLE}', '{MANUAL}')"
 
 
 class Entitlement(Base):
-    """One purchase: a Stripe subscription, later a store's transaction."""
+    """One purchase: a Stripe subscription, later a store's transaction, or
+    an admin's grant."""
 
     __tablename__ = "entitlements"
     __table_args__ = (

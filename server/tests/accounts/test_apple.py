@@ -214,7 +214,7 @@ def test_a_first_sign_in_makes_an_account_with_the_name(client, keys, engine):
     assert count(engine, "users") == 1
     me = client.get("/api/me", headers={"Authorization": f"Bearer {body['token']}"})
     assert me.status_code == 200
-    assert me.json() == body["user"]
+    assert me.json() == body["user"] | {"is_admin": False}
 
 
 def test_a_later_sign_in_without_name_or_address_keeps_both(client, keys, engine):

@@ -7,7 +7,7 @@ An image row is the only way to a file: files are named by the row's id
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -42,6 +42,9 @@ class Image(Base):
     )
     # Set when first attached to a gift, never cleared (review R1-6).
     attached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The size of both files, set at upload (admin panel plan D7); null on a
+    # row older than that until the media job measures it (`purge.fill_sizes`).
+    bytes: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class MediaOrphan(Base):

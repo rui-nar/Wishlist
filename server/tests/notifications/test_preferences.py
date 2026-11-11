@@ -115,4 +115,4 @@ def test_preferences_need_a_session(client, method):
 def test_the_account_read_keeps_its_shape(client, make_account):
     response = client.get("/api/me", headers=make_account().headers)
 
-    assert response.json().keys() == {"id", "email", "display_name"}
+    assert response.json().keys() == {"id", "email", "display_name", "is_admin"}

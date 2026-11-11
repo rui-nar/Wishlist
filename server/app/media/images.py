@@ -391,6 +391,9 @@ def add_image(db: Session, media_dir: Path, user: User, processed: Processed) ->
         uploaded_by=user.id,
         width=processed.width,
         height=processed.height,
+        # What `store` writes, so the admin panel never reads the disk (admin
+        # panel plan D7).
+        bytes=len(processed.full) + len(processed.thumb),
     )
     store(media_dir, image.id, processed.full, processed.thumb)
     db.add(image)

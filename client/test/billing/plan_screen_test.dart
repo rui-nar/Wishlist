@@ -108,6 +108,53 @@ void main() {
       expect(find.text('Manage subscription'), findsOneWidget);
     });
 
+    testWidgets('granted by the admin: its end, and no renewal or Manage',
+        (tester) async {
+      server.billing = billingStatus(
+        plan: 'premium',
+        source: 'manual',
+        status: 'active',
+        renewsAt: '2027-03-12T12:00:00Z',
+        limits: const {'max_lists': null, 'max_gifts_per_list': null},
+      );
+      await pumpPlan(tester);
+
+      expect(find.text('Premium, granted until March 12, 2027'), findsOneWidget);
+      expect(find.textContaining('Renews on'), findsNothing);
+      expect(find.text('Manage subscription'), findsNothing);
+      expect(find.text('Continue to payment'), findsNothing);
+    });
+
+    testWidgets(
+        'granted and also paid through Stripe: Manage follows can_manage '
+        '(admin review R1-3)', (tester) async {
+      server.billing = billingStatus(
+        plan: 'premium',
+        source: 'manual',
+        status: 'active',
+        renewsAt: '2027-03-12T12:00:00Z',
+        limits: const {'max_lists': null, 'max_gifts_per_list': null},
+        canManage: true,
+      );
+      await pumpPlan(tester);
+
+      expect(find.text('Premium, granted until March 12, 2027'), findsOneWidget);
+      expect(find.text('Manage subscription'), findsOneWidget);
+    });
+
+    testWidgets('the account screen says the same of a grant', (tester) async {
+      server.billing = billingStatus(
+        plan: 'premium',
+        source: 'manual',
+        status: 'active',
+        renewsAt: '2027-03-12T12:00:00Z',
+        limits: const {'max_lists': null, 'max_gifts_per_list': null},
+      );
+      await pumpPlan(tester, location: '/account');
+
+      expect(find.text('Premium, granted until March 12, 2027'), findsOneWidget);
+    });
+
     testWidgets('limits sent as null for premium read the same way',
         (tester) async {
       server.billing = billingStatus(

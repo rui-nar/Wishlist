@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../admin/admin_repository.dart';
 import '../api/api_client.dart';
 import '../billing/billing_repository.dart';
 import '../billing/legal_links.dart';
@@ -15,9 +16,10 @@ import 'preferences_repository.dart';
 
 /// The signed-in user's name and email, the email notifications switch
 /// (COMMENTS_NOTIFICATIONS_PLAN D20), their plan when there is one to show
-/// (PREMIUM_PLAN D18), the introduction, the version screen, sign-out and
-/// account deletion (ACCOUNTS_PLAN D10). Signing out or deleting ends the
-/// session; the router's guard then shows the sign-in screen.
+/// (PREMIUM_PLAN D18), the admin panel for the admin, the introduction, the
+/// version screen, sign-out and account deletion (ACCOUNTS_PLAN D10). Signing
+/// out or deleting ends the session; the router's guard then shows the sign-in
+/// screen.
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
 
@@ -135,6 +137,7 @@ class _AccountScreenState extends State<AccountScreen> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final user = context.select((AuthController auth) => auth.user);
+    final isAdmin = context.select((AuthController auth) => auth.isAdmin);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.accountTitle)),
       body: PageFrame(
@@ -180,6 +183,15 @@ class _AccountScreenState extends State<AccountScreen> {
                         ),
                         const SizedBox(height: Spacing.s12),
                       ],
+                    ],
+                    // The admin's only (admin panel plan D10).
+                    if (isAdmin) ...[
+                      OutlinedButton.icon(
+                        onPressed: () => context.push(kAdminPath),
+                        icon: const Icon(Icons.admin_panel_settings_outlined),
+                        label: Text(l10n.adminPanel),
+                      ),
+                      const SizedBox(height: Spacing.s12),
                     ],
                     OutlinedButton.icon(
                       onPressed: () => context.push(kIntroPath),

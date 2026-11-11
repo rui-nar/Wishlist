@@ -34,6 +34,14 @@ Two roles, plus who the list is for:
 
 A person can own lists and be an invitee on other people's.
 
+- **Admin** (owner, 2026-11-10): the operator of the app, named by account in
+  the server configuration. Sees the registered accounts by address, their
+  plan, their lists with the number of gifts each, and the space their photos
+  take. Can grant Premium by hand and delete an account. Sees counts only,
+  never gifts, reservations, pledges or comments. The admin is a user too:
+  nothing the admin sees may change with invitee activity, on their own lists
+  or anyone else's, so a hidden gift's photo counts for no one.
+
 ## Core rules
 
 - **The surprise.** Recipients never see any invitee activity on their list: no

@@ -151,6 +151,64 @@ void main() {
     expect(reported, ['old']);
   });
 
+  test('a 401 reauth_required throws its own error and keeps the session',
+      () async {
+    final reported = <String>[];
+    final api = ApiClient(
+      MockClient((request) async =>
+          http.Response('{"detail": "reauth_required"}', 401)),
+      baseUrl: '',
+    )
+      ..token = 'admin'
+      ..onUnauthorized = reported.add;
+
+    await expectLater(
+      api.delete('/api/admin/users/u1/premium'),
+      throwsA(isA<ReauthRequiredException>()),
+    );
+    expect(reported, isEmpty);
+    expect(api.token, 'admin');
+  });
+
+  test('any other 401 with a JSON body still reports its token', () async {
+    final reported = <String>[];
+    final api = ApiClient(
+      MockClient((request) async =>
+          http.Response('{"detail": "Not authenticated"}', 401)),
+      baseUrl: '',
+    )
+      ..token = 'old'
+      ..onUnauthorized = reported.add;
+
+    await expectLater(
+      api.delete('/api/admin/users/u1/premium'),
+      throwsA(isA<UnauthorizedException>()),
+    );
+    expect(reported, ['old']);
+  });
+
+  test('delete sends its JSON body when given, and none otherwise', () async {
+    final seen = <http.Request>[];
+    final api = ApiClient(
+      MockClient((request) async {
+        seen.add(request);
+        return http.Response('', 204);
+      }),
+      baseUrl: 'http://api.test',
+    )..token = 'secret';
+
+    await api.delete('/api/admin/users/u1', body: {'email': 'a@b.test'});
+    await api.delete('/api/me');
+
+    expect(seen[0].method, 'DELETE');
+    expect(seen[0].url, Uri.parse('http://api.test/api/admin/users/u1'));
+    expect(seen[0].headers['Content-Type'], startsWith('application/json'));
+    expect(jsonDecode(seen[0].body), {'email': 'a@b.test'});
+    expect(seen[1].method, 'DELETE');
+    expect(seen[1].headers.containsKey('Content-Type'), isFalse);
+    expect(seen[1].body, isEmpty);
+  });
+
   test('a 401 to a call without a token is not a session ending', () async {
     final reported = <String>[];
     final api = ApiClient(

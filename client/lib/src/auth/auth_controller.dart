@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
 
@@ -128,6 +129,14 @@ class AuthController extends ChangeNotifier {
 
   bool get isSignedIn => _status == AuthStatus.signedIn;
 
+  bool _isAdmin = false;
+
+  /// `is_admin` from `/api/me` (admin panel plan D2): shows the admin panel's
+  /// entry and lets its routes open. Only `/api/me` says it, so a sign-in
+  /// reads it there before the user is signed in. False whenever [status] is
+  /// not [AuthStatus.signedIn]. The server decides; this only shows.
+  bool get isAdmin => _isAdmin;
+
   /// Restores the stored session, at start or to retry after
   /// [AuthStatus.unavailable]. A 401 forgets the token; any other failure
   /// keeps it, so an outage does not sign anyone out.
@@ -146,7 +155,9 @@ class AuthController extends ChangeNotifier {
     }
     _api.token = token;
     try {
-      _user = AccountUser.fromJson(await _api.getJson('/api/me'));
+      final me = await _api.getJson('/api/me');
+      _user = AccountUser.fromJson(me);
+      _isAdmin = me['is_admin'] == true;
       _set(AuthStatus.signedIn);
     } on UnauthorizedException {
       await _endSession();
@@ -259,8 +270,25 @@ class AuthController extends ChangeNotifier {
       // Signed in for this run only: the next start asks again.
     }
     _api.token = token;
+    final isAdmin = await _readIsAdmin();
+    // A 401 to that read ended this new session already.
+    if (_api.token != token) return;
     _user = user;
+    _isAdmin = isAdmin;
     _set(AuthStatus.signedIn);
+  }
+
+  /// `is_admin` from `/api/me`, which the sign-in answers do not carry. A
+  /// failed read signs in all the same, as a user who is not the admin.
+  Future<bool> _readIsAdmin() async {
+    try {
+      return (await _api.getJson('/api/me'))['is_admin'] == true;
+    } catch (error) {
+      // Logged so a missing admin entry is not read as a configuration error
+      // (review R4-3). The typed errors' text is their type only.
+      log('is_admin read failed after sign-in', name: 'auth', error: error);
+      return false;
+    }
   }
 
   /// Ends the session on the server (`POST /api/auth/sign-out`) and here.
@@ -311,7 +339,10 @@ class AuthController extends ChangeNotifier {
 
   void _set(AuthStatus status) {
     _status = status;
-    if (status != AuthStatus.signedIn) _user = null;
+    if (status != AuthStatus.signedIn) {
+      _user = null;
+      _isAdmin = false;
+    }
     if (status != AuthStatus.failed) _failure = null;
     notifyListeners();
   }

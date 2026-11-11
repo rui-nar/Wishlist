@@ -3,9 +3,14 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/app_localizations.dart';
+import 'admin/admin_repository.dart';
+import 'admin/admin_user_screen.dart';
+import 'admin/admin_users_screen.dart';
 import 'api/api_client.dart';
 import 'auth/account_screen.dart';
 import 'auth/auth_controller.dart';
@@ -15,6 +20,8 @@ import 'auth/email_sign_up_screen.dart';
 import 'auth/sign_in_screen.dart';
 import 'billing/billing_repository.dart';
 import 'billing/plan_screen.dart';
+import 'design/tokens.dart';
+import 'design/widgets/page_frame.dart';
 import 'home/home_screen.dart';
 import 'intro/intro_screen.dart';
 import 'intro/intro_seen.dart';
@@ -168,6 +175,7 @@ GoRouter buildRouter({
   unawaited(intro.load());
   return GoRouter(
     refreshListenable: auth,
+    errorBuilder: (context, state) => const NotFoundScreen(),
     observers: [listsRouteObserver],
     redirect: (context, state) => authRedirect(
       auth.status,
@@ -307,6 +315,22 @@ GoRouter buildRouter({
         path: kJoinPath,
         builder: (context, state) => const JoinScreen(),
       ),
+      // The admin panel (admin panel plan D10). Anyone but the admin gets the
+      // page of a location that does not exist, as the server answers 404
+      // (D2): nothing tells them there is a panel.
+      GoRoute(
+        path: kAdminPath,
+        builder: (context, state) =>
+            auth.isAdmin ? const AdminUsersScreen() : const NotFoundScreen(),
+        routes: [
+          GoRoute(
+            path: 'users/:id',
+            builder: (context, state) => auth.isAdmin
+                ? AdminUserScreen(userId: state.pathParameters['id']!)
+                : const NotFoundScreen(),
+          ),
+        ],
+      ),
       GoRoute(
         path: '/account',
         builder: (context, state) => const AccountScreen(),
@@ -347,4 +371,45 @@ GoRouter buildRouter({
       ),
     ],
   );
+}
+
+/// The page of a location the app does not have, and of the admin panel for
+/// anyone but the admin (admin panel plan D2, D10): the same page, so neither
+/// can be told from the other.
+class NotFoundScreen extends StatelessWidget {
+  const NotFoundScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.notFoundTitle)),
+      body: PageFrame(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: PageFrame.paddingOf(context, ContentWidths.reading),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Spacing.s24),
+                child: Column(
+                  children: [
+                    Text(
+                      l10n.notFoundBody,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: Spacing.s16),
+                    FilledButton(
+                      onPressed: () => context.go('/'),
+                      child: Text(l10n.notFoundHome),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

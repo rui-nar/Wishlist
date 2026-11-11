@@ -14,6 +14,10 @@ back a record older than a row that existed since (review R5-1). The files
 remember too: every run sets the modification time of a live row's files to
 `now`, and a stem goes only when its record and its files are both older
 than the horizon.
+
+The same thread measures the images uploaded before `images.bytes` existed
+(admin panel plan D7). That reads sizes only, so it runs on every run, with or
+without a horizon (review R1-4).
 """
 
 import logging
@@ -26,7 +30,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
 
-from sqlalchemy import delete, exists, func, or_, select
+from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -47,6 +51,8 @@ TEMPORARY_MAX_AGE = timedelta(days=1)
 # The job (D10): first run 10 minutes after start, then every 24 h.
 FIRST_RUN_DELAY = timedelta(minutes=10)
 RUN_INTERVAL = timedelta(hours=24)
+# Image rows measured per transaction (admin panel plan D7).
+SIZES_BATCH = 200
 
 DUMP_SUFFIX = ".dump"
 _DATE_IN_NAME = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
@@ -65,6 +71,12 @@ class PurgeCounts(NamedTuple):
     # Stems whose files were deleted.
     purged: int
     rows_released: int
+
+
+class SizeCounts(NamedTuple):
+    filled: int
+    # Rows left unmeasured: a file missing or unreadable.
+    skipped: int
 
 
 def horizon(backup_dir: Path | None) -> datetime | None:
@@ -210,6 +222,72 @@ def purge(
     return counts
 
 
+def fill_sizes(db: Session, media_dir: Path) -> SizeCounts:
+    """Sets `bytes` on every image row that has none, to the size of its two
+    files (admin panel plan D7). Reads sizes only and deletes nothing.
+
+    `db` is a session outside any transaction: one transaction per batch of
+    SIZES_BATCH rows. A row another transaction holds is skipped, never waited
+    for, so this never deadlocks with an account's deletion. A row whose
+    files are not both readable stays null, and the next run tries again.
+    Logged in one line when there was anything to measure.
+    """
+    gifts_dir = media_dir / GIFTS_DIR
+    filled = skipped = 0
+    after: uuid.UUID | None = None
+    while True:
+        with db.begin():
+            query = (
+                select(Image.id)
+                .where(Image.bytes.is_(None))
+                .order_by(Image.id)
+                .limit(SIZES_BATCH)
+                # FOR NO KEY UPDATE SKIP LOCKED: this never waits, and the
+                # foreign-key checks on `gifts.image_id` (FOR KEY SHARE) do not
+                # wait on it. An attach's FOR UPDATE or an account deletion's
+                # SET NULL on `uploaded_by` can wait for one batch, never more.
+                .with_for_update(key_share=True, skip_locked=True)
+            )
+            if after is not None:
+                query = query.where(Image.id > after)
+            batch = db.scalars(query).all()
+            for image_id in batch:
+                size = _files_size(gifts_dir, image_id.hex)
+                if size is None:
+                    skipped += 1
+                    continue
+                db.execute(
+                    update(Image)
+                    .where(Image.id == image_id)
+                    .values(bytes=size)
+                    .execution_options(synchronize_session=False)
+                )
+                filled += 1
+        if len(batch) < SIZES_BATCH:
+            break
+        after = batch[-1]
+    counts = SizeCounts(filled, skipped)
+    if filled or skipped:
+        _log.info("media sizes: filled=%d skipped=%d", filled, skipped)
+    return counts
+
+
+def _files_size(gifts_dir: Path, name: str) -> int | None:
+    """The size of the stem's two files, None unless both can be read."""
+    total = 0
+    for suffix in VARIANTS.values():
+        try:
+            total += (gifts_dir / f"{name}{suffix}").stat().st_size
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            _log.warning(
+                "media sizes: cannot measure %s (%s)", name, type(exc).__name__
+            )
+            return None
+    return total
+
+
 def _clock_behind(db: Session, latest_dump: datetime | None, now: datetime) -> bool:
     """Whether a date already recorded, in the database or by a dump, is later
     than `now` (review R5-2)."""
@@ -301,13 +379,16 @@ def _purge_stem(db: Session, gifts_dir: Path, name: str, limit: datetime) -> boo
 
 
 class MediaPurge:
-    """The daily purge in a daemon thread of the app process (D10)."""
+    """The daily media job in a daemon thread of the app process (D10): the
+    purge, where dumps can be dated, then `fill_sizes`, everywhere (admin
+    panel plan D7, review R1-4)."""
 
     def __init__(
         self,
         session_factory: sessionmaker[Session],
         media_dir: Path,
-        backup_dir: Path,
+        # None: no dump can be dated, and the purge does not run (DEV, VAL).
+        backup_dir: Path | None,
         clock: Callable[[], datetime],
         first_run_delay: timedelta = FIRST_RUN_DELAY,
     ) -> None:
@@ -336,13 +417,20 @@ class MediaPurge:
     def _run(self) -> None:
         delay = self._first_run_delay
         while not self._stop.wait(delay.total_seconds()):
+            if self._backup_dir is not None:
+                try:
+                    with self._session_factory() as db:
+                        purge(db, self._media_dir, self._backup_dir, self._clock())
+                except Exception:
+                    # The next run tries again; a run that failed deleted
+                    # nothing it had not first committed as safe.
+                    _log.exception("media purge: failed")
+            # Whatever the purge did: it only reads sizes (review R1-4).
             try:
                 with self._session_factory() as db:
-                    purge(db, self._media_dir, self._backup_dir, self._clock())
+                    fill_sizes(db, self._media_dir)
             except Exception:
-                # The next run tries again; a run that failed deleted nothing
-                # it had not first committed as safe.
-                _log.exception("media purge: failed")
+                _log.exception("media sizes: failed")
             delay = RUN_INTERVAL
 
 
