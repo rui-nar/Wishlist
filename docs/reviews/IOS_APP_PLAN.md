@@ -62,3 +62,18 @@ real refresh tokens at rest outside PROD are F1.
 - Guard: —
 - Override: —
 - Outcome: open
+
+## Round 2 — 2026-11-11, unit review of U3, reviewed at 70bad4e
+
+Envelope question answered with the recommendation (standing instruction of
+2026-11-11): PROD's own nightly dumps are PROD and inside the envelope; any
+off-site copy, when the backups plan adds one, is encrypted.
+
+### R2-1 — An Apple sign-in with a code calls Apple, unthrottled
+- Trigger: a modified client replays one valid identity token in parallel with made-up codes → each blocks a worker thread on Apple; if Apple slows, real exchanges fail.
+- Scores: trigger=plausible, impact=degraded-ux, detect=logged, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: "apple: code not exchanged" logs a burst of timeouts or 429s, or many for one account or IP, or a user reports a slow Apple sign-in while Apple is fine; the fix is `accounts/throttle.py` on this route
+- Guard: —
+- Override: —
+- Outcome: open
