@@ -1,6 +1,6 @@
 # Design
 
-How the Wishlist client looks and how a screen uses the design system:
+How the Shush Gift client looks and how a screen uses the design system:
 tokens, themes, components, the invitee colour and localisation. The code is
 in `client/lib/src/design/`; the decisions behind it are in
 [the design-system plan](plans/DESIGN_SYSTEM_PLAN.md). The skeleton screen,
@@ -42,9 +42,9 @@ grep -rnE "Color\(0x|EdgeInsets\.all\([0-9]" client/lib --exclude-dir=design
 | Token | Where it lives | How a screen reads it |
 |---|---|---|
 | Colours with a Material role (`primary`, `surface`, `onSurfaceVariant`, `outline`, `error`...) | `LightColors`, `DarkColors` | `Theme.of(context).colorScheme` |
-| Page background, body text | `LightColors`, `DarkColors`, carried by `WishlistColors` | `context.wishlistColors` (`scaffoldBackgroundColor` and the body text styles already use them) |
-| Invitee activity (rose) and its container colours | `LightColors`, `DarkColors`, carried by `WishlistColors` | `context.wishlistColors`, for invitee activity only (below) |
-| Backdrop motif: `motifA`, `motifB`, `motifC` | `LightColors`, `DarkColors`, carried by `WishlistColors` | never directly: `Backdrop` paints them (Layout, below) |
+| Page background, body text | `LightColors`, `DarkColors`, carried by `ShushGiftColors` | `context.shushGiftColors` (`scaffoldBackgroundColor` and the body text styles already use them) |
+| Invitee activity (rose) and its container colours | `LightColors`, `DarkColors`, carried by `ShushGiftColors` | `context.shushGiftColors`, for invitee activity only (below) |
+| Backdrop motif: `motifA`, `motifB`, `motifC` | `LightColors`, `DarkColors`, carried by `ShushGiftColors` | never directly: `Backdrop` paints them (Layout, below) |
 | Window classes: `medium` 600, `expanded` 840 | `Breakpoints` | against `MediaQuery.sizeOf(context).width` (Layout) |
 | Content widths: `reading` 760, `form` 560, `welcome` 1120 | `ContentWidths` | through `PageFrame` (Layout) |
 | Spacing: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64 | `Spacing.s4` ... `Spacing.s64` | directly: `EdgeInsets.all(Spacing.s16)` |
@@ -202,7 +202,7 @@ stay opaque, so two pages never show through each other during a transition.
 
 Rose has one meaning. The rule, from the plan's Conventions:
 
-> **Only invitee activity is rose.** `WishlistColors.inviteeActivity` and its
+> **Only invitee activity is rose.** `ShushGiftColors.inviteeActivity` and its
 > container colours are used only for invitee activity: reservations,
 > purchases, pledges, comments and their counts. Nothing else is rose, so that
 > a rose element on a recipient's screen would be a visible bug.
@@ -210,7 +210,7 @@ Rose has one meaning. The rule, from the plan's Conventions:
 Rose is not a Material role on purpose (plan D3): Material widgets paint
 `secondary` and `tertiary` on their own, so both are slate. Use
 `StatusChip(variant: StatusChipVariant.inviteeActivity)` or
-`context.wishlistColors` for invitee activity, and nothing else rose: not for
+`context.shushGiftColors` for invitee activity, and nothing else rose: not for
 errors (those are `error` red), highlights or decoration.
 
 The colour does not enforce the surprise rule; the server does. It only makes

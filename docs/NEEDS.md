@@ -1,4 +1,4 @@
-# Wishlist — Need description
+# Shush Gift — Need description
 
 Status: converged on the first release's needs (2026-11-07), pending the
 owner's read-through. Remaining questions are under
