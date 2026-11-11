@@ -74,7 +74,9 @@ the status route.
 
   A refund ends Premium at once. A retry that later succeeds comes back as
   `active` through its notification. `warn_if_lapsed` is quiet for these rows,
-  since the grace period's date is the real end.
+  since the grace period's date is the real end. Like every source, a
+  row keeps the 3-day tolerance for late notifications (`entitlements.GRACE`),
+  so Premium can outlast the grace period by up to 3 days.
 - **D6 — Environments** (owner, 2026-11-11; review R1-1).
   - VAL is the VAL app (IOS_APP_PLAN D1). It accepts Sandbox transactions
     only. Testers buy there, for free.
@@ -153,7 +155,9 @@ REVIEW.md defaults apply, with PREMIUM_PLAN's envelope, and these additions:
   `apple_renewing`; `offer` keeps its shape. `source` may be `apple`. The
   admin row gains `apple_subscription`. Old clients see Premium.
 - **Stored data:** Apple entitlements, deleted with the account.
-- **Environment:** `APPLE_PRODUCT_ID`, `APPLE_BUNDLE_ID`,
+- **Environment:** `APPLE_PRODUCT_ID`, `APPLE_BUNDLE_ID`, `APPLE_APP_APPLE_ID`
+  (PROD only: Apple's library needs the app's numeric id to verify production
+  notifications),
   `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_KEY_ID`, `APPLE_IAP_PRIVATE_KEY` and
   `APPLE_SANDBOX_ACCOUNT_IDS`.
 - **A contract with the past:** `appAccountToken` = account id, and
