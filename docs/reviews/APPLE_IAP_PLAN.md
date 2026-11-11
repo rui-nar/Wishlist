@@ -112,3 +112,41 @@ sells.
 - Guard: —
 - Override: —
 - Outcome: fixed (a2fc11d)
+
+## Round 3 — 2026-11-11, integrated review, reviewed at 061c9cc
+
+### IAP-R3-1 — The Apple-purchases release step has "\r" for its line continuation
+- Trigger: the owner pastes the block → the guard is broken and a second run appends empty APPLE_* lines.
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open
+
+### IAP-R3-2 — The phone apps cannot read the plan from a rolled-back server
+- Trigger: PROD rolled back one release with phone builds installed → `apple_renewing` and `google_renewing` missing, the strict cast throws.
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=expensive, fix=S/local, confidence=verified
+- Decision: Fix now (D5)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open
+
+### IAP-R3-3 — An unconfirmed purchase is retried at the next start, not on reopening the page
+- Trigger: the server cannot confirm with Apple → the message promises a retry on reopening the page.
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: PROD logs a store purchase that could not be confirmed, a user reports one still pending after reopening the page, or those strings are edited for another reason
+- Guard: —
+- Override: —
+- Outcome: open
+
+### IAP-R3-4 — The runbook's real purchase on the PROD app cannot be made from TestFlight
+- Trigger: the owner follows Part 3 step 9 with the TestFlight PROD build → a Sandbox purchase refused with 409.
+- Scores: trigger=concrete, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D6)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open

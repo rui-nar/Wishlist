@@ -77,3 +77,17 @@ off-site copy, when the backups plan adds one, is encrypted.
 - Guard: —
 - Override: —
 - Outcome: open
+
+## Round 3 — 2026-11-11, integrated review, reviewed at 061c9cc
+
+Envelope question answered with the recommendation: a phone build of this
+release against a server rolled back one release is inside the envelope.
+
+### IOS-R3-1 — No release step installs the new seed script on the host
+- Trigger: the owner deploys, fills the Apple key variables, then seeds VAL with the old script → PROD's Apple tokens on VAL; a deletion there revokes a PROD user's grant.
+- Scores: trigger=plausible, impact=security, detect=silent, later=cheap, fix=S/local, confidence=verified
+- Decision: Fix now (D3)
+- Revisit when: —
+- Guard: —
+- Override: —
+- Outcome: open

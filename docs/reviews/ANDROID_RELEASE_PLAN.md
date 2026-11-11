@@ -97,3 +97,27 @@ acknowledges and cancels by the current token only). Plan D6 updated.
 - Guard: —
 - Override: —
 - Outcome: open
+
+## Round 3 — 2026-11-11, integrated review, reviewed at 061c9cc
+
+### R3-1 — The runbook's "deletion refused" section does not cover Google
+- Trigger: a Google gateway misconfigured while an account has a renewing Google row → 409; the section's SQL does not unblock it, and BILLING.md says 409 where the code answers 502.
+- Scores: trigger=plausible, impact=degraded-ux, detect=user-visible, later=cheap, fix=S/local, confidence=verified
+- Decision: Defer (D10)
+- Revisit when: a server refuses a deletion for an account with a Google row, GOOGLE_* variables are unset on a server holding Google rows, or the owner opens that section for a Google refusal
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R3-2 — A purchase refused for a configuration error is set aside on the phone
+- Trigger: a wrong package or product id on a selling server → the token is set aside; after the fix it is never re-posted, and Google refunds.
+- Scores: trigger=plausible, impact=wrong-visible, detect=user-visible, later=cheap, fix=S/local, confidence=inferred
+- Decision: Defer (D10)
+- Revisit when: a selling server logs unknown_purchase or other_product for a Google purchase, a Play order is refunded for non-acknowledgement after a configuration change, or the package or product id changes on a selling server
+- Guard: —
+- Override: —
+- Outcome: open
+
+### R3-3 — Duplicate of APPLE_IAP_PLAN IAP-R3-2
+- Decision: Duplicate (D2)
+- Outcome: fixed with IAP-R3-2
