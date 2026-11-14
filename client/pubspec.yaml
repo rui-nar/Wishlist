@@ -42,7 +42,7 @@ dependencies:
   http: ^1.6.0
 
   # Routing with the sign-in guard, and the auth state (ACCOUNTS_PLAN D10).
-  go_router: ^18.1.3
+  go_router: ^18.1.4
   provider: ^6.1.5+1
   # The path URL strategy on the web: /account, not /#/account.
   flutter_web_plugins:
